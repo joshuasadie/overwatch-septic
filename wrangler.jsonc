@@ -5,7 +5,7 @@
   "assets": { "directory": "./site", "binding": "ASSETS" },
   "observability": { "enabled": false },
   // Create these two in the Cloudflare dashboard (Storage & databases), then paste the D1 id below.
-  "d1_databases": [{ "binding": "DB", "database_name": "overwatch-septic", "database_id": "REPLACE_WITH_D1_DATABASE_ID" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "overwatch-septic", "database_id": "eb5f7d34-dcd3-4d74-88c3-b6cfd7df1e06" }],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "overwatch-septic-files" }],
   "vars": {
     "MAIL_TO": "Joshua@overwatchseptic.com",
