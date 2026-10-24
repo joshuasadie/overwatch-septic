@@ -1,0 +1,12 @@
+{
+  "name": "overwatch-septic",
+  "main": "worker/index.js",
+  "compatibility_date": "2025-09-01",
+  "assets": { "directory": "./site", "binding": "ASSETS" },
+  "observability": { "enabled": false },
+  "vars": {
+    "MAIL_TO": "Joshua@overwatchseptic.com",
+    "MAIL_FROM": "Overwatch Septic <Joshua@overwatchseptic.com>",
+    "ALLOWED_ORIGINS": "https://overwatchseptic.com,https://www.overwatchseptic.com"
+  }
+}
