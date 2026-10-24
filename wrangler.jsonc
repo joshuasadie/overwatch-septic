@@ -4,9 +4,15 @@
   "compatibility_date": "2025-09-01",
   "assets": { "directory": "./site", "binding": "ASSETS" },
   "observability": { "enabled": false },
+  // Create these two in the Cloudflare dashboard (Storage & databases), then paste the D1 id below.
+  "d1_databases": [{ "binding": "DB", "database_name": "overwatch-septic", "database_id": "eb5f7d34-dcd3-4d74-88c3-b6cfd7df1e06" }],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "overwatch-septic-files" }],
   "vars": {
     "MAIL_TO": "Joshua@overwatchseptic.com",
     "MAIL_FROM": "Overwatch Septic <Joshua@overwatchseptic.com>",
+    "ACCESS_TEAM_DOMAIN": "wild-frost-0e20.cloudflareaccess.com",
+    "ACCESS_AUD": "7f5cc56281726b42e1742de51d7f20198a268dda0b559911511433d38a053822",
+    "ADMIN_EMAILS": "Joshua@overwatchseptic.com",
     "ALLOWED_ORIGINS": "https://overwatchseptic.com,https://www.overwatchseptic.com"
   }
 }

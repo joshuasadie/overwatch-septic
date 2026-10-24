@@ -11,3 +11,13 @@ Static site (`site/`) plus one Cloudflare Worker endpoint (`worker/index.js`, `P
 
 ## Test
 `npm test` runs the form endpoint tests.
+
+## Portals (branch `portals`)
+
+Pages: `/admin/` (you), `/c/<token>` (customer signs from the emailed link), `/login/` then `/portal/` (customer). Tests: `npm test` (API) and the browser checks described in the pull request.
+
+Setup before merging:
+1. Cloudflare dashboard > Storage & databases: create a D1 database `overwatch-septic` and an R2 bucket `overwatch-septic-files`. Paste the D1 id into `wrangler.jsonc` (`database_id`). Tables are created automatically on first use.
+2. Zero Trust > Access > Applications: add a self-hosted app for `overwatchseptic.com/admin*` (and `/admin/api*` is covered by the same path), policy allowing only your email. Copy the Application Audience (AUD) tag and your team domain into `ACCESS_AUD` and `ACCESS_TEAM_DOMAIN` in `wrangler.jsonc`.
+3. Add `overwatchseptic.com` and `www.overwatchseptic.com` to the Turnstile widget hostnames (the customer sign-in uses it) and make sure `TURNSTILE_SECRET` and `RESEND_API_KEY` are set as secrets on the Worker.
+4. Merge, then try: add yourself as a customer, send yourself a contract, sign, countersign, add a report, sign in at `/login/`.

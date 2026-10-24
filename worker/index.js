@@ -51,10 +51,33 @@ export async function request(req, env) {
   return reply({ ok: true });
 }
 
+import { adminApi } from './admin.js';
+import { loginRequest, loginVerify, portalApi } from './portal.js';
+import { tokenApi } from './contracts.js';
+import { ensureSchema, originOk, readJson } from './lib.js';
+
+const NO_STORE = r => { const h = new Headers(r.headers); h.set('cache-control', 'no-store'); h.set('x-robots-tag', 'noindex, nofollow'); return new Response(r.body, { status: r.status, headers: h }); };
+
 export default {
   async fetch(req, env) {
     const { pathname } = new URL(req.url);
     if (pathname === '/api/request') return request(req, env);
+    if (pathname.startsWith('/admin/api/')) return adminApi(req, env, pathname);
+    if (pathname === '/login/api/request') return loginRequest(req, env);
+    if (pathname === '/login/verify') return loginVerify(req, env);
+    if (pathname.startsWith('/portal/api/')) return portalApi(req, env, pathname);
+    if (pathname.startsWith('/api/contract/')) {
+      if (!env.DB) return reply({ ok: false, error: 'Unavailable.' }, 503);
+      try { await ensureSchema(env); } catch { return reply({ ok: false, error: 'Unavailable.' }, 503); }
+      const r = await tokenApi(req, env, pathname);
+      if (r instanceof Response) return r;
+      if (!originOk(req, env)) return reply({ ok: false, error: 'Request not allowed.' }, 403);
+      const j = await readJson(req, 2048); if (j.res) return j.res;
+      const x = await r.sign(j.body.name, j.body.agree);
+      return x.error ? reply({ ok: false, error: x.error }, x.status || 400) : reply(x);
+    }
+    // /c/<token> is the signing page; the page reads the token from its own address.
+    if (/^\/c\/[A-Za-z0-9_-]+\/?$/.test(pathname)) return NO_STORE(await env.ASSETS.fetch(new Request(new URL('/c/index.html', req.url), req)));
     return env.ASSETS.fetch(req);
   },
 };
