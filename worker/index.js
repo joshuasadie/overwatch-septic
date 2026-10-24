@@ -77,7 +77,7 @@ export default {
       return x.error ? reply({ ok: false, error: x.error }, x.status || 400) : reply(x);
     }
     // /c/<token> is the signing page; the page reads the token from its own address.
-    if (/^\/c\/[A-Za-z0-9_-]+\/?$/.test(pathname)) return NO_STORE(await env.ASSETS.fetch(new Request(new URL('/c/index.html', req.url), req)));
+    if (/^\/c\/[A-Za-z0-9_-]+\/?$/.test(pathname)) return NO_STORE(await env.ASSETS.fetch(new Request(new URL('/c/', req.url), req)));
     return env.ASSETS.fetch(req);
   },
 };

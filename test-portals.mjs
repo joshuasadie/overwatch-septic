@@ -18,7 +18,7 @@ globalThis.fetch = async (u, o) => {
   return { ok: true, json: async () => ({ keys: [jwk] }) };
 };
 const O = 'https://overwatchseptic.com';
-const env = { DB, FILES, ASSETS: { fetch: async r => new Response('A:' + new URL(r.url).pathname) }, ACCESS_TEAM_DOMAIN: 't.cloudflareaccess.com', ACCESS_AUD: 'AUD', ADMIN_EMAILS: 'joshua@overwatchseptic.com', ALLOWED_ORIGINS: O, TURNSTILE_SECRET: 's', RESEND_API_KEY: 'k', MAIL_TO: 'joshua@overwatchseptic.com', MAIL_FROM: 'O <joshua@overwatchseptic.com>' };
+const env = { DB, FILES, ASSETS: { fetch: async r => { const p = new URL(r.url).pathname; return p === '/c/index.html' ? new Response(null, { status: 307, headers: { location: '/c/' } }) : new Response('A:' + p); } }, ACCESS_TEAM_DOMAIN: 't.cloudflareaccess.com', ACCESS_AUD: 'AUD', ADMIN_EMAILS: 'joshua@overwatchseptic.com', ALLOWED_ORIGINS: O, TURNSTILE_SECRET: 's', RESEND_API_KEY: 'k', MAIL_TO: 'joshua@overwatchseptic.com', MAIL_FROM: 'O <joshua@overwatchseptic.com>' };
 const call = (path, o = {}) => worker.fetch(new Request(O + path, o), env);
 const tok = await mkTok('Joshua@overwatchseptic.com');
 const adm = (path, body, extra = {}) => call(path, { method: body === undefined ? 'GET' : 'POST', headers: { 'cf-access-jwt-assertion': tok, origin: O, 'content-type': 'application/json', ...extra }, body: body === undefined ? undefined : (body instanceof ArrayBuffer ? body : JSON.stringify(body)) });
@@ -45,7 +45,7 @@ ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, annu
 sent.length = 0; j = await J(await adm('/admin/api/contract', { customer_id: cid, terms })); ok(j.ok && j.emailed, 'contract sent');
 const link = sent[0].text.match(/https:\/\/overwatchseptic\.com\/c\/([A-Za-z0-9_-]+)/); ok(!!link && sent[0].to[0] === 'ann@home.com', 'email has unique link');
 const t1 = link[1];
-ok((await call('/c/' + t1)).status === 200 && (await (await call('/c/' + t1)).text()) === 'A:/c/index.html', 'signing page served for token path');
+ok((await call('/c/' + t1)).status === 200 && (await (await call('/c/' + t1)).text()) === 'A:/c/', 'signing page served for token path (no redirect that would drop the token)');
 j = await J(await call('/api/contract/' + t1)); ok(j.ok && j.contract.status === 'sent' && /Overwatch Septic Systems/.test(JSON.stringify(j.contract.text)) && /\$500/.test(JSON.stringify(j.contract.text)), 'token shows contract with fee');
 ok(!JSON.stringify(j).includes(t1), 'token not echoed');
 ok((await call('/api/contract/aaaaaaaaaaaaaaaaaaaaaaaa')).status === 404, 'bad token 404');
