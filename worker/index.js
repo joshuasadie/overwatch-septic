@@ -5,7 +5,7 @@ const reply = (obj, status = 200, extra = {}) => new Response(JSON.stringify(obj
 const clean = (s, max) => String(s ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, max);
 const list = s => (s || '').split(',').map(x => x.trim()).filter(Boolean);
 const EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
-const NEED = { alarm: 'Alarm', operator: 'State certified septic operator' };
+const NEED = { alarm: 'Alarm', operator: 'State Certified Septic Operator' };
 const oneLine = s => String(s).replace(/[\r\n]+/g, ' ');
 
 async function send(env, to, subject, text, replyTo) {
