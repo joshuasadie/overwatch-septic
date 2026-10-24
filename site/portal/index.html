@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow">
+<title>Your portal | Overwatch Septic</title><link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;500;600&family=Cinzel:wght@700&display=swap">
+<link rel="stylesheet" href="/ow.css"></head><body>
+<div class="in">
+<div class="top"><span id="brand"></span><span class="row"><span class="who" id="who"></span><button class="b alt" id="out" hidden>Sign out</button></span></div>
+<section class="card" id="hello"><p class="mute">Loading...</p></section>
+<div id="todo"></div>
+<section class="card" id="viewer" hidden><div class="row" style="justify-content:space-between"><h2 style="margin:0">Agreement</h2><button class="b alt" id="close">Close</button></div>
+<div class="doc" id="doc" tabindex="0" style="margin-top:10px"></div><div class="sigs" id="sigs"></div>
+<form id="sf" novalidate hidden><label for="nm">Type your full name to sign</label><input id="nm" autocomplete="name" maxlength="100">
+<label style="display:flex;gap:8px;align-items:flex-start;font-weight:500"><input type="checkbox" id="ag" style="margin-top:5px"><span>I have read this agreement and I agree to it.</span></label>
+<div class="row" style="margin-top:10px"><button class="b" id="go" type="submit">Sign agreement</button></div><div class="msg" id="msg" role="status"></div></form></section>
+<div class="grid2">
+<section class="card"><h2>Your agreements</h2><ul class="list" id="cl"></ul></section>
+<section class="card"><h2>Your reports</h2><ul class="list" id="rl"></ul></section>
+</div>
+<section class="card"><h2>How your system is doing</h2><p class="mute" style="margin:0 0 10px">Readings from each visit. A steady line is good news.</p><div class="charts" id="ch"></div></section>
+<section class="card"><h2>Need help?</h2><p style="margin:0 0 8px">If your alarm is going off, send an alarm request.</p><a class="b" href="/#request">Send an alarm request</a></section>
+</div>
+<script src="/vendor/pdf-lib.min.js"></script><script src="/ow.js"></script><script src="/portal/portal.js"></script></body></html>

@@ -1,5 +1,9 @@
 User-agent: *
 Allow: /
 Disallow: /api/
+Disallow: /admin/
+Disallow: /portal/
+Disallow: /login/
+Disallow: /c/
 
 Sitemap: https://overwatchseptic.com/sitemap.xml

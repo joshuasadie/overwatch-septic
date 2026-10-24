@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow">
+<title>Sign your agreement | Overwatch Septic</title><link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;500;600&family=Cinzel:wght@700&display=swap">
+<link rel="stylesheet" href="/ow.css"></head><body>
+<div class="wrap">
+<div class="top" id="top"></div>
+<section class="card" id="state"><p class="mute">Loading your agreement...</p></section>
+<section class="card" id="docCard" hidden><h2>Inspection and Maintenance Agreement</h2><div class="doc" id="doc" tabindex="0" aria-label="Agreement text"></div><div class="sigs" id="sigs"></div></section>
+<section class="card" id="signCard" hidden><h2>Sign</h2>
+<p class="mute" style="margin:0 0 4px">Signing is done by typing your full name. It has the same effect as a handwritten signature.</p>
+<form id="f" novalidate><label for="nm">Type your full name</label><input id="nm" autocomplete="name" maxlength="100">
+<label style="display:flex;gap:8px;align-items:flex-start;font-weight:500"><input type="checkbox" id="ag" style="margin-top:5px"><span>I have read this agreement and I agree to it.</span></label>
+<div class="row" style="margin-top:10px"><button class="b" id="go" type="submit">Sign agreement</button></div><div class="msg" id="msg" role="status"></div></form></section>
+<section class="card" id="after" hidden></section>
+</div>
+<script src="/vendor/pdf-lib.min.js"></script><script src="/ow.js"></script><script src="/c/sign.js"></script></body></html>

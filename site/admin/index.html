@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow">
+<title>Admin | Overwatch Septic</title><link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;500;600&family=Cinzel:wght@700&display=swap">
+<link rel="stylesheet" href="/ow.css"></head><body>
+<div class="in">
+<div class="top"><span id="brand"></span><span class="who" id="who">Admin portal</span></div>
+<section class="card"><h2>Customers</h2><div class="tw"><table><thead><tr><th>Customer</th><th>System</th><th>Contract</th><th>Last visit</th></tr></thead><tbody id="ct"></tbody></table></div>
+<div class="row" style="margin-top:10px"><button class="b" id="addC">Add customer</button></div></section>
+<div id="detail" class="in" style="padding:0"></div>
+<section class="card" id="editor" hidden><h2 id="edT">Customer</h2><form id="cf" novalidate>
+<div class="two"><div><label for="c_name">Name</label><input id="c_name" maxlength="100"></div><div><label for="c_email">Email (used for portal sign-in)</label><input id="c_email" type="email" maxlength="254"></div>
+<div><label for="c_phone">Phone</label><input id="c_phone" maxlength="30"></div><div><label for="c_county">County</label><input id="c_county" maxlength="40"></div></div>
+<label for="c_address">Property address</label><input id="c_address" maxlength="200">
+<div class="two"><div><label for="c_sys">System type (roman numeral, like V)</label><input id="c_sys" maxlength="20"></div><div><label for="c_permit">Permit number</label><input id="c_permit" maxlength="40"></div></div>
+<label for="c_notes">Private notes</label><textarea id="c_notes" maxlength="1000"></textarea>
+<div class="row" style="margin-top:10px"><button class="b" type="submit">Save customer</button><button class="b alt" type="button" id="edX">Cancel</button></div><div class="msg" id="cm" role="status"></div></form></section>
+</div>
+<script src="/vendor/pdf-lib.min.js"></script><script src="/ow.js"></script><script src="/admin/admin.js"></script></body></html>
