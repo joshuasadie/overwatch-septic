@@ -54,6 +54,7 @@ export async function request(req, env) {
 import { adminApi } from './admin.js';
 import { loginRequest, loginVerify, portalApi } from './portal.js';
 import { tokenApi } from './contracts.js';
+import { payRedirect, stripeWebhook, countyReportPage, runDaily } from './billing.js';
 import { ensureSchema, originOk, readJson } from './lib.js';
 
 const NO_STORE = r => { const h = new Headers(r.headers); h.set('cache-control', 'no-store'); h.set('x-robots-tag', 'noindex, nofollow'); return new Response(r.body, { status: r.status, headers: h }); };
@@ -63,6 +64,11 @@ export default {
     const { pathname } = new URL(req.url);
     if (pathname === '/api/request') return request(req, env);
     if (pathname.startsWith('/admin/api/')) return adminApi(req, env, pathname);
+    if (pathname === '/stripe/webhook') { try { await ensureSchema(env); } catch { return reply({ ok: false }, 503); } return stripeWebhook(req, env); }
+    let pm = /^\/pay\/([a-f0-9]{20})$/.exec(pathname);
+    if (pm) { try { await ensureSchema(env); } catch { /* handled below */ } return payRedirect(req, env, pm[1]); }
+    pm = /^\/r\/([A-Za-z0-9_-]+)(\/pdf)?$/.exec(pathname);
+    if (pm) { try { await ensureSchema(env); } catch { return new Response('Unavailable', { status: 503 }); } return countyReportPage(req, env, pm[1], !!pm[2]); }
     if (pathname === '/login/api/request') return loginRequest(req, env);
     if (pathname === '/login/verify') return loginVerify(req, env);
     if (pathname.startsWith('/portal/api/')) return portalApi(req, env, pathname);
@@ -80,4 +86,5 @@ export default {
     if (/^\/c\/[A-Za-z0-9_-]+\/?$/.test(pathname)) return NO_STORE(await env.ASSETS.fetch(new Request(new URL('/c/', req.url), req)));
     return env.ASSETS.fetch(req);
   },
+  async scheduled(event, env, ctx) { ctx.waitUntil(runDaily(env)); },
 };

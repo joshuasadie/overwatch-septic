@@ -4,6 +4,8 @@
   "compatibility_date": "2025-09-01",
   "assets": { "directory": "./site", "binding": "ASSETS" },
   "observability": { "enabled": false },
+  // Runs the unpaid-invoice reminders and releases cleared payments, every day at 12:00 UTC (8 am Eastern).
+  "triggers": { "crons": ["0 12 * * *"] },
   // Create these two in the Cloudflare dashboard (Storage & databases), then paste the D1 id below.
   "d1_databases": [{ "binding": "DB", "database_name": "overwatch-septic", "database_id": "eb5f7d34-dcd3-4d74-88c3-b6cfd7df1e06" }],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "overwatch-septic-files" }],

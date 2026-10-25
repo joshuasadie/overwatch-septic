@@ -1,5 +1,6 @@
 // Admin API (Cloudflare Access protected): customers, contracts, reports.
 import { reply, clean, id, EMAIL, siteOrigin, sendMail, readJson, originOk, verifyAccess, ensureSchema } from './lib.js';
+import { createInvoice, markPaid, releaseInvoice, releaseReport, sendCountyReport, sendNotice, noticeDrafts, toCents, etDate, daysBetween } from './billing.js';
 import { createContract, resendContract, voidContract, countersign, publicView } from './contracts.js';
 
 export const READINGS = { pump_min: 'Pump run time (minutes per cycle)', sludge_in: 'Sludge depth (inches in tank)', water_gpd: 'Water use (gallons per day)' };
@@ -17,6 +18,13 @@ function customerFields(b) {
 }
 const audit = (env, who, action, target, detail = '') => env.DB.prepare('INSERT INTO audit (at, who, action, target, detail) VALUES (?, ?, ?, ?, ?)').bind(new Date().toISOString(), who, action, target, detail);
 const out = r => r.error ? reply({ ok: false, error: r.error }, r.status || 400) : reply(r);
+
+
+async function invoiceRows(env, where, bind) {
+  const rows = (await env.DB.prepare(`SELECT i.*, c.name AS customer_name, c.county AS customer_county, r.visit_date AS visit_date FROM invoices i JOIN customers c ON c.id = i.customer_id LEFT JOIN reports r ON (i.kind = 'visit' AND r.id = i.ref_id) WHERE ${where} ORDER BY i.created_at DESC`).bind(...bind).all()).results;
+  const today = etDate();
+  return rows.map(i => ({ id: i.id, customer_id: i.customer_id, customer_name: i.customer_name, county: i.customer_county, kind: i.kind, ref_id: i.ref_id, visit_date: i.visit_date || '', amount_cents: i.amount_cents, status: i.status, flag: i.flag, paused: !!i.paused, created_date: i.created_date, age: daysBetween(i.created_date, today), release_date: i.release_date, released: !!i.released_at, notice_state: i.notice_state, term_date: i.term_date, tracking: i.tracking, note: i.note, reminders: i.reminders }));
+}
 
 export async function adminApi(request, env, path) {
   const who = await verifyAccess(request, env);
@@ -48,7 +56,7 @@ export async function adminApi(request, env, path) {
     return new Response(await obj.arrayBuffer(), { headers: { 'content-type': 'application/pdf', 'content-disposition': `inline; filename="report-${rep.visit_date}.pdf"`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
   }
 
-  if (path === '/admin/api/config' && method === 'GET') return reply({ ok: true, me: email, readings: READINGS });
+  if (path === '/admin/api/config' && method === 'GET') return reply({ ok: true, me: email, readings: READINGS, stripe: !!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET), defaults: { origination: '100', visit: '250' } });
   if (path === '/admin/api/customers' && method === 'GET') {
     const rows = (await env.DB.prepare('SELECT * FROM customers ORDER BY name COLLATE NOCASE').all()).results;
     const cs = (await env.DB.prepare('SELECT customer_id, status, created_at FROM contracts WHERE status != ? ORDER BY created_at').bind('void').all()).results;
@@ -78,7 +86,9 @@ export async function adminApi(request, env, path) {
     if (!c) return reply({ ok: false, error: 'Not found.' }, 404);
     const contracts = (await env.DB.prepare('SELECT * FROM contracts WHERE customer_id = ? ORDER BY created_at DESC').bind(c.id).all()).results.map(x => ({ ...publicView(x, c), terms: JSON.parse(x.terms) }));
     const reports = (await env.DB.prepare('SELECT id, visit_date, kind, readings, checks, notes, pdf_key, created_at FROM reports WHERE customer_id = ? ORDER BY visit_date DESC').bind(c.id).all()).results.map(r => ({ ...r, readings: JSON.parse(r.readings), checks: JSON.parse(r.checks), has_pdf: !!r.pdf_key, pdf_key: undefined }));
-    return reply({ ok: true, customer: c, contracts, reports });
+    const states = new Map((await env.DB.prepare('SELECT report_id, released_at, county_sent_at, county_to FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(c.id).all()).results.map(x => [x.report_id, x]));
+    for (const r of reports) { const st = states.get(r.id); r.state = st ? (st.released_at ? 'released' : 'held') : 'released'; r.county_sent_at = st ? st.county_sent_at : ''; r.county_to = st ? st.county_to : ''; }
+    return reply({ ok: true, customer: c, contracts, reports, invoices: await invoiceRows(env, 'i.customer_id = ?', [c.id]) });
   }
   if (path === '/admin/api/customer-delete' && method === 'POST') {
     const j = await readJson(request); if (j.res) return j.res;
@@ -89,7 +99,7 @@ export async function adminApi(request, env, path) {
     if (signed.n) return reply({ ok: false, error: 'This customer has a signed agreement. Signed agreements are kept as records, so the customer cannot be deleted here.' }, 400);
     const reps = (await env.DB.prepare('SELECT pdf_key FROM reports WHERE customer_id = ?').bind(cid).all()).results;
     if (env.FILES) for (const r of reps) if (r.pdf_key) await env.FILES.delete(r.pdf_key);
-    await env.DB.batch([env.DB.prepare('DELETE FROM reports WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM contracts WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM sessions WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM login_tokens WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM customers WHERE id = ?').bind(cid), audit(env, email, 'customer-deleted', cid, c.name)]);
+    await env.DB.batch([env.DB.prepare('DELETE FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM invoices WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM reports WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM contracts WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM sessions WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM login_tokens WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM customers WHERE id = ?').bind(cid), audit(env, email, 'customer-deleted', cid, c.name)]);
     return reply({ ok: true });
   }
 
@@ -117,13 +127,15 @@ export async function adminApi(request, env, path) {
     for (const k of Object.keys(READINGS)) { const n = num(b.readings && b.readings[k]); if (n !== null) readings[k] = n; }
     const checks = (Array.isArray(b.checks) ? b.checks : []).slice(0, 30).map(x => ({ label: clean(x && x.label, 80), status: CHECK_STATUS.includes(x && x.status) ? x.status : 'na' })).filter(x => x.label);
     const rid = id();
-    await env.DB.batch([env.DB.prepare('INSERT INTO reports (id, customer_id, visit_date, kind, readings, checks, notes, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(rid, c.id, b.visit_date, kind, JSON.stringify(readings), JSON.stringify(checks), clean(b.notes, 2000), new Date().toISOString(), email), audit(env, email, 'report-added', rid, c.name)]);
+    await env.DB.batch([env.DB.prepare('INSERT INTO reports (id, customer_id, visit_date, kind, readings, checks, notes, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(rid, c.id, b.visit_date, kind, JSON.stringify(readings), JSON.stringify(checks), clean(b.notes, 2000), new Date().toISOString(), email), audit(env, email, 'report-added', rid, c.name), env.DB.prepare("INSERT INTO report_state (report_id, released_at) VALUES (?, '')").bind(rid)]);
     return reply({ ok: true, id: rid });
   }
   if (path === '/admin/api/report-notify' && method === 'POST') {
     const j = await readJson(request); if (j.res) return j.res;
     const r = await env.DB.prepare('SELECT customer_id, visit_date, pdf_key FROM reports WHERE id = ?').bind(String(j.body.id || '')).first();
     if (!r) return reply({ ok: false, error: 'Not found.' }, 404);
+    const lock = await env.DB.prepare("SELECT released_at FROM report_state WHERE report_id = ?").bind(String(j.body.id)).first();
+    if (lock && !lock.released_at) return reply({ ok: false, error: 'This report is still held until payment clears or you waive the fee.' }, 400);
     const c = await env.DB.prepare('SELECT name, email FROM customers WHERE id = ?').bind(r.customer_id).first();
     const sent = await sendMail(env, c.email, 'Your septic visit report is ready', [`Hello ${c.name},`, '', `The report from your visit on ${r.visit_date} is ready. Sign in to your customer portal to see it: ${siteOrigin(env)}/login/`, '', 'Overwatch Septic Systems'].join('\n'), env.MAIL_TO);
     if (!sent) return reply({ ok: false, error: 'The email could not be sent. Try again.' }, 502);
@@ -135,8 +147,66 @@ export async function adminApi(request, env, path) {
     const r = await env.DB.prepare('SELECT pdf_key FROM reports WHERE id = ?').bind(String(j.body.id || '')).first();
     if (!r) return reply({ ok: false, error: 'Not found.' }, 404);
     if (r.pdf_key && env.FILES) await env.FILES.delete(r.pdf_key);
-    await env.DB.batch([env.DB.prepare('DELETE FROM reports WHERE id = ?').bind(String(j.body.id)), audit(env, email, 'report-deleted', String(j.body.id))]);
+    await env.DB.batch([env.DB.prepare('DELETE FROM report_state WHERE report_id = ?').bind(String(j.body.id)), env.DB.prepare("DELETE FROM invoices WHERE kind = 'visit' AND ref_id = ?").bind(String(j.body.id)), env.DB.prepare('DELETE FROM reports WHERE id = ?').bind(String(j.body.id)), audit(env, email, 'report-deleted', String(j.body.id))]);
     return reply({ ok: true });
+  }
+
+  // ---- payments
+  if (path === '/admin/api/report-finish' && method === 'POST') {
+    const j = await readJson(request); if (j.res) return j.res;
+    const rid = String(j.body.id || ''), cents = toCents(j.body.amount);
+    const rep = await env.DB.prepare('SELECT id, customer_id FROM reports WHERE id = ?').bind(rid).first();
+    if (!rep) return reply({ ok: false, error: 'Not found.' }, 404);
+    if (cents === null) return reply({ ok: false, error: 'Enter the invoice amount, like 250. Use 0 to waive it.' }, 400);
+    const st = await env.DB.prepare('SELECT released_at FROM report_state WHERE report_id = ?').bind(rid).first();
+    if (!st || st.released_at || await env.DB.prepare("SELECT 1 AS x FROM invoices WHERE kind = 'visit' AND ref_id = ?").bind(rid).first()) return reply({ ok: false, error: 'This report was already finished.' }, 409);
+    const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(rep.customer_id).first();
+    if (cents === 0) { await releaseReport(env, rid, c); await audit(env, email, 'report-waived', rid, c.name).run(); return reply({ ok: true, released: true }); }
+    const inv = await createInvoice(env, email, c, 'visit', rid, cents);
+    return reply({ ok: true, invoice: inv.id, emailed: inv.emailed });
+  }
+  if (path === '/admin/api/invoices' && method === 'GET') return reply({ ok: true, invoices: await invoiceRows(env, "i.status = 'open' OR i.released_at = '' OR i.notice_state != 'none'", []) });
+  m = /^\/admin\/api\/invoice-(waive|paid|pause|release|notice|final)$/.exec(path);
+  if (m && method === 'POST') {
+    const j = await readJson(request); if (j.res) return j.res;
+    const inv = await env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(String(j.body.id || '')).first();
+    if (!inv) return reply({ ok: false, error: 'Not found.' }, 404);
+    const act = m[1];
+    if (act === 'waive') {
+      if (inv.status !== 'open') return reply({ ok: false, error: 'Only an unpaid invoice can be waived.' }, 400);
+      await env.DB.prepare("UPDATE invoices SET status = 'waived', note = 'Waived' WHERE id = ?").bind(inv.id).run();
+      await audit(env, email, 'invoice-waived', inv.id, String(inv.amount_cents)).run(); await releaseInvoice(env, inv, email); return reply({ ok: true });
+    }
+    if (act === 'paid') { if (!(await markPaid(env, inv, email))) return reply({ ok: false, error: 'This invoice is not open.' }, 400); await env.DB.prepare("UPDATE invoices SET note = 'Marked paid by you' WHERE id = ?").bind(inv.id).run(); return reply({ ok: true }); }
+    if (act === 'pause') { await env.DB.prepare('UPDATE invoices SET paused = ? WHERE id = ?').bind(j.body.paused ? 1 : 0, inv.id).run(); await audit(env, email, j.body.paused ? 'invoice-paused' : 'invoice-resumed', inv.id).run(); return reply({ ok: true }); }
+    if (act === 'release') { if (inv.status === 'open') return reply({ ok: false, error: 'Not paid yet. Waive it or mark it paid first.' }, 400); return reply({ ok: true, released: await releaseInvoice(env, inv, email) }); }
+    return out(await sendNotice(env, email, inv.id, act === 'notice' ? 'notice' : 'final', j.body.tracking));
+  }
+  if (path === '/admin/api/invoice-letter' && method === 'GET') {
+    const u = new URL(request.url), inv = await env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(u.searchParams.get('id') || '').first();
+    const kind = u.searchParams.get('kind') === 'final' ? 'final' : 'notice';
+    if (!inv) return reply({ ok: false, error: 'Not found.' }, 404);
+    const d = await noticeDrafts(env, inv, kind);
+    return reply({ ok: true, kind, owner: d.owner, county: d.county, address: d.customer.address, name: d.customer.name, county_name: d.customer.county, term: d.term });
+  }
+  if (path === '/admin/api/counties' && method === 'GET') return reply({ ok: true, counties: (await env.DB.prepare('SELECT name, email FROM counties ORDER BY name').all()).results });
+  if (path === '/admin/api/county' && method === 'POST') {
+    const j = await readJson(request); if (j.res) return j.res;
+    const name = clean(j.body.name, 40).toLowerCase().replace(/\s+county$/, ''), mail = clean(j.body.email, 254).toLowerCase();
+    if (!name) return reply({ ok: false, error: 'Enter the county name.' }, 400);
+    if (j.body.remove) { await env.DB.prepare('DELETE FROM counties WHERE name = ?').bind(name).run(); return reply({ ok: true }); }
+    if (!EMAIL.test(mail)) return reply({ ok: false, error: 'Enter a valid email address for the county.' }, 400);
+    await env.DB.prepare('INSERT INTO counties (name, email) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET email = excluded.email').bind(name, mail).run();
+    await audit(env, email, 'county-saved', name, mail).run(); return reply({ ok: true });
+  }
+  if (path === '/admin/api/report-county-send' && method === 'POST') {
+    const j = await readJson(request); if (j.res) return j.res;
+    const st = await env.DB.prepare('SELECT released_at FROM report_state WHERE report_id = ?').bind(String(j.body.id || '')).first();
+    if (st && !st.released_at) return reply({ ok: false, error: 'This report is still held.' }, 400);
+    const rep = await env.DB.prepare('SELECT customer_id FROM reports WHERE id = ?').bind(String(j.body.id || '')).first();
+    if (!rep) return reply({ ok: false, error: 'Not found.' }, 404);
+    const ok = await sendCountyReport(env, String(j.body.id), await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(rep.customer_id).first());
+    return ok ? reply({ ok: true }) : reply({ ok: false, error: 'The county copy could not be sent. Check that the county has an email under Counties.' }, 400);
   }
   return reply({ ok: false, error: 'Not found.' }, 404);
 }

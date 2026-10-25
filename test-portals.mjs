@@ -71,7 +71,8 @@ ok((await adm('/admin/api/customer-delete', { id: cid })).status === 400, 'custo
 // reports
 ok((await adm('/admin/api/report', { customer_id: cid, visit_date: 'bad' })).status === 400, 'report date required');
 j = await J(await adm('/admin/api/report', { customer_id: cid, visit_date: '2026-04-04', readings: { pump_min: '4.1', sludge_in: '8', water_gpd: 'x' }, checks: [{ label: 'Alarm', status: 'pass' }, { label: 'Drain field', status: 'bogus' }], notes: 'ok' })); const rid = j.id; ok(j.ok, 'report saved');
-await adm('/admin/api/report', { customer_id: cid, visit_date: '2026-10-03', readings: { pump_min: 4.3, sludge_in: 13, water_gpd: 215 }, checks: [{ label: 'Alarm', status: 'repair' }] });
+await adm('/admin/api/report-finish', { id: rid, amount: '0' });
+let r2 = await J(await adm('/admin/api/report', { customer_id: cid, visit_date: '2026-10-03', readings: { pump_min: 4.3, sludge_in: 13, water_gpd: 215 }, checks: [{ label: 'Alarm', status: 'repair' }] })); await adm('/admin/api/report-finish', { id: r2.id, amount: '0' });
 j = await J(await adm('/admin/api/customer/' + cid)); const rp = j.reports.find(x => x.id === rid);
 ok(rp.readings.pump_min === 4.1 && rp.readings.water_gpd === undefined && rp.checks[1].status === 'na', 'readings validated, bad status becomes n/a');
 const pdf = new TextEncoder().encode('%PDF-1.4\n' + 'x'.repeat(200)).buffer;
