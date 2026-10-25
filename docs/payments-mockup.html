@@ -1,0 +1,137 @@
+<title>Overwatch Payment Flow</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: one page, four tabs (timeline, what the customer sees, what you see, the letters). Palette and type follow the Overwatch site. */
+:root{--bg:#f4efe5;--paper:#fcfaf5;--ink:#241e17;--mute:#51463a;--line:#ddd3c2;--brz:#a8741f;--btn:#f4efe5;--good:#2e7d4f;--warn:#b45309;--bad:#b3261e;--note:#fff4c2;--noteink:#5a4300;--lock:#ece4d4;--in:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15110d;--paper:#201a14;--ink:#f1e7d3;--mute:#bfb199;--line:#3a3025;--brz:#d4a24c;--btn:#15110d;--good:#6fcf97;--warn:#f0b35a;--bad:#ff8a80;--note:#3d3410;--noteink:#f3dd8a;--lock:#2a2218;--in:#2a2218;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15110d;--paper:#201a14;--ink:#f1e7d3;--mute:#bfb199;--line:#3a3025;--brz:#d4a24c;--btn:#15110d;--good:#6fcf97;--warn:#f0b35a;--bad:#ff8a80;--note:#3d3410;--noteink:#f3dd8a;--lock:#2a2218;--in:#2a2218;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Barlow",system-ui,sans-serif;padding-block:14px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:"Barlow Condensed","Arial Narrow",sans-serif;line-height:1.1;margin:0;text-wrap:balance}
+.in{max-width:1000px;margin:0 auto;display:grid;gap:14px}
+.note{background:var(--note);color:var(--noteink);border-radius:10px;padding:10px 14px;font-size:15px}
+h1{font-size:clamp(30px,5vw,44px)}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tabs button{font:600 15px Barlow,sans-serif;border:1.5px solid var(--ink);background:transparent;color:var(--ink);border-radius:999px;padding:7px 16px;cursor:pointer}
+.tabs button[aria-pressed=true]{background:var(--ink);color:var(--btn)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.card h2{font-size:24px;margin-bottom:6px}
+.mute{color:var(--mute)}.good{color:var(--good)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.pill{display:inline-block;border-radius:999px;padding:1px 10px;font-size:13px;font-weight:600;border:1px solid currentColor;white-space:nowrap}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+/* timeline: a true time axis, so the day labels are the information */
+.tl{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.tl li{display:grid;grid-template-columns:96px 22px 1fr;gap:0 10px;padding-bottom:16px}
+.tl .d{font:700 20px "Barlow Condensed",sans-serif;text-align:right;padding-top:1px}.tl .d small{display:block;font:500 12px Barlow,sans-serif;color:var(--mute)}
+.tl .rail{position:relative}.tl .rail::before{content:"";position:absolute;left:10px;top:0;bottom:-16px;width:2px;background:var(--line)}.tl li:last-child .rail::before{display:none}
+.tl .dot{position:absolute;left:4px;top:5px;width:14px;height:14px;border-radius:50%;background:var(--paper);border:3px solid var(--brz)}
+.tl .dot.g{border-color:var(--good)}.tl .dot.w{border-color:var(--warn)}.tl .dot.b{border-color:var(--bad);background:var(--bad)}
+.tl b{display:block}.tl p{margin:2px 0 0;color:var(--mute);font-size:15px}
+.tag{font-size:12px;font-weight:600;border-radius:4px;padding:0 6px;background:var(--lock);color:var(--ink);margin-left:6px}
+.list{list-style:none;margin:0;padding:0}.list li{display:flex;flex-wrap:wrap;gap:6px 12px;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}.list li:last-child{border:0}.list small{display:block;color:var(--mute)}
+button.b{font:600 15px Barlow,sans-serif;background:var(--ink);color:var(--btn);border:0;border-radius:8px;padding:9px 16px}
+button.b.alt{background:transparent;color:var(--ink);border:1.5px solid var(--ink)}
+button.b.go{background:var(--brz);color:#1a1100}
+.alert{background:color-mix(in srgb,var(--brz) 20%,var(--paper));border:1px solid var(--brz);border-radius:10px;padding:12px 14px;display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center}
+.lock{background:var(--lock);border:1.5px dashed var(--line);border-radius:10px;padding:14px;color:var(--mute)}
+.mail{background:#fff;color:#1b1b1b;border:1px solid var(--line);border-radius:8px;padding:14px 16px;font:15px/1.55 Georgia,serif}
+.mail .h{font:13px Barlow,sans-serif;color:#555;border-bottom:1px solid #ddd;padding-bottom:8px;margin-bottom:10px}
+.mail p{margin:0 0 9px}
+table{width:100%;border-collapse:collapse;font-size:15px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mute);font-size:13px;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.tw{overflow-x:auto}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid #8cd4d5;outline-offset:2px}
+@media(max-width:760px){.grid2{grid-template-columns:1fr}.tl li{grid-template-columns:70px 22px 1fr}}
+</style>
+
+<div class="in">
+<div class="note"><b>Mock-up with made-up sample data.</b> Nothing here is coded. Sample customer: Ann Home, 12 Oak St, Pittsboro, Chatham County. Sample contract signed Oct 6, 2026; sample visit Oct 20, 2026 (a Tuesday). Fee amounts are examples.</div>
+<h1>Pay first, then it is released</h1>
+<div class="tabs" role="group" aria-label="View">
+<button aria-pressed="true" data-t="t1">Timeline</button><button aria-pressed="false" data-t="t2">Customer sees</button><button aria-pressed="false" data-t="t3">You see</button><button aria-pressed="false" data-t="t4">The messages</button><button aria-pressed="false" data-t="t5">Open questions</button></div>
+
+<!-- TIMELINE -->
+<div id="t1" class="in" style="padding:0">
+<section class="card"><h2>1. When the contract is signed</h2><p class="mute" style="margin:0 0 14px">Same rules as visits. The one-time origination fee is set when you send the contract (for example $100).</p>
+<ol class="tl">
+<li><span class="d">Day 0<small>Tue Oct 6</small></span><span class="rail"><i class="dot"></i></span><span><b>You countersign, so both signatures are in</b><p>The agreement is complete and in effect. The customer is emailed an invoice for the origination fee with a Pay button. They do not receive the signed agreement yet: it stays locked in their portal and is not emailed.</p></span></li>
+<li><span class="d">Paid + 3<small>business days</small></span><span class="rail"><i class="dot g"></i></span><span><b>Signed copy is released <span class="tag">if payment still stands</span></b><p>Customer can view and download the signed PDF, and gets an email saying so.</p></span></li>
+<li><span class="d">Unpaid</span><span class="rail"><i class="dot w"></i></span><span><b>Goes to the unpaid sequence in section 3</b><p>Nothing is released while it is unpaid.</p></span></li>
+<li><span class="d">Waived</span><span class="rail"><i class="dot g"></i></span><span><b>You can waive any fee, any time <span class="tag">your button</span></b><p>The invoice is marked Waived, reminders stop, and whatever was locked is released right away with no 3-day hold. Each waiver is logged.</p></span></li>
+</ol></section>
+<section class="card"><h2>2. After each visit</h2><p class="mute" style="margin:0 0 14px">Day 0 is the day you enter the report and the invoice. Weekends and federal holidays do not count toward the 3 business days.</p>
+<ol class="tl">
+<li><span class="d">Day 0<small>Tue Oct 20</small></span><span class="rail"><i class="dot"></i></span><span><b>You enter the visit and the invoice amount</b><p>Report is saved but locked. Customer gets an email with a Pay button. Nobody else receives anything.</p></span></li>
+<li><span class="d">Paid<small>any day</small></span><span class="rail"><i class="dot g"></i></span><span><b>Payment received <span class="tag">Stripe tells us</span></b><p>Customer is emailed a receipt. The 3 business day hold starts.</p></span></li>
+<li><span class="d">Paid + 3<small>business days</small></span><span class="rail"><i class="dot g"></i></span><span><b>Report is released <span class="tag">if payment still stands</span></b><p>Customer sees it in the portal and gets the report email, and the county copy goes out at the same time. If the payment was refunded or disputed during the hold, release stops and you are alerted.</p></span></li>
+<li><span class="d">Unpaid</span><span class="rail"><i class="dot w"></i></span><span><b>Goes to the unpaid sequence in section 3</b><p>The report stays locked for the customer and the county.</p></span></li>
+</ol></section>
+<section class="card"><h2>3. If an invoice goes unpaid (contract or visit)</h2><p class="mute" style="margin:0 0 14px">Follows your agreement: a bill unpaid 30 days is cause (3(d)(1)), then 30 days written notice to the owner and the health department before it ends. Paying at any point before the end stops everything and the agreement continues.</p>
+<ol class="tl">
+<li><span class="d">Day 0</span><span class="rail"><i class="dot"></i></span><span><b>Invoice emailed</b><p>Locked item stays locked.</p></span></li>
+<li><span class="d">Day 1 to 7</span><span class="rail"><i class="dot w"></i></span><span><b>Daily reminder email <span class="tag">7 emails</span></b><p>Same short message with the Pay button. Stops when payment arrives.</p></span></li>
+<li><span class="d">Day 15</span><span class="rail"><i class="dot w"></i></span><span><b>One more reminder, plainly worded</b><p>States the due date (day 30) and what happens after it.</p></span></li>
+<li><span class="d">Day 30<small>unpaid</small></span><span class="rail"><i class="dot b"></i></span><span><b>Notice of intent to terminate, ready for your OK <span class="tag">your OK</span></b><p>You get an email and an admin alert. The system drafts the notice to the owner and the copy to the county health department, both with the termination date (day 60) and a printable letter. Your agreement requires written notice delivered in person or by certified mail, so you mail it and enter the tracking number. The email goes out when you click.</p></span></li>
+<li><span class="d">Day 31 to 60</span><span class="rail"><i class="dot w"></i></span><span><b>Owner can still pay</b><p>A weekly reminder, and the portal banner shows the termination date. Payment before day 60 keeps the agreement in effect.</p></span></li>
+<li><span class="d">Day 60<small>still unpaid</small></span><span class="rail"><i class="dot b"></i></span><span><b>Agreement cancelled, county told <span class="tag">your OK</span></b><p>Drafted for your one-click OK. The contract is marked cancelled, and the county is told the system has no operation and maintenance contract.</p></span></li>
+</ol></section></div>
+
+<!-- CUSTOMER -->
+<div id="t2" class="in" style="padding:0" hidden>
+<div class="grid2">
+<section class="card"><h2>Before paying</h2><p class="mute" style="margin:0 0 10px">Customer portal, Oct 21</p>
+<div class="alert" style="margin-bottom:10px"><span><b>Invoice due: $100.00</b><br><span class="mute">Origination fee for your Inspection and Maintenance Agreement. Your signed copy is released after payment clears.</span></span><button class="b go">Pay now</button></div>
+<h3 style="margin:6px 0 4px;font-size:20px">Your agreements</h3>
+<div class="lock" style="margin-bottom:12px"><b>Inspection and Maintenance Agreement</b><br>Signed by you Oct 6 and by us Oct 6. Download unlocks after payment clears.</div>
+<div class="alert"><span><b>Invoice due: $250.00</b><br><span class="mute">Visit on Oct 20, 2026. Your report is released after payment clears.</span></span><button class="b go">Pay now</button></div>
+<h3 style="margin:16px 0 4px;font-size:20px">Your reports</h3>
+<div class="lock"><b>Visit report, Oct 20, 2026</b><br>Locked until payment is received and cleared.</div></section>
+<section class="card"><h2>After paying</h2><p class="mute" style="margin:0 0 10px">Same portal, 3 business days later</p>
+<div class="alert" style="background:color-mix(in srgb,var(--good) 14%,var(--paper));border-color:var(--good)"><span><b>Paid. Thank you.</b><br><span class="mute">$250.00 on Oct 21, 2026 &middot; Receipt</span></span><span class="pill good">Paid</span></div>
+<h3 style="margin:16px 0 4px;font-size:20px">Your reports</h3>
+<ul class="list"><li><span><b>Visit report, Oct 20, 2026</b><small>All checks passed &middot; released Oct 26</small></span><button class="b alt">PDF</button></li></ul><h3 style="margin:16px 0 4px;font-size:20px">Your agreements</h3><ul class="list"><li><span><b>Inspection and Maintenance Agreement</b><small>Signed Oct 6 &middot; released Oct 12</small></span><button class="b alt">PDF</button></li></ul></section></div>
+<section class="card"><h2>If it goes unpaid</h2><p class="mute" style="margin:0 0 10px">After the day 30 notice: a banner replaces the invoice card.</p>
+<div class="alert" style="background:color-mix(in srgb,var(--bad) 12%,var(--paper));border-color:var(--bad)"><span><b>Notice: $250.00 unpaid for over 30 days.</b><br><span class="mute">Your agreement will end on <b>Dec 19, 2026</b> unless we receive payment. Chatham County Environmental Health has been notified of the pending termination.</span></span><button class="b go">Pay now</button></div></section>
+<section class="card"><h2>Payment page</h2><p class="mute" style="margin:0">Pay opens a secure Stripe checkout page (card or bank account). Card details never touch your site or database. Stripe emails the receipt.</p></section></div>
+
+<!-- ADMIN -->
+<div id="t3" class="in" style="padding:0" hidden>
+<div class="alert"><span><b>1 county notice is ready for your OK.</b><br><span class="mute">Mike Rivera, 88 Ridge Rd, Chapel Hill. Origination fee unpaid 30 days. Letters to owner and county are drafted; print the owner letter to mail certified.</span></span><span class="row" style="display:flex;gap:8px;flex-wrap:wrap"><button class="b alt">Read notice</button><button class="b go">Send notice to owner and county</button></span></div>
+<section class="card"><h2>Send contract and add report: payment section</h2>
+<table><tr><th>Origination fee</th><td>$100.00 &nbsp;<span class="mute">(one time, set when you send the contract)</span></td></tr><tr><th>Visit invoice</th><td>$250.00 &nbsp;<span class="mute">(standard visit)</span></td></tr><tr><th>Extra charge</th><td>$0.00 &nbsp;<span class="mute">(alarm trip fee, if any)</span></td></tr><tr><th>Waive</th><td>Type $0 or press <b>Waive fee</b> on any invoice later</td></tr><tr><th>Release</th><td>3 business days after payment clears (none when waived)</td></tr></table>
+<p class="mute" style="margin:8px 0 0">Saving emails the customer the invoice. Nothing else is released or sent.</p></section>
+<section class="card"><h2>Invoices</h2><div class="tw"><table><thead><tr><th>Customer</th><th>For</th><th>Invoice</th><th>Status</th><th>Next automatic step</th></tr></thead><tbody>
+<tr><td><b>Ann Home</b></td><td>Visit Oct 20</td><td>$250</td><td><span class="pill warn">Paid, in 3-day hold</span></td><td>Release Oct 26</td></tr><tr><td><b>Ann Home</b></td><td>Origination Oct 6</td><td>$100</td><td><span class="pill good">Released</span></td><td>None</td></tr>
+<tr><td><b>Dana Lee</b></td><td>Visit Oct 14</td><td>$250</td><td><span class="pill warn">Unpaid, day 6</span></td><td>Reminder 7 of 7 tomorrow, then day 15</td></tr>
+<tr><td><b>Mike Rivera</b></td><td>Origination Oct 5</td><td>$100</td><td><span class="pill bad">Unpaid, day 30</span></td><td>Waiting on you to send notice</td></tr>
+<tr><td><b>Sam Cole</b></td><td>Visit Sep 12</td><td>$250</td><td><span class="pill good">Waived by you</span></td><td>None</td></tr>
+</tbody></table></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="b alt">Waive fee</button><button class="b alt">Mark paid (check or cash)</button><button class="b alt">Pause reminders</button><button class="b alt">Release report now</button></div>
+<p class="mute" style="margin:8px 0 0;font-size:14px">You can always override: mark a check as paid, pause the automation for a customer, or release early. Each override is logged.</p></section></div>
+
+<!-- MESSAGES -->
+<div id="t4" class="in" style="padding:0" hidden>
+<section class="card"><h2>Daily reminder (days 1 to 7)</h2><div class="mail"><div class="h">Subject: Reminder: your septic visit invoice ($250.00)</div><p>Hello Ann,</p><p>Your invoice for the septic visit on October 20, 2026 is $250.00 and has not been paid yet. Your visit report is released after payment clears.</p><p>Pay here: https://overwatchseptic.com/portal/</p><p>If you already paid, or have a question, reply to this email.</p><p>Overwatch Septic Systems</p></div></section>
+<section class="card"><h2>Notice of intent to terminate, to the owner (day 30)</h2><div class="mail"><div class="h">Subject: Notice of intent to terminate your agreement on December 19, 2026 &nbsp;|&nbsp; also mailed certified</div><p>Hello Ann,</p><p>We have not received payment of $100.00 (origination fee) for your Inspection and Maintenance Agreement within thirty days of billing. Under paragraph 3(d)(1) of the agreement, this is cause for termination.</p><p>This is written notice that we intend to terminate the agreement on <b>December 19, 2026</b>, thirty days from the date of this notice. A copy of this notice is being sent to Chatham County Environmental Health. If payment is received before that date, the agreement continues in effect.</p><p>Pay here: https://overwatchseptic.com/portal/</p><p>Overwatch Septic Systems</p></div></section>
+<section class="card"><h2>Copy to the county (day 30, drafted for you to approve)</h2><div class="mail"><div class="h">To: Chatham County Environmental Health &nbsp;|&nbsp; Subject: Notice of intent to terminate agreement, 12 Oak St</div><p>Overwatch Septic Systems gives notice under paragraph 3(d)(1) of the Inspection and Maintenance Agreement that it intends to terminate the agreement for the system at 12 Oak St, Pittsboro (Permit P-2019-3381), Owner Ann Home, effective December 19, 2026, for nonpayment. The owner was sent written notice on November 19, 2026. A final notice will follow if the agreement ends.</p><p>Overwatch Septic Systems</p></div></section></div>
+
+<!-- OPEN QUESTIONS -->
+<div id="t5" class="in" style="padding:0" hidden>
+<section class="card"><h2>Settled</h2><ul style="margin:0;padding-left:20px;display:grid;gap:6px"><li>$100 origination fee at signing; the signed copy stays locked until it is paid and the 3 business day hold passes.</li><li>Visit invoices: $250 standard; you can waive any fee.</li><li>Unpaid sequence follows the agreement: 30 days, then 30 days notice, with your OK before anything goes to the owner or county.</li><li>The county's report copy also waits for payment.</li></ul></section>
+<section class="card"><h2>Still needed</h2>
+<ol style="margin:0;padding-left:20px;display:grid;gap:10px">
+<li><b>Certified mail.</b> Section 9 requires notices to be delivered in person or by certified or registered mail. The system can make the printable letter and record the tracking number, but you have to mail it. An email alone may not count as notice.</li>
+<li><b>The county copy waiting on payment.</b> Section 1(c) has you report inspections on a fixed schedule, so a late report can put you out of step with it. The system will log why each report was held, so you have a record, but this is a risk you are choosing.</li>
+<li><b>The agreement wording.</b> Section 2(a) names a yearly fee, which no longer matches your billing, and section 1(e) has you doing repairs. A lawyer should fix both.</li>
+<li><b>Stripe account</b> for Overwatch Septic (about 2.9% plus 30 cents per card payment). I would set it up for you to approve; I never see card numbers.</li>
+<li><b>County email address</b> for each county you serve, and your real business mailing address for the letters.</li>
+</ol></section></div>
+</div>
+
+<script>
+document.querySelectorAll('.tabs button').forEach(function(b){b.addEventListener('click',function(){
+document.querySelectorAll('.tabs button').forEach(function(x){x.setAttribute('aria-pressed',x===b)});
+['t1','t2','t3','t4','t5'].forEach(function(id){document.getElementById(id).hidden=id!==b.dataset.t});
+})});
+</script>
