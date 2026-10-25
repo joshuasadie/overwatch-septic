@@ -1,5 +1,5 @@
 :root{--bg:#f4efe5;--paper:#fcfaf5;--ink:#241e17;--mute:#51463a;--line:#ddd3c2;--slate:#1f1a15;--onslate:#f1e7d3;--brz:#a8741f;--amber:#c28a2e;--btn:#f4efe5;--good:#2e7d4f;--warn:#b45309;--bad:#b3261e;--note:#fff4c2;--noteink:#5a4300;--c1:#a8741f;--c2:#2f6f8f;--c3:#6b7f3a;--in:#fff;color-scheme:light}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15110d;--paper:#201a14;--ink:#f1e7d3;--mute:#bfb199;--line:#3a3025;--slate:#0e0b08;--brz:#d4a24c;--amber:#d4a24c;--btn:#15110d;--good:#6fcf97;--warn:#f0b35a;--bad:#ff8a80;--note:#3d3410;--noteink:#f3dd8a;--c1:#d4a24c;--c2:#6bb6d6;--c3:#a9c46a;--in:#2a2218;color-scheme:dark}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15110d;--paper:#201a14;--ink:#f1e7d3;--mute:#bfb199;--line:#3a3025;--slate:#0e0b08;--brz:#d4a24c;--amber:#d4a24c;--btn:#15110d;--good:#6fcf97;--warn:#f0b35a;--bad:#ff8a80;--note:#3d3410;--noteink:#f3dd8a;--c1:#d4a24c;--c2:#6bb6d6;--c3:#a9c46a;--in:#2a2218;--lock:#2a2218;color-scheme:dark}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Barlow",system-ui,sans-serif;padding:14px max(16px,env(safe-area-inset-right,0px)) 60px max(16px,env(safe-area-inset-left,0px))}
 h1,h2,h3{font-family:"Barlow Condensed","Arial Narrow",sans-serif;line-height:1.1;margin:0;color:var(--ink)}
@@ -38,3 +38,10 @@ textarea{min-height:70px}
 [hidden]{display:none!important}
 :focus-visible{outline:3px solid #8cd4d5;outline-offset:2px}
 @media(max-width:760px){.grid2,.two,.sigs{grid-template-columns:1fr}}
+/* printed letters */
+#printArea{display:none;font:12pt/1.5 Georgia,serif;color:#000;background:#fff;padding:0.8in}
+@media print{body>*:not(#printArea){display:none!important}#printArea{display:block!important}body{background:#fff!important;padding:0!important}}
+.alert.bad{background:color-mix(in srgb,var(--bad) 12%,var(--paper));border-color:var(--bad)}
+.alert.good{background:color-mix(in srgb,var(--good) 14%,var(--paper));border-color:var(--good)}
+.lock{background:var(--lock,#ece4d4);border:1.5px dashed var(--line);border-radius:10px;padding:12px 14px;color:var(--mute)}
+pre.letter{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#fff;color:#111;border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin:6px 0 12px}

@@ -5,10 +5,19 @@
     var c = D.customer;
     $('who').textContent = c.email; $('out').hidden = false;
     $('hello').innerHTML = '<h2>Welcome, ' + OW.esc(c.name.split(' ')[0]) + '</h2><p class="mute" style="margin:0">' + OW.esc(c.address) + (c.sys_type ? ' &middot; Type ' + OW.esc(c.sys_type) + ' system' : '') + '</p>';
+    var inv = D.invoices || [], todo = '';
+    inv.forEach(function (i) {
+      var what = i.kind === 'origination' ? 'Origination fee for your Inspection and Maintenance Agreement' : 'Septic visit on ' + OW.date(i.visit_date), late = i.notice_state === 'sent' || i.notice_state === 'final_drafted', gets = i.kind === 'origination' ? 'Your signed agreement' : 'Your visit report';
+      if (i.status === 'open' && late) todo += '<div class="alert bad"><span><b>Notice: ' + OW.money(i.amount_cents) + ' unpaid for over 30 days.</b><br><span class="mute">' + OW.esc(what) + '. Your agreement will end on <b>' + OW.esc(OW.date(i.term_date)) + '</b> unless we receive payment.</span></span><button class="b" data-pay="' + i.id + '">Pay now</button></div>';
+      else if (i.status === 'open') todo += '<div class="alert"><span><b>Invoice due: ' + OW.money(i.amount_cents) + '</b><br><span class="mute">' + OW.esc(what) + '. ' + gets + ' is released after payment clears.</span></span>' + (D.stripe ? '<button class="b" data-pay="' + i.id + '">Pay now</button>' : '') + '</div>';
+      else if (i.status === 'paid' && i.flag) todo += '<div class="alert bad"><span><b>There is a problem with your payment of ' + OW.money(i.amount_cents) + '.</b><br><span class="mute">We will contact you. You can also reply to any email from us.</span></span></div>';
+      else if (i.status === 'paid') todo += '<div class="alert good"><span><b>Paid. Thank you.</b><br><span class="mute">' + gets + ' is released on ' + OW.esc(OW.date(i.release_date)) + ' once your payment has cleared.</span></span><span class="pill good">Paid</span></div>';
+    });
     var need = D.contracts.filter(function (x) { return x.status === 'sent'; });
-    $('todo').innerHTML = need.map(function (x) { return '<div class="alert"><span><b>One agreement needs your signature.</b><br><span class="mute">Inspection and Maintenance Agreement, sent ' + OW.esc(OW.date(x.created_at)) + '</span></span><button class="b" data-open="' + x.id + '">Review and sign</button></div>'; }).join('');
-    $('cl').innerHTML = D.contracts.map(function (x) { return '<li><span><b>Inspection and Maintenance Agreement</b><small>' + (x.owner.signed_at ? 'Signed by you ' + OW.esc(OW.date(x.owner.signed_at)) : 'Sent ' + OW.esc(OW.date(x.created_at))) + (x.contractor.signed_at ? ' &middot; by us ' + OW.esc(OW.date(x.contractor.signed_at)) : '') + '</small></span><span class="row">' + OW.pill(x.status, true) + '<button class="b alt" data-open="' + x.id + '">' + (x.status === 'sent' ? 'Sign' : 'View') + '</button></span></li>'; }).join('') || '<li class="mute">No agreements yet.</li>';
+    $('todo').innerHTML = todo + need.map(function (x) { return '<div class="alert"><span><b>One agreement needs your signature.</b><br><span class="mute">Inspection and Maintenance Agreement, sent ' + OW.esc(OW.date(x.created_at)) + '</span></span><button class="b" data-open="' + x.id + '">Review and sign</button></div>'; }).join('');
+    $('cl').innerHTML = D.contracts.map(function (x) { if (x.locked) return '<li><span><b>Inspection and Maintenance Agreement</b><small>Signed by both of us. Your copy unlocks after payment clears.</small></span><span class="pill warn">Locked</span></li>'; return '<li><span><b>Inspection and Maintenance Agreement</b><small>' + (x.owner.signed_at ? 'Signed by you ' + OW.esc(OW.date(x.owner.signed_at)) : 'Sent ' + OW.esc(OW.date(x.created_at))) + (x.contractor.signed_at ? ' &middot; by us ' + OW.esc(OW.date(x.contractor.signed_at)) : '') + '</small></span><span class="row">' + OW.pill(x.status, true) + '<button class="b alt" data-open="' + x.id + '">' + (x.status === 'sent' ? 'Sign' : 'View') + '</button></span></li>'; }).join('') || '<li class="mute">No agreements yet.</li>';
     $('rl').innerHTML = D.reports.map(function (r) {
+      if (r.locked) return '<li><span><b>Visit report, ' + OW.esc(OW.date(r.visit_date)) + '</b><small>Unlocks after payment clears</small></span><span class="pill warn">Locked</span></li>';
       var bad = (r.checks || []).filter(function (k) { return k.status === 'repair'; }).length;
       return '<li><span><b>Visit report, ' + OW.esc(OW.date(r.visit_date)) + '</b><small>' + (bad ? bad + ' item' + (bad > 1 ? 's' : '') + ' need a licensed contractor' : (r.checks || []).length ? 'All checks passed' : 'Report') + '</small></span><button class="b alt" data-rep="' + r.id + '">PDF</button></li>';
     }).join('') || '<li class="mute">Reports from your visits will show up here.</li>';
@@ -23,6 +32,8 @@
     $('viewer').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   document.addEventListener('click', function (e) {
+    var pay = e.target.closest('[data-pay]');
+    if (pay) { pay.disabled = true; return void OW.api('/portal/api/invoices/' + pay.getAttribute('data-pay') + '/pay', {}).then(function (j) { if (j.ok) location.href = j.url; else { pay.disabled = false; OW.toast(j.error); } }); }
     var o = e.target.closest('[data-open]'); if (o) return openContract(o.getAttribute('data-open'));
     var r = e.target.closest('[data-rep]'); if (!r) return;
     var rep = D.reports.filter(function (x) { return x.id === r.getAttribute('data-rep'); })[0];

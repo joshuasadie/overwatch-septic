@@ -5,9 +5,14 @@
 <link rel="stylesheet" href="/ow.css"></head><body>
 <div class="in">
 <div class="top"><span id="brand"></span><span class="who" id="who">Admin portal</span></div>
+<div id="alerts" style="display:grid;gap:14px"></div>
+<section class="card" id="review" hidden></section>
+<section class="card"><h2>Invoices</h2><div class="tw"><table><thead><tr><th>Customer</th><th>For</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody id="it"></tbody></table></div></section>
 <section class="card"><h2>Customers</h2><div class="tw"><table><thead><tr><th>Customer</th><th>System</th><th>Contract</th><th>Last visit</th></tr></thead><tbody id="ct"></tbody></table></div>
 <div class="row" style="margin-top:10px"><button class="b" id="addC">Add customer</button></div></section>
 <div id="detail" class="in" style="padding:0"></div>
+<section class="card"><h2>Counties</h2><p class="mute" style="margin:0 0 6px">Where reports and notices go. A county with no email here gets nothing.</p><ul class="list" id="cty"></ul><form id="cyf" class="two" novalidate style="margin-top:8px;align-items:end"><div><label for="cy_n">County name</label><input id="cy_n" maxlength="40" placeholder="Chatham"></div><div><label for="cy_e">Environmental Health email</label><input id="cy_e" type="email" maxlength="254"></div><div class="row" style="margin-top:8px"><button class="b" type="submit">Save county</button></div></form><div class="msg" id="cym" role="status"></div></section>
+<div id="printArea"></div>
 <section class="card" id="editor" hidden><h2 id="edT">Customer</h2><form id="cf" novalidate>
 <div class="two"><div><label for="c_name">Name</label><input id="c_name" maxlength="100"></div><div><label for="c_email">Email (used for portal sign-in)</label><input id="c_email" type="email" maxlength="254"></div>
 <div><label for="c_phone">Phone</label><input id="c_phone" maxlength="30"></div><div><label for="c_county">County</label><input id="c_county" maxlength="40"></div></div>

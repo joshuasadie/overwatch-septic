@@ -13,8 +13,45 @@
       $('ct').innerHTML = j.customers.map(function (c) { return '<tr class="pick' + (c.id === S.sel ? ' sel' : '') + '" data-id="' + c.id + '" tabindex="0"><td><b>' + E(c.name) + '</b><br><span class="mute">' + E(c.address) + '</span></td><td>' + (c.sys_type ? 'Type ' + E(c.sys_type) : '') + '</td><td>' + OW.pill(c.contract) + '</td><td>' + E(OW.date(c.last_report) || 'None yet') + '</td></tr>'; }).join('') || '<tr><td colspan="4" class="mute">No customers yet. Add the first one.</td></tr>';
     });
   }
+  function stateText(i) {
+    if (i.status === 'waived') return ['Waived', 'good'];
+    if (i.status === 'paid') return i.flag ? ['Paid, ' + i.flag + '. Held', 'bad'] : i.released ? ['Released', 'good'] : ['Paid, release ' + OW.date(i.release_date), 'warn'];
+    if (i.notice_state === 'final_drafted') return ['Final notice ready for your OK', 'bad'];
+    if (i.notice_state === 'sent') return ['Notice sent, ends ' + OW.date(i.term_date), 'bad'];
+    if (i.notice_state === 'drafted') return ['Unpaid day ' + i.age + ', notice ready for your OK', 'bad'];
+    return ['Unpaid, day ' + i.age + (i.paused ? ' (paused)' : ''), i.age >= 15 ? 'bad' : 'warn'];
+  }
+  function loadInvoices() {
+    return OW.api('/admin/api/invoices').then(function (j) {
+      if (!j.ok) return; var rows = j.invoices;
+      $('alerts').innerHTML = (S.cfg && !S.cfg.stripe ? '<div class="alert"><span><b>Online payment is not set up yet.</b><br><span class="mute">Invoices are created and emailed, but the Pay button will not work until the Stripe keys are added. See the README.</span></span></div>' : '') +
+        rows.filter(function (i) { return i.notice_state === 'drafted' || i.notice_state === 'final_drafted'; }).map(function (i) { return '<div class="alert bad"><span><b>' + (i.notice_state === 'drafted' ? 'A notice is ready for your OK.' : 'A final notice is ready for your OK.') + '</b><br><span class="mute">' + E(i.customer_name) + ', ' + E(OW.invFor(i)) + ', ' + OW.money(i.amount_cents) + ' unpaid ' + i.age + ' days.</span></span><button class="b" data-rv="' + i.id + '" data-kind="' + (i.notice_state === 'drafted' ? 'notice' : 'final') + '">Review and send</button></div>'; }).join('');
+      $('it').innerHTML = rows.map(function (i) {
+        var st = stateText(i), b = '';
+        if (i.status === 'open') b += '<button class="b alt" data-iv="waive" data-id="' + i.id + '">Waive fee</button><button class="b alt" data-iv="paid" data-id="' + i.id + '">Mark paid</button><button class="b alt" data-iv="pause" data-id="' + i.id + '" data-p="' + (i.paused ? 0 : 1) + '">' + (i.paused ? 'Resume' : 'Pause') + '</button>';
+        if (i.status === 'paid' && !i.released) b += '<button class="b alt" data-iv="release" data-id="' + i.id + '">Release now</button>';
+        if (i.notice_state === 'drafted' || i.notice_state === 'final_drafted') b += '<button class="b" data-rv="' + i.id + '" data-kind="' + (i.notice_state === 'drafted' ? 'notice' : 'final') + '">Review notice</button>';
+        return '<tr><td><b class="pickc" data-cid="' + i.customer_id + '" style="cursor:pointer">' + E(i.customer_name) + '</b></td><td>' + E(OW.invFor(i)) + '</td><td>' + OW.money(i.amount_cents) + '</td><td><span class="pill ' + st[1] + '">' + E(st[0]) + '</span>' + (i.note ? '<br><small class="mute">' + E(i.note) + '</small>' : '') + '</td><td><span class="row">' + b + '</span></td></tr>';
+      }).join('') || '<tr><td colspan="5" class="mute">No open invoices.</td></tr>';
+    });
+  }
+  function loadCounties() {
+    return OW.api('/admin/api/counties').then(function (j) { if (j.ok) $('cty').innerHTML = j.counties.map(function (c) { return '<li><span><b>' + E(c.name.replace(/\b\w/g, function (x) { return x.toUpperCase(); })) + ' County</b><small>' + E(c.email) + '</small></span><button class="b danger" data-cdel="' + E(c.name) + '">Remove</button></li>'; }).join('') || '<li class="mute">No counties yet. Add one so reports and notices can reach it.</li>'; });
+  }
+  function review(id, kind) {
+    OW.api('/admin/api/invoice-letter?id=' + id + '&kind=' + kind).then(function (j) {
+      if (!j.ok) return fail(j); var r = $('review'); r.hidden = false;
+      r.innerHTML = '<h2>' + (kind === 'notice' ? 'Notice of intent to terminate' : 'Final notice') + '</h2><p class="mute" style="margin:0">Nothing is sent until you press Send. Your agreement requires notice by certified or registered mail, so print the owner letter and mail it too.</p><h3 style="margin:12px 0 0;font-size:19px">To the owner, ' + E(j.name) + '</h3><pre class="letter">' + E(j.owner.body) + '</pre><h3 style="font-size:19px">To ' + E(j.county_name) + ' County Environmental Health</h3><pre class="letter">' + E(j.county.body) + '</pre>' +
+        (kind === 'notice' ? '<label for="trk">Certified mail tracking number (optional, can add later)</label><input id="trk" maxlength="80">' : '') +
+        '<div class="row" style="margin-top:10px"><button class="b alt" id="prt">Print owner letter</button><button class="b" id="snd">Send to owner and county</button><button class="b alt" id="rvx">Close</button></div><div class="msg" id="rvm" role="status"></div>';
+      r.scrollIntoView({ behavior: 'smooth' });
+      $('prt').onclick = function () { $('printArea').innerHTML = '<p>Overwatch Septic Systems<br>' + E(S.cfg && S.cfg.me || '') + '</p><p>' + E(new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })) + '</p><p>' + E(j.name) + '<br>' + E(j.address) + '</p><p><b>' + E(j.owner.subject) + '</b></p><p style="white-space:pre-wrap">' + E(j.owner.body) + '</p>'; window.print(); };
+      $('rvx').onclick = function () { r.hidden = true; };
+      $('snd').onclick = function () { $('snd').disabled = true; OW.api('/admin/api/invoice-' + kind, { id: id, tracking: kind === 'notice' ? $('trk').value : '' }).then(function (x) { if (!x.ok) { $('snd').disabled = false; $('rvm').className = 'msg err'; $('rvm').textContent = x.error; return; } r.hidden = true; OW.toast('Sent to the owner and the county.'); refresh(); }); };
+    });
+  }
   function select(id) { S.sel = id; S.editing = null; $('editor').hidden = true; loadList(); return OW.api('/admin/api/customer/' + id).then(function (j) { if (!j.ok) return fail(j); S.d = j; renderDetail(); $('detail').scrollIntoView({ behavior: 'smooth' }); }); }
-  function refresh() { return S.sel ? OW.api('/admin/api/customer/' + S.sel).then(function (j) { if (j.ok) { S.d = j; renderDetail(); } }).then(loadList) : loadList(); }
+  function refresh() { return (S.sel ? OW.api('/admin/api/customer/' + S.sel).then(function (j) { if (j.ok) { S.d = j; renderDetail(); } }).then(loadList) : loadList()).then(loadInvoices).then(loadCounties); }
 
   function renderDetail() {
     var d = S.d, c = d.customer, open = d.contracts.filter(function (x) { return x.status === 'sent' || x.status === 'owner_signed'; }).length;
@@ -29,7 +66,7 @@
         return '<li><span><b>Inspection and Maintenance Agreement</b><small>Sent ' + E(OW.date(x.created_at)) + (x.owner.signed_at ? ' &middot; customer signed ' + E(OW.date(x.owner.signed_at)) : '') + (x.contractor.signed_at ? ' &middot; you signed ' + E(OW.date(x.contractor.signed_at)) : '') + '</small></span><span class="row">' + OW.pill(x.status) + btns + '</span></li>';
       }).join('') || '<li class="mute">None yet.</li>') + '</ul>' +
       '<h3 style="margin:16px 0 4px">Reports</h3><ul class="list">' + (d.reports.map(function (r) {
-        return '<li><span><b>Visit report, ' + E(OW.date(r.visit_date)) + '</b><small>' + (r.kind === 'upload' ? 'Uploaded PDF' : 'Entered in form') + (r.notes ? ' &middot; ' + E(r.notes.slice(0, 60)) : '') + '</small></span><span class="row"><button class="b alt" data-rep="pdf" data-id="' + r.id + '">PDF</button><button class="b alt" data-rep="mail" data-id="' + r.id + '">Email customer</button><button class="b danger" data-rep="del" data-id="' + r.id + '">Delete</button></span></li>';
+        return '<li><span><b>Visit report, ' + E(OW.date(r.visit_date)) + '</b><small>' + (r.kind === 'upload' ? 'Uploaded PDF' : 'Entered in form') + (r.notes ? ' &middot; ' + E(r.notes.slice(0, 60)) : '') + (r.state === 'held' ? '' : r.county_sent_at ? ' &middot; county copy sent' : ' &middot; county copy not sent') + '</small></span><span class="row">' + (r.state === 'held' ? '<span class="pill warn">Held until paid</span>' : (r.county_sent_at ? '' : '<button class="b alt" data-county-send="' + r.id + '">Send county copy</button>')) + '<button class="b alt" data-rep="pdf" data-id="' + r.id + '">PDF</button><button class="b alt" data-rep="mail" data-id="' + r.id + '">Email customer</button><button class="b danger" data-rep="del" data-id="' + r.id + '">Delete</button></span></li>';
       }).join('') || '<li class="mute">None yet.</li>') + '</ul></section>' +
       '<section class="card" id="panel"><h2>Next step</h2><p class="mute">Choose Send contract or Add visit report.</p></section></div>' +
       '<section class="card"><h2>' + E(c.name) + ': readings over time</h2><div class="charts">' + OW.charts(d.reports) + '</div></section>' +
@@ -41,7 +78,7 @@
   function contractForm() {
     var c = S.d.customer, today = new Date().toISOString().slice(0, 10);
     $('panel').innerHTML = '<h2>New contract</h2><p class="mute" style="margin:0 0 4px">The text is the state sample, unchanged. These fields fill its blanks.</p><form id="kf" novalidate><div class="two">' +
-      field('k_contractor', 'Contractor name', LS.get('ow_cn') || 'Overwatch Septic Systems') + field('k_fee', 'Annual fee ($)', LS.get('ow_fee') || '', 'inputmode="decimal"') +
+      field('k_contractor', 'Contractor name', LS.get('ow_cn') || 'Overwatch Septic Systems') + field('k_fee', 'Annual fee written in the agreement ($)', LS.get('ow_fee') || '', 'inputmode="decimal"') + field('k_orig', 'Origination fee, billed when you countersign ($, 0 for none)', LS.get('ow_orig') || (S.cfg && S.cfg.defaults.origination) || '100', 'inputmode="decimal"') +
       field('k_caddr', 'Contractor address', LS.get('ow_ca')) + field('k_health', 'Local health department', LS.get('ow_hd_' + (c.county || '')) || (c.county ? c.county + ' County Environmental Health' : '')) +
       field('k_date', 'Agreement date', today, 'type="date"') + field('k_resp', 'Response time (hours)', '48') + '</div>' +
       '<label for="k_cite">Rule citation (check the current rule number)</label><input id="k_cite" value="15A N.C. Administrative Code 18A.1961"><label for="k_rules">Rules reference</label><input id="k_rules" value="15A N.C. Administrative Code 18A.1900 et seq.">' +
@@ -51,9 +88,9 @@
       e.preventDefault(); var v = function (i) { return $(i).value.trim(); };
       var fee = v('k_fee'); if (!fee) { $('km').className = 'msg err'; $('km').textContent = 'Please enter the annual fee.'; return; }
       $('km').className = 'msg'; $('km').textContent = 'Sending...';
-      OW.api('/admin/api/contract', { customer_id: c.id, terms: { contractor_name: v('k_contractor'), contractor_address: v('k_caddr'), health_dept: v('k_health'), annual_fee: fee, date: v('k_date'), response_hours: v('k_resp'), cite: v('k_cite'), rules: v('k_rules'), maintenance: v('k_maint').split('\n') } }).then(function (j) {
+      OW.api('/admin/api/contract', { customer_id: c.id, terms: { contractor_name: v('k_contractor'), contractor_address: v('k_caddr'), health_dept: v('k_health'), annual_fee: fee, origination_fee: v('k_orig'), date: v('k_date'), response_hours: v('k_resp'), cite: v('k_cite'), rules: v('k_rules'), maintenance: v('k_maint').split('\n') } }).then(function (j) {
         if (!j.ok) { $('km').className = 'msg err'; $('km').textContent = j.error; return; }
-        LS.set('ow_cn', v('k_contractor')); LS.set('ow_fee', fee); LS.set('ow_ca', v('k_caddr')); LS.set('ow_hd_' + (c.county || ''), v('k_health'));
+        LS.set('ow_cn', v('k_contractor')); LS.set('ow_fee', fee); LS.set('ow_orig', v('k_orig')); LS.set('ow_ca', v('k_caddr')); LS.set('ow_hd_' + (c.county || ''), v('k_health'));
         OW.toast(j.emailed ? 'Signing link emailed.' : 'Saved, but the email did not send. Use Resend link.'); refresh();
       });
     });
@@ -65,7 +102,7 @@
       '<h3 style="margin:12px 0 0;font-size:18px">Checks</h3>' + CHECKS.map(function (k, i) { return '<div class="row" style="justify-content:space-between;padding:4px 0"><span>' + E(k) + '</span><select id="r_c' + i + '" style="width:auto"><option value="pass">Pass</option><option value="repair">Needs repair</option><option value="na">N/A</option></select></div>'; }).join('') +
       '<label for="r_notes">Notes for the customer</label><textarea id="r_notes" maxlength="1000"></textarea>' +
       '<label for="r_pdf">Or attach a PDF report (stored, not graphed)</label><input id="r_pdf" type="file" accept="application/pdf">' +
-      '<label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="r_mail" checked> Email the customer when saved</label>' +
+      '<label for="r_amt">Invoice amount ($). Use 0 to waive it</label><input id="r_amt" inputmode="decimal" value="' + E(LS.get('ow_visit') || (S.cfg && S.cfg.defaults.visit) || '250') + '"><p class="mute" style="margin:4px 0 0;font-size:14px">With an invoice, the customer and the county get nothing until it is paid and 3 business days have passed. With 0, both get the report right away.</p>' +
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Save report</button></div><div class="msg" id="rm" role="status"></div></form>';
     $('rf').addEventListener('submit', function (e) {
       e.preventDefault(); var m = $('rm'); m.className = 'msg'; m.textContent = 'Saving...';
@@ -75,9 +112,12 @@
         if (!j.ok) { m.className = 'msg err'; m.textContent = j.error; return; }
         var up = file ? file.arrayBuffer().then(function (b) { return OW.api('/admin/api/reports/' + j.id + '/pdf', b, { raw: true, type: 'application/pdf' }); }) : Promise.resolve({ ok: true });
         return up.then(function (u) {
-          if (!u.ok) { m.className = 'msg err'; m.textContent = 'Report saved, but the PDF did not upload: ' + u.error; refresh(); return; }
-          var mail = $('r_mail').checked ? OW.api('/admin/api/report-notify', { id: j.id }) : Promise.resolve({ ok: true });
-          return mail.then(function (n) { OW.toast(n.ok ? 'Report saved.' : 'Saved, but the email did not send.'); refresh(); });
+          if (!u.ok) { m.className = 'msg err'; m.textContent = 'Report saved, but the PDF did not upload: ' + u.error + ' It stays held. Delete it and try again.'; refresh(); return; }
+          return OW.api('/admin/api/report-finish', { id: j.id, amount: $('r_amt').value }).then(function (f) {
+            if (!f.ok) { m.className = 'msg err'; m.textContent = f.error; refresh(); return; }
+            LS.set('ow_visit', $('r_amt').value);
+            OW.toast(f.released ? 'Saved and released to the customer and county.' : (f.emailed ? 'Saved. Invoice emailed; the report is held until paid.' : 'Saved, but the invoice email did not send.')); refresh();
+          });
         });
       });
     });
@@ -97,6 +137,17 @@
     if (t.id === 'bSend') return void contractForm();
     if (t.id === 'bRep') return void reportForm();
     if (t.id === 'bDel') { if (confirm('Delete ' + S.d.customer.name + ' and all their reports?')) OW.api('/admin/api/customer-delete', { id: S.sel }).then(function (j) { if (!j.ok) return fail(j); S.sel = null; S.d = null; $('detail').innerHTML = ''; loadList(); OW.toast('Customer deleted.'); }); return; }
+    var rv = t.closest('[data-rv]'); if (rv) return void review(rv.getAttribute('data-rv'), rv.getAttribute('data-kind'));
+    var pc = t.closest('.pickc'); if (pc) return void select(pc.getAttribute('data-cid'));
+    var cd = t.closest('[data-cdel]'); if (cd) { if (confirm('Remove this county?')) OW.api('/admin/api/county', { name: cd.getAttribute('data-cdel'), remove: true }).then(loadCounties); return; }
+    var iv = t.closest('[data-iv]');
+    if (iv) {
+      var act = iv.getAttribute('data-iv'), iid = iv.getAttribute('data-id');
+      if (act === 'waive' && !confirm('Waive this fee? Whatever is locked is released to the customer right away.')) return;
+      if (act === 'paid' && !confirm('Mark this invoice paid (for a check or cash)? The 3 business day hold starts now.')) return;
+      return void OW.api('/admin/api/invoice-' + act, { id: iid, paused: iv.getAttribute('data-p') === '1' }).then(function (j) { j.ok ? OW.toast('Done.') : fail(j); refresh(); });
+    }
+    var cs = t.closest('[data-county-send]'); if (cs) return void OW.api('/admin/api/report-county-send', { id: cs.getAttribute('data-county-send') }).then(function (j) { j.ok ? OW.toast('County copy sent.') : fail(j); refresh(); });
     var a = t.closest('[data-act]'), r = t.closest('[data-rep]');
     if (a) {
       var id = a.getAttribute('data-id'), x = S.d.contracts.filter(function (k) { return k.id === id; })[0], act = a.getAttribute('data-act');
@@ -126,6 +177,6 @@
     e.preventDefault(); var body = { id: S.editing || undefined }; FIELDS.forEach(function (f) { body[KEYS[f] || f] = $('c_' + f).value; });
     OW.api('/admin/api/customer', body).then(function (j) { if (!j.ok) { $('cm').className = 'msg err'; $('cm').textContent = j.error; return; } $('editor').hidden = true; OW.toast('Saved.'); S.sel = j.id; select(j.id); });
   });
-  OW.api('/admin/api/config').then(function (j) { if (j.ok) { S.cfg = j; $('who').textContent = 'Admin portal · ' + j.me; } });
-  loadList();
+  $('cyf').addEventListener('submit', function (e) { e.preventDefault(); OW.api('/admin/api/county', { name: $('cy_n').value, email: $('cy_e').value }).then(function (j) { if (!j.ok) { $('cym').className = 'msg err'; $('cym').textContent = j.error; return; } $('cym').textContent = ''; $('cy_n').value = ''; $('cy_e').value = ''; OW.toast('County saved.'); loadCounties(); }); });
+  OW.api('/admin/api/config').then(function (j) { if (j.ok) { S.cfg = j; $('who').textContent = 'Admin portal · ' + j.me; } }).then(function () { loadList(); loadInvoices(); loadCounties(); });
 })();
