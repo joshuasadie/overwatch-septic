@@ -30,6 +30,8 @@
   var r2 = function (x) { return x === null ? null : Math.round(x * 100) / 100; };
   OWI.n = n;
   OWI.PUMP_AT = 100 / 3;
+  // gallons per inch of depth from the inside size of the tank: 1 gallon = 231 cubic inches
+  OWI.gpi = function (shape, a, b) { a = n(a); b = n(b); if (!a || a <= 0 || a > 1000) return null; if (shape === 'round') return r1(Math.PI * Math.pow(a / 2, 2) / 231); if (!b || b <= 0 || b > 1000) return null; return r1(a * b / 231); };
 
   // ctx: { design_flow, design_pdr, dose, prev: {date, et, events, heads:{n:head}}, date }
   OWI.calc = function (d, ctx) {

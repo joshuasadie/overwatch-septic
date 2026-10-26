@@ -58,3 +58,4 @@ table.lat td input{min-width:62px;padding:6px 7px}.x{border:0;background:transpa
 .pill.bad{color:var(--bad)}.pill.warn{color:var(--warn)}.pill.mute{color:var(--mute)}
 @media(max-width:620px){.three{grid-template-columns:1fr}.cl{grid-template-columns:1fr 100px 52px}}
 #panel.wide{grid-column:1/-1}
+.gpibox{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:8px;background:var(--bg)}.gpibox .two:empty{display:none}

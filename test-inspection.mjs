@@ -23,6 +23,7 @@ const env = { DB, FILES: { put: async () => {}, get: async () => null, delete: a
 const call = (path, o = {}) => worker.fetch(new Request(O + path, o), env);
 const adm = (path, body) => call(path, { method: body === undefined ? 'GET' : 'POST', headers: { 'cf-access-jwt-assertion': tok, origin: O, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 const J = r => r.json();
+const OWI0 = globalThis.OWI;
 let fail = 0; const ok = (c, m) => { if (!c) fail++; console.log(c ? 'PASS' : 'FAIL', m); };
 
 const jpg = new Uint8Array(400); jpg.set([0xff, 0xd8, 0xff, 0xe0]);
@@ -96,6 +97,8 @@ ok(held.locked === true && !held.insp, 'a held report shows no inspection data t
 await raw('/admin/api/reports/' + r4.id + '/photo', jpg, 'image/jpeg'); ok((await me('/portal/api/reports/' + r4.id + '/photo/1')).status === 404, 'photos on a held report are blocked');
 // delete cleans up
 await adm('/admin/api/report-delete', { id: r4.id }); ok(![...files.keys()].some(k => k.includes(r4.id)), 'deleting a report removes its photos');
+// gallons per inch from the tank size
+ok(OWI0.gpi('rect', 93, 52) === 20.9 && OWI0.gpi('round', 78) === 20.7 && OWI0.gpi('rect', 93) === null && OWI0.gpi('round', 0) === null && OWI0.gpi('round', 5000) === null, 'gallons per inch: 93 x 52 rect = 20.9, 78 in round = 20.7, bad input = nothing');
 // the view code
 const OWI = globalThis.OWI; const insp = { data: rep2.insp.data, calc: rep2.insp.calc, photos: 1 };
 const home = OWI.homeHtml({ visit_date: '2026-10-26', insp }, { name: 'Ann Home', address: '12 Oak St' }, rep2.insp.data.operator, n => '/p/' + n);

@@ -26,6 +26,7 @@
       fld('s_sgal', 'Septic tank (gal)', dec + ' value="' + E(sys.septic_gal == null ? '' : sys.septic_gal) + '"') + fld('s_ld', 'Liquid depth (in)', dec + ' value="' + E(sys.liquid_depth == null ? '' : sys.liquid_depth) + '"') +
       fld('s_pgal', 'Pump tank (gal)', dec + ' value="' + E(sys.pump_gal == null ? '' : sys.pump_gal) + '"') + fld('s_gpi', 'Pump tank gallons per inch', dec + ' value="' + E(sys.gpi == null ? '' : sys.gpi) + '"') +
       fld('s_dose', 'Dose volume (gal)', dec + ' value="' + E(sys.dose == null ? '' : sys.dose) + '"') + fld('s_dpdr', 'Design PDR, pump delivery rate (gpm)', dec + ' value="' + E(sys.design_pdr == null ? '' : sys.design_pdr) + '"') + '</div>' +
+      '<div id="gpiBox" class="gpibox" hidden><b>Gallons per inch of the pump tank</b><div class="two"><div><label for="g_shape">Tank shape</label><select id="g_shape"><option value="rect">Rectangular</option><option value="round">Round</option></select></div><div id="g_rw"></div></div><div class="two" id="g_dims"></div><p class="mute sm" id="g_res"></p><button type="button" class="b" id="g_use">Use this number</button></div><button type="button" class="b alt" id="gpiCalc" style="margin-top:6px">Calculate gallons per inch</button>' +
       '<p class="mute sm">Owner, permit and system details come from the customer. Tank sizes, design numbers and laterals are saved here after your first report, so you type them once.</p>' +
       '<div class="two">' + auto('a_days', 'Days since last inspection') + auto('a_last', 'Last inspection') + '</div>', true, 'c1');
     h += det('2. Septic tank', checklist(OWI.SECTIONS[0]) + '<div class="three">' + fld('i_sc', 'Scum (in)', dec) + fld('i_sl', 'Sludge (in)', dec) + auto('i_slp', 'Sludge, % of liquid depth') + '</div><p id="slw" class="mute sm"></p><div class="two">' + fld('i_spd', 'Date of last pumpout', 'type="date"') + '<div><label for="i_spn">Pumping needed?</label><select id="i_spn"><option>No</option><option>Yes</option></select></div></div>', false, 'c2');
@@ -117,6 +118,11 @@
   function addLat() { var n = document.querySelectorAll('#latb tr').length; if (n >= 12) return; $('latb').insertAdjacentHTML('beforeend', latRow(n, {})); }
   function addJob(sel) { var n = document.querySelectorAll('#job_more select').length; if (n >= 5) return; $('job_more').insertAdjacentHTML('beforeend', '<div class="item"><label class="ck"><input type="checkbox" checked> Hire a licensed contractor to</label><select style="flex:1 1 240px;min-width:0" aria-label="Another contractor job">' + OWI.JOBS.map(function (j) { return '<option' + (j === sel ? ' selected' : '') + '>' + E(j) + '</option>'; }).join('') + '</select></div>'); }
 
+  // ---- gallons per inch calculator
+  function gpiDims() { var r = val('g_shape') === 'round'; $('g_dims').innerHTML = r ? fld('g_a', 'Inside diameter (in)', dec) : fld('g_a', 'Inside length (in)', dec) + fld('g_b', 'Inside width (in)', dec); gpiShow(); }
+  function gpiVal() { return OWI.gpi(val('g_shape'), val('g_a'), $('g_b') ? val('g_b') : null); }
+  function gpiShow() { var v = gpiVal(); $('g_res').textContent = v === null ? 'Enter the inside size of the tank.' : v + ' gallons per inch'; $('g_use').disabled = v === null; }
+
   // ---- photos: shrink on the phone before sending
   function shrink(file) {
     return new Promise(function (res, rej) {
@@ -142,10 +148,12 @@
   };
   function wire() {
     var f = $('inf');
-    f.addEventListener('input', function (e) { if (e.target.id === 'f_dose' || e.target.id === 'f_gpi') e.target.dataset.own = 1; recalc(); save(); });
-    f.addEventListener('change', function (e) { var t = e.target; if (t.dataset && t.dataset.w) { t.dataset.touched = 1; setWord(t.dataset.w); } recalc(); save(); });
+    f.addEventListener('input', function (e) { if (e.target.id && e.target.id.indexOf('g_') === 0) gpiShow(); if (e.target.id === 'f_dose' || e.target.id === 'f_gpi') e.target.dataset.own = 1; recalc(); save(); });
+    f.addEventListener('change', function (e) { var t = e.target; if (t.id === 'g_shape') gpiDims(); if (t.dataset && t.dataset.w) { t.dataset.touched = 1; setWord(t.dataset.w); } recalc(); save(); });
     f.addEventListener('click', function (e) {
       var b = e.target.closest('.tri button'); if (b) { var t = b.parentNode, v = b.getAttribute('data-v'); pressTri(t, b.getAttribute('aria-pressed') === 'true' ? '' : v); recalc(); save(); return; }
+      if (e.target.id === 'gpiCalc') { $('gpiBox').hidden = !$('gpiBox').hidden; gpiDims(); return; }
+      if (e.target.id === 'g_use') { var gv = gpiVal(); if (gv !== null) { $('s_gpi').value = gv; $('f_gpi').dataset.own = ''; $('gpiBox').hidden = true; recalc(); save(); } return; }
       if (e.target.id === 'addLat') { addLat(); save(); } if (e.target.id === 'addJob') { addJob(); save(); }
       var px = e.target.closest('[data-px]'); if (px) { photos.splice(Number(px.getAttribute('data-px')), 1); thumbs(); }
       if (e.target.id === 'clearDraft' && confirm('Clear everything you entered on this form?')) { try { localStorage.removeItem(draftKey); } catch (x) {} A.inspect(); }
