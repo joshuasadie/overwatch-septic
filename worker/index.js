@@ -5,7 +5,7 @@ const reply = (obj, status = 200, extra = {}) => new Response(JSON.stringify(obj
 const clean = (s, max) => String(s ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, max);
 const list = s => (s || '').split(',').map(x => x.trim()).filter(Boolean);
 const EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
-const NEED = { alarm: 'Alarm', operator: 'State Certified Septic Operator' };
+const NEED = { alarm: 'Alarm', operator: 'Septic contract with a subsurface operator' };
 const oneLine = s => String(s).replace(/[\r\n]+/g, ' ');
 
 async function send(env, to, subject, text, replyTo) {
@@ -47,7 +47,7 @@ export async function request(req, env) {
   const need = NEED[d.need];
   const owner = await send(env, env.MAIL_TO, `[${d.need === 'alarm' ? 'ALARM' : 'Request'}] ${oneLine(name)}`, ['New request from overwatchseptic.com', '', 'Need: ' + need, 'Name: ' + name, 'Phone: ' + phone, 'Email: ' + email, 'Address: ' + address, '', 'Received: ' + new Date().toISOString()].join('\n'), email);
   if (!owner) return reply({ ok: false, error: 'Your request could not be sent. Please try again in a few minutes.' }, 502);
-  await send(env, email, 'We received your request', [`Hello ${name},`, '', 'Thank you. Overwatch Septic received your request' + (d.need === 'alarm' ? ' for an alarm' : '') + ' and will contact you.', '', 'If your plans change, reply to this email.', '', 'Overwatch Septic Systems'].join('\n'), env.MAIL_TO);
+  await send(env, email, 'We received your request', [`Hello ${name},`, '', 'Thank you. Overwatch Septic received your request' + (d.need === 'alarm' ? ' for an alarm' : '') + ' and will contact you.', '', 'If your plans change, reply to this email.', '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
   return reply({ ok: true });
 }
 

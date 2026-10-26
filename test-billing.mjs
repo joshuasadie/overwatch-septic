@@ -46,7 +46,7 @@ ok(!(await verifyStripe('{}', 't=1,v1=ab', 'x')), 'old or bad signature refused'
 
 // setup customer and contract with an origination fee
 let j = await J(await adm('/admin/api/customer', { name: 'Ann Home', email: 'ann@home.com', address: '12 Oak St, Pittsboro', county: 'Chatham', sys_type: 'V', permit: 'P-1' })); const cid = j.id;
-const terms = { contractor_name: 'Overwatch Septic Systems', contractor_address: 'PO Box 1', health_dept: 'Chatham County EH', annual_fee: '500', origination_fee: '100' };
+const terms = { contractor_name: 'Overwatch Septic, LLC', contractor_address: 'PO Box 1', health_dept: 'Chatham County EH', annual_fee: '500', origination_fee: '100' };
 ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, origination_fee: 'abc' } })).status === 400, 'origination fee must be numeric');
 sent.length = 0; await adm('/admin/api/contract', { customer_id: cid, terms });
 const t1 = sent[0].text.match(/\/c\/([A-Za-z0-9_-]+)/)[1];

@@ -37,7 +37,7 @@ export async function loginRequest(request, env) {
   if (c) {
     const token = rand();
     await env.DB.prepare('INSERT INTO login_tokens (hash, customer_id, expires_at, used) VALUES (?, ?, ?, 0)').bind(await sha(token), c.id, isoIn(LINK_MIN * 60e3)).run();
-    await sendMail(env, email, 'Your Overwatch Septic sign-in link', ['Hello,', '', `Use this link within ${LINK_MIN} minutes to sign in to your Overwatch Septic customer portal:`, '', `${siteOrigin(env)}/login/verify?t=${token}`, '', 'If you did not ask for this, you can ignore this email.', '', 'Overwatch Septic Systems'].join('\n'));
+    await sendMail(env, email, 'Your Overwatch Septic sign-in link', ['Hello,', '', `Use this link within ${LINK_MIN} minutes to sign in to your Overwatch Septic customer portal:`, '', `${siteOrigin(env)}/login/verify?t=${token}`, '', 'If you did not ask for this, you can ignore this email.', '', 'Overwatch Septic, LLC'].join('\n'));
   }
   return reply({ ok: true });
 }

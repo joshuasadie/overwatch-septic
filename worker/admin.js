@@ -137,7 +137,7 @@ export async function adminApi(request, env, path) {
     const lock = await env.DB.prepare("SELECT released_at FROM report_state WHERE report_id = ?").bind(String(j.body.id)).first();
     if (lock && !lock.released_at) return reply({ ok: false, error: 'This report is still held until payment clears or you waive the fee.' }, 400);
     const c = await env.DB.prepare('SELECT name, email FROM customers WHERE id = ?').bind(r.customer_id).first();
-    const sent = await sendMail(env, c.email, 'Your septic visit report is ready', [`Hello ${c.name},`, '', `The report from your visit on ${r.visit_date} is ready. Sign in to your customer portal to see it: ${siteOrigin(env)}/login/`, '', 'Overwatch Septic Systems'].join('\n'), env.MAIL_TO);
+    const sent = await sendMail(env, c.email, 'Your septic visit report is ready', [`Hello ${c.name},`, '', `The report from your visit on ${r.visit_date} is ready. Sign in to your customer portal to see it: ${siteOrigin(env)}/login/`, '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
     if (!sent) return reply({ ok: false, error: 'The email could not be sent. Try again.' }, 502);
     await audit(env, email, 'report-notified', j.body.id, c.name).run();
     return reply({ ok: true });

@@ -39,14 +39,14 @@ ok((await adm('/admin/api/customer', { name: '', email: 'q@q.com', address: '9 O
 j = await J(await adm('/admin/api/customers')); ok(j.customers.length === 1 && j.customers[0].email === 'ann@home.com' && j.customers[0].contract === 'none', 'listed, email lowercased');
 
 // contract send
-const terms = { contractor_name: 'Overwatch Septic Systems', contractor_address: 'PO Box 1, Pittsboro NC', health_dept: 'Chatham County Environmental Health', annual_fee: '500', maintenance: ['Check the pump'] };
+const terms = { contractor_name: 'Overwatch Septic, LLC', contractor_address: 'PO Box 1, Pittsboro NC', health_dept: 'Chatham County Environmental Health', annual_fee: '500', maintenance: ['Check the pump'] };
 ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, annual_fee: '' } })).status === 400, 'fee required');
 ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, annual_fee: 'abc' } })).status === 400, 'fee must be numeric');
 sent.length = 0; j = await J(await adm('/admin/api/contract', { customer_id: cid, terms })); ok(j.ok && j.emailed, 'contract sent');
 const link = sent[0].text.match(/https:\/\/overwatchseptic\.com\/c\/([A-Za-z0-9_-]+)/); ok(!!link && sent[0].to[0] === 'ann@home.com', 'email has unique link');
 const t1 = link[1];
 ok((await call('/c/' + t1)).status === 200 && (await (await call('/c/' + t1)).text()) === 'A:/c/', 'signing page served for token path (no redirect that would drop the token)');
-j = await J(await call('/api/contract/' + t1)); ok(j.ok && j.contract.status === 'sent' && /Overwatch Septic Systems/.test(JSON.stringify(j.contract.text)) && /\$500/.test(JSON.stringify(j.contract.text)), 'token shows contract with fee');
+j = await J(await call('/api/contract/' + t1)); ok(j.ok && j.contract.status === 'sent' && /Overwatch Septic, LLC/.test(JSON.stringify(j.contract.text)) && /\$500/.test(JSON.stringify(j.contract.text)), 'token shows contract with fee');
 ok(!JSON.stringify(j).includes(t1), 'token not echoed');
 ok((await call('/api/contract/aaaaaaaaaaaaaaaaaaaaaaaa')).status === 404, 'bad token 404');
 const sign = (name, agree = true, origin = O) => call('/api/contract/' + t1 + '/sign', { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify({ name, agree }) });

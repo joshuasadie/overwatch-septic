@@ -45,7 +45,7 @@
         (kind === 'notice' ? '<label for="trk">Certified mail tracking number (optional, can add later)</label><input id="trk" maxlength="80">' : '') +
         '<div class="row" style="margin-top:10px"><button class="b alt" id="prt">Print owner letter</button><button class="b" id="snd">Send to owner and county</button><button class="b alt" id="rvx">Close</button></div><div class="msg" id="rvm" role="status"></div>';
       r.scrollIntoView({ behavior: 'smooth' });
-      $('prt').onclick = function () { $('printArea').innerHTML = '<p>Overwatch Septic Systems<br>' + E(S.cfg && S.cfg.me || '') + '</p><p>' + E(new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })) + '</p><p>' + E(j.name) + '<br>' + E(j.address) + '</p><p><b>' + E(j.owner.subject) + '</b></p><p style="white-space:pre-wrap">' + E(j.owner.body) + '</p>'; window.print(); };
+      $('prt').onclick = function () { $('printArea').innerHTML = '<p>Overwatch Septic, LLC<br>' + E(S.cfg && S.cfg.me || '') + '</p><p>' + E(new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })) + '</p><p>' + E(j.name) + '<br>' + E(j.address) + '</p><p><b>' + E(j.owner.subject) + '</b></p><p style="white-space:pre-wrap">' + E(j.owner.body) + '</p>'; window.print(); };
       $('rvx').onclick = function () { r.hidden = true; };
       $('snd').onclick = function () { $('snd').disabled = true; OW.api('/admin/api/invoice-' + kind, { id: id, tracking: kind === 'notice' ? $('trk').value : '' }).then(function (x) { if (!x.ok) { $('snd').disabled = false; $('rvm').className = 'msg err'; $('rvm').textContent = x.error; return; } r.hidden = true; OW.toast('Sent to the owner and the county.'); refresh(); }); };
     });
@@ -78,7 +78,11 @@
   function contractForm() {
     var c = S.d.customer, today = new Date().toISOString().slice(0, 10);
     $('panel').innerHTML = '<h2>New contract</h2><p class="mute" style="margin:0 0 4px">The text is the state sample, unchanged. These fields fill its blanks.</p><form id="kf" novalidate><div class="two">' +
-      field('k_contractor', 'Contractor name', LS.get('ow_cn') || 'Overwatch Septic Systems') + field('k_fee', 'Annual fee written in the agreement ($)', LS.get('ow_fee') || '', 'inputmode="decimal"') + field('k_orig', 'Origination fee, billed when you countersign ($, 0 for none)', LS.get('ow_orig') || (S.cfg && S.cfg.defaults.origination) || '100', 'inputmode="decimal"') +
+<<<<<<< HEAD
+      field('k_contractor', 'Contractor name', LS.get('ow_cn') || 'Overwatch Septic, LLC') + field('k_fee', 'Annual fee written in the agreement ($)', LS.get('ow_fee') || '', 'inputmode="decimal"') + field('k_orig', 'Origination fee, billed when you countersign ($, 0 for none)', LS.get('ow_orig') || (S.cfg && S.cfg.defaults.origination) || '100', 'inputmode="decimal"') +
+=======
+      field('k_contractor', 'Contractor name', LS.get('ow_cn') || 'Overwatch Septic, LLC') + field('k_fee', 'Annual fee ($)', LS.get('ow_fee') || '', 'inputmode="decimal"') +
+>>>>>>> main
       field('k_caddr', 'Contractor address', LS.get('ow_ca')) + field('k_health', 'Local health department', LS.get('ow_hd_' + (c.county || '')) || (c.county ? c.county + ' County Environmental Health' : '')) +
       field('k_date', 'Agreement date', today, 'type="date"') + field('k_resp', 'Response time (hours)', '48') + '</div>' +
       '<label for="k_cite">Rule citation (check the current rule number)</label><input id="k_cite" value="15A N.C. Administrative Code 18A.1961"><label for="k_rules">Rules reference</label><input id="k_rules" value="15A N.C. Administrative Code 18A.1900 et seq.">' +
