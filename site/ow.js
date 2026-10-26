@@ -56,7 +56,7 @@
     return PDFLib.PDFDocument.create().then(function (d) {
       doc = d; return Promise.all([doc.embedFont(PDFLib.StandardFonts.TimesRoman), doc.embedFont(PDFLib.StandardFonts.TimesRomanBold), doc.embedFont(PDFLib.StandardFonts.TimesRomanItalic)]);
     }).then(function (F) {
-      f = F[0]; fb = F[1]; fi = F[2]; doc.setTitle(title); doc.setAuthor('Overwatch Septic Systems');
+      f = F[0]; fb = F[1]; fi = F[2]; doc.setTitle(title); doc.setAuthor('Overwatch Septic, LLC');
       var L = {
         add: function () { page = doc.addPage([W, H]); y = H - M; },
         need: function (h) { if (y - h < M) L.add(); },
@@ -74,7 +74,7 @@
         rule: function () { L.need(10); page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.6, color: PDFLib.rgb(0.7, 0.65, 0.55) }); y -= 10; },
         save: function () {
           var pages = doc.getPages();
-          pages.forEach(function (p, i) { p.drawText('Overwatch Septic Systems  |  page ' + (i + 1) + ' of ' + pages.length, { x: M, y: 30, size: 8, font: f, color: PDFLib.rgb(0.45, 0.4, 0.33) }); });
+          pages.forEach(function (p, i) { p.drawText('Overwatch Septic, LLC  |  page ' + (i + 1) + ' of ' + pages.length, { x: M, y: 30, size: 8, font: f, color: PDFLib.rgb(0.45, 0.4, 0.33) }); });
           return doc.save();
         }
       };
@@ -113,7 +113,7 @@
       (r.checks || []).forEach(function (c) { L.text(c.label + ': ' + lab[c.status], { indent: 10, after: 2 }); });
       if (!(r.checks || []).length) L.text('None recorded.', { indent: 10 });
       if (r.notes) { L.gap(6); L.text('Notes', { bold: true }); L.text(r.notes, { indent: 10 }); }
-      L.gap(8); L.text('Overwatch Septic Systems provides inspection and maintenance. Repairs and pumping are done by licensed contractors.', { size: 9, italic: true });
+      L.gap(8); L.text('Overwatch Septic, LLC provides inspection and maintenance. Repairs and pumping are done by licensed contractors.', { size: 9, italic: true });
       return L.save();
     });
   };

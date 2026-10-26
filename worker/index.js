@@ -47,7 +47,7 @@ export async function request(req, env) {
   const need = NEED[d.need];
   const owner = await send(env, env.MAIL_TO, `[${d.need === 'alarm' ? 'ALARM' : 'Request'}] ${oneLine(name)}`, ['New request from overwatchseptic.com', '', 'Need: ' + need, 'Name: ' + name, 'Phone: ' + phone, 'Email: ' + email, 'Address: ' + address, '', 'Received: ' + new Date().toISOString()].join('\n'), email);
   if (!owner) return reply({ ok: false, error: 'Your request could not be sent. Please try again in a few minutes.' }, 502);
-  await send(env, email, 'We received your request', [`Hello ${name},`, '', 'Thank you. Overwatch Septic received your request' + (d.need === 'alarm' ? ' for an alarm' : '') + ' and will contact you.', '', 'If your plans change, reply to this email.', '', 'Overwatch Septic Systems'].join('\n'), env.MAIL_TO);
+  await send(env, email, 'We received your request', [`Hello ${name},`, '', 'Thank you. Overwatch Septic received your request' + (d.need === 'alarm' ? ' for an alarm' : '') + ' and will contact you.', '', 'If your plans change, reply to this email.', '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
   return reply({ ok: true });
 }
 

@@ -35,7 +35,7 @@ export async function createContract(env, who, customer, termsIn) {
 }
 async function mailOwner(env, customer, token) {
   const link = `${siteOrigin(env)}/c/${token}`;
-  return sendMail(env, customer.email, 'Please review and sign your septic agreement', [`Hello ${customer.name},`, '', 'Your Inspection and Maintenance Agreement with Overwatch Septic is ready. Please read it and sign it here. The link works for ' + LINK_DAYS + ' days:', '', link, '', 'Signing is done by typing your name. After you sign, we sign, and you can see the signed agreement in your customer portal.', '', 'Overwatch Septic Systems'].join('\n'), env.MAIL_TO);
+  return sendMail(env, customer.email, 'Please review and sign your septic agreement', [`Hello ${customer.name},`, '', 'Your Inspection and Maintenance Agreement with Overwatch Septic is ready. Please read it and sign it here. The link works for ' + LINK_DAYS + ' days:', '', link, '', 'Signing is done by typing your name. After you sign, we sign, and you can see the signed agreement in your customer portal.', '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
 }
 export async function resendContract(env, who, cid) {
   const c = await env.DB.prepare('SELECT * FROM contracts WHERE id = ?').bind(cid).first();
@@ -97,7 +97,7 @@ export async function countersign(env, who, cid, name) {
   const customer = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(c.customer_id).first();
   await env.DB.prepare('INSERT INTO audit (at, who, action, target, detail) VALUES (?, ?, ?, ?, ?)').bind(now, who, 'contract-complete', cid, customer.name).run();
   const origin = siteOrigin(env);
-  const emailed = await sendMail(env, customer.email, 'Your septic agreement is fully signed', [`Hello ${customer.name},`, '', 'Overwatch Septic has signed your Inspection and Maintenance Agreement. It is now in effect.', '', `You can see and download the signed copy in your customer portal: ${origin}/login/`, '', 'Overwatch Septic Systems'].join('\n'), env.MAIL_TO);
+  const emailed = await sendMail(env, customer.email, 'Your septic agreement is fully signed', [`Hello ${customer.name},`, '', 'Overwatch Septic has signed your Inspection and Maintenance Agreement. It is now in effect.', '', `You can see and download the signed copy in your customer portal: ${origin}/login/`, '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
   return { ok: true, emailed };
 }
 
