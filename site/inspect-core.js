@@ -94,28 +94,110 @@
   };
   OWI.problems = function (d) {
     var out = [];
-    OWI.SECTIONS.forEach(function (s) { s.items.forEach(function (it) { var a = (d.checks && d.checks[s.k] || {})[it[0]]; if ((a === 'no' && it[2] !== 'i') || (a === 'yes' && it[2] === 'x')) out.push({ s: s.t, label: it[1] }); }); });
+    OWI.SECTIONS.forEach(function (s) { s.items.forEach(function (it) { var a = (d.checks && d.checks[s.k] || {})[it[0]]; if ((a === 'no' && !it[2]) || (a === 'yes' && it[2] === 'x')) out.push({ s: s.t, label: it[1] }); }); });
+    Object.keys(d.tanks || {}).forEach(function (id) { var t = d.tanks[id]; (OWI.TANK_ITEMS[t.kind] || []).forEach(function (it) { if ((t.checks || {})[it[0]] === 'no' && it[2] !== 'i') out.push({ s: t.name, label: it[1] }); }); });
+    Object.keys(d.cards || {}).forEach(function (id) { (d.cards[id].rows || []).forEach(function (r) { if (r.a === 'no') out.push({ s: d.cards[id].title, label: r.l }); }); });
     return out;
   };
   // roll the canned answers up into the four pass/repair rows the older screens use
-  OWI.rollup = function (d) {
+  OWI.rollup = function (d, c) {
     var w = d.words || {}, map = [['septic', 'Septic tank'], ['pumptank', 'Pump tank, floats, alarm'], ['panel', 'Control panel'], ['field', 'Drain field']];
-    return map.map(function (p) { var x = w[p[0]]; var def = OWI.WORDS.filter(function (q) { return q.k === p[0]; })[0]; var tone = x && def.o[x.i] ? def.o[x.i][1] : 'g'; return { label: p[1], status: tone === 'g' || tone === 'c' ? 'pass' : 'repair' }; });
+    return map.map(function (p) { var x = w[p[0]]; var def = OWI.WORDS.filter(function (q) { return q.k === p[0]; })[0]; var tone = x && def.o[x.i] ? def.o[x.i][1] : 'g'; return { label: p[1], status: tone === 'g' || tone === 'c' ? 'pass' : 'repair' }; })
+      .concat(c || d.tanks || d.cards ? (function () { var e = OWI.extras(d, c || {}); return e.tanks.concat(e.cards).map(function (x) { return { label: x.name || x.title, status: x.bad ? 'repair' : 'pass' }; }); })() : []);
   };
   OWI.overall = function (status) {
     return { 'Compliant': ['g', 'Overall: good.', 'Your system is working as it should and nothing needs to be done right now.'], 'Needs maintenance': ['w', 'Overall: needs a small repair soon.', 'Your system is working and nothing is leaking out. Something is wearing or needs attention. It is not an emergency, but it should be handled in the next month or two.'], 'Non-compliant': ['b', 'Overall: needs attention now.', 'Your system does not meet the county requirements right now. Please read what to do below and act soon.'], 'Malfunctioning': ['b', 'Overall: needs attention now.', 'Part of your system is not working properly. Please read what to do below and act soon.'], 'Incomplete inspection': ['w', 'Overall: inspection not finished.', 'We could not finish the inspection on this visit. We will schedule the rest.'] }[status] || ['w', 'Overall: see below.', ''];
   };
   OWI.wordRow = function (d, k) { var def = OWI.WORDS.filter(function (q) { return q.k === k; })[0], x = (d.words || {})[k]; if (!x || !def.o[x.i]) return null; return { label: def.o[x.i][0] === 'Custom' ? 'See note' : OWI.TONE[def.o[x.i][1]], tone: def.o[x.i][1], text: x.t || '' }; };
-  OWI.actions = function (d) {
+  OWI.actions = function (d, c) {
     var t = d.todo || {}, out = [];
     (t.jobs || []).forEach(function (j) { if (j) out.push('Hire a licensed contractor to ' + j.charAt(0).toLowerCase() + j.slice(1) + '.'); });
     (t.ticks || []).forEach(function (i) { if (OWI.TICKS[i]) out.push(OWI.TICKS[i]); });
     if (t.extra) out.push(t.extra);
+    // problems found on extra tanks and cards always make the list, so "nothing needed" is never wrong
+    if (c) { var X = OWI.extras(d, c); X.tanks.concat(X.cards).forEach(function (x) {
+      if (!x.bad) return; var nm = x.name || x.title;
+      if (x.kind === 'septic' && x.k.pump_now) out.push('Have ' + nm + ' pumped by a licensed pumper within 30 days.');
+      if (x.badl.length) out.push('Hire a licensed contractor to fix ' + nm + ': ' + x.badl.join('; ').toLowerCase() + '.');
+      else if (x.k && x.k.eff_ok === false) out.push('Hire a licensed contractor to check the pump flow at ' + nm + '.');
+    }); }
     return out;
   };
 
+  // ---- flexible systems: extra tanks, check cards, permit details
+  OWI.TANK_ITEMS = { septic: OWI.SECTIONS[0].items, pump: OWI.SECTIONS[1].items.concat([['floats', 'Floats functioning properly'], ['alarm', 'Audible and visual alarm functioning']]) };
+  OWI.TEMPLATES = [
+    { k: 'gravity', t: 'Septic tank with gravity field', zone: 'Lateral', cards: [] },
+    { k: 'pump', t: 'Pump to field', zone: 'Lateral', cards: [] },
+    { k: 'drip', t: 'Drip irrigation (Type V)', zone: 'Zone', cards: [{ title: 'Drip headworks and filter', items: ['Filter cleaned', 'Zone valves open and close', 'Air release valves working', 'Field flushed'] }] },
+    { k: 'treat', t: 'Treatment unit (AdvanTex, E-Z Treat)', zone: 'Lateral', cards: [{ title: 'Treatment unit', items: ['Unit running normally', 'Blower or pump working', 'Alarm working', 'Filter or media checked', 'Discharge clear'] }] },
+    { k: 'blank', t: 'Blank', zone: 'Lateral', cards: [] }
+  ];
+  OWI.CONDITIONS = ['Contract on file with county', 'Annual monitoring fee paid', 'Grass cover and trench lines settled', 'Repair area kept clear', 'Water supply and well distance checked'];
+  OWI.FREQ = [['', 'Not set'], ['q1s', 'Quarterly the first year, then twice a year'], ['q', 'Quarterly'], ['s', 'Twice a year'], ['a', 'Once a year']];
+  var DAY = 86400000, isoDay = /^\d{4}-\d{2}-\d{2}$/;
+  var addDays = function (iso, k) { var d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + k); return d.toISOString().slice(0, 10); };
+  OWI.addDays = addDays;
+  OWI.permitInfo = function (p, today) {
+    p = p || {}; var mo = n(p.months);
+    if (!isoDay.test(p.issued || '') || !mo || mo < 1 || mo > 240) return { expires: '', expired: null, days: null };
+    var d = new Date(p.issued + 'T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() + mo); var exp = d.toISOString().slice(0, 10);
+    return { expires: exp, expired: exp < today, days: Math.round((Date.parse(exp + 'T12:00:00Z') - Date.parse(today + 'T12:00:00Z')) / DAY) };
+  };
+  // suggested next check-up from the permit's schedule; first = date of the earliest inspection on file
+  OWI.nextDue = function (freq, visit, first) {
+    var days = { q: 91, s: 182, a: 365 }[freq] || 182;
+    if (freq === 'q1s') days = !first || (Date.parse(visit + 'T12:00:00Z') - Date.parse(first + 'T12:00:00Z')) / DAY < 365 ? 91 : 182;
+    return addDays(visit, days);
+  };
+  OWI.calcTank = function (t, kind) {
+    var o = { formulas: {} };
+    if (kind === 'septic') {
+      var ld = n(t.liquid_depth), sl = n(t.sludge);
+      o.sludge_pct = sl !== null && ld ? r1(sl / ld * 100) : null; o.pump_now = o.sludge_pct !== null && o.sludge_pct >= OWI.PUMP_AT;
+      if (o.sludge_pct !== null) o.formulas.sludge = sl + ' / ' + ld + ' = ' + o.sludge_pct + '%';
+      return o;
+    }
+    var g = OWI.gpi(t.shape, t.a, t.b), fromDims = g !== null; if (g === null) g = n(t.gpi);
+    var fl = t.flow || {}, pd = { gpi: g, flow: { on: fl.on, off: fl.off, min: fl.min, gpi: g, design_pdr: t.design_pdr }, floats: t.floats || {}, meters: {} };
+    var c = OWI.calc(pd, { design_pdr: t.design_pdr }); c.formulas = OWI.formulas(pd, c, { design_pdr: t.design_pdr });
+    if (fromDims) c.formulas.gpi = OWI.gpiFormula(t.shape, t.a, t.b);
+    c.gpi = g; return c;
+  };
+  // the extra tanks and check cards of one report, ready to show (shared by the web pages and the PDFs)
+  OWI.extras = function (d, c) {
+    var out = { tanks: [], cards: [], malfunction: d.malfunction && d.malfunction.found ? d.malfunction : null }, ct = (c && c.tanks) || {};
+    Object.keys(d.tanks || {}).forEach(function (id) {
+      var t = d.tanks[id], k = ct[id] || {}, items = OWI.TANK_ITEMS[t.kind] || [];
+      var checks = items.map(function (it) { var a = (t.checks || {})[it[0]]; return { l: it[1], a: a || '', bad: a === 'no' && it[2] !== 'i' }; });
+      var badl = checks.filter(function (x) { return x.bad; }).map(function (x) { return x.l; });
+      var bad = badl.length > 0 || !!k.pump_now || k.eff_ok === false;
+      out.tanks.push({ id: id, kind: t.kind, name: t.name || (t.kind === 'pump' ? 'Pump tank' : 'Septic tank'), t: t, k: k, checks: checks, bad: bad, badl: badl });
+    });
+    Object.keys(d.cards || {}).forEach(function (id) {
+      var cd = d.cards[id], rows = (cd.rows || []).map(function (r) { return { l: r.l, a: r.a, bad: r.a === 'no' }; });
+      out.cards.push({ id: id, title: cd.title, rows: rows, bad: rows.some(function (r) { return r.bad; }), badl: rows.filter(function (r) { return r.bad; }).map(function (r) { return r.l; }) });
+    });
+    return out;
+  };
+  // plain-language line for one extra tank or card: [label, tone, text]
+  OWI.plainExtra = function (x) {
+    var W = function (k, i) { return OWI.WORDS.filter(function (q) { return q.k === k; })[0].o[i][2]; };
+    if (x.kind === 'septic') {
+      if (x.k.pump_now) return ['Fix now', 'b', W('solids', 2)];
+      if (x.bad) return ['Fix soon', 'w', 'Needs attention: ' + x.badl.join('; ') + '.'];
+      return ['Good', 'g', 'Lids, risers and filter were checked and are sound.' + (x.k.sludge_pct != null ? ' Solids are ' + Math.round(x.k.sludge_pct) + '% of the tank, below the one-third pumping point.' : '')];
+    }
+    if (x.kind === 'pump') {
+      if (x.k.eff_ok === false) return ['Fix soon', 'w', W('flow', x.k.eff > 100 ? 1 : 2)];
+      if (x.bad) return ['Fix soon', 'w', 'Needs attention: ' + x.badl.join('; ') + '.'];
+      return ['Good', 'g', 'The floats, alarm and pump were tested and work.' + (x.k.pdr != null ? ' The pump moves ' + x.k.pdr + ' gallons per minute.' : '')];
+    }
+    return x.bad ? ['Fix soon', 'w', 'Needs attention: ' + x.badl.join('; ') + '.'] : ['Good', 'g', 'Everything checked here was fine.'];
+  };
+
   // cap and clean what comes in so a bad request cannot store junk
-  OWI.sanitize = function (b) {
+  OWI.sanitize = function (b, sys) {
     var S = function (v, m) { return String(v == null ? '' : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').slice(0, m); };
     var N = function (v) { var x = n(v); return x !== null && x >= 0 && x < 1e6 ? x : null; };
     var s = b || {}, d = { checks: {}, words: {}, laterals: [] };
@@ -133,6 +215,21 @@
     d.recs = S(s.recs, 1500); d.comments = S(s.comments, 1500);
     d.status = OWI.STATUS.indexOf(s.status) >= 0 ? s.status : 'Incomplete inspection';
     d.next_due = /^\d{4}-\d{2}-\d{2}$/.test(s.next_due || '') ? s.next_due : '';
+    // extra tanks and check cards come from the saved system, so only known ids are kept
+    sys = sys || {}; var D = function (v) { return isoDay.test(v || '') ? v : ''; };
+    d.tanks = {}; (sys.tanks || []).forEach(function (t) {
+      var x = s.tanks && s.tanks[t.id]; if (!x) return; var k = t.kind === 'pump' ? 'pump' : 'septic', o = { kind: k, name: S(t.name, 60), checks: {} };
+      OWI.TANK_ITEMS[k].forEach(function (it) { var a = x.checks && x.checks[it[0]]; if (YN.indexOf(a) >= 0) o.checks[it[0]] = a; });
+      o.scum = N(x.scum); o.sludge = N(x.sludge); o.pumped = D(x.pumped); o.pump_needed = x.pump_needed === 'Yes' ? 'Yes' : 'No';
+      o.liquid_depth = N(x.liquid_depth); o.gal = N(x.gal); o.shape = x.shape === 'round' ? 'round' : 'rect'; o.a = N(x.a); o.b = N(x.b); o.gpi = N(x.gpi); o.design_pdr = N(x.design_pdr);
+      var fl = x.floats || {}; o.floats = { alarm: N(fl.alarm), on: N(fl.on), off: N(fl.off) }; var fw = x.flow || {}; o.flow = { off: N(fw.off), on: N(fw.on), min: N(fw.min) };
+      d.tanks[t.id] = o;
+    });
+    d.cards = {}; (sys.cards || []).forEach(function (cd) {
+      var x = s.cards && s.cards[cd.id]; if (!x) return;
+      d.cards[cd.id] = { title: S(cd.title, 60), rows: (Array.isArray(x.rows) ? x.rows : []).slice(0, 30).map(function (r) { r = r || {}; return { l: S(r.l, 120), a: YN.indexOf(r.a) >= 0 ? r.a : '' }; }).filter(function (r) { return r.l; }) };
+    });
+    var mf = s.malfunction || {}; d.malfunction = { found: mf.found === true, notified: S(mf.notified, 200) };
     return d;
   };
   g.OWI = OWI;

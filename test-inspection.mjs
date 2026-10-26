@@ -119,4 +119,44 @@ ok(!home.includes('PRIVATE') && !home.includes('<script'), 'homeowner copy has n
 const evil = OWI.homeHtml({ visit_date: '2026-10-26', insp: { data: { ...insp.data, recs: '<script>alert(1)</script>' }, calc: insp.calc, photos: 0 } }, { name: '<b>x</b>', address: 'y' }, { name: 'J', cert: 'S' });
 ok(!evil.includes('<script>') && !evil.includes('<b>x</b>'), 'text is escaped in the report');
 
+
+// ---- flexible systems: permit details, extra tanks, check cards, malfunction
+j = await J(await adm('/admin/api/customer', { name: 'Sean Wilkins', email: 'sean@wilkins.com', address: '1718 Charlie Brooks Rd, Moncure', county: 'Chatham', sys_type: 'Va', permit: 'PREH201803187' })); const wid = j.id;
+const SETUP = { permit: { county: 'Chatham', parcel: '78733', type: 'Va', issued: '2019-03-21', months: 60, ca_no: 'PREH201803187', bedrooms: 6, occupants: 12, freq: 'q1s', owners: 'Sean and Stacy Wilkins', bogus: 'x' }, addresses: ['1718 Charlie Brooks Rd', '1720 Charlie Brooks Rd'], septic_name: 'Septic tank 1 (1718)', pump_name: 'Pump tank 1 (1718)', zone_word: 'Zone', design_flow: 720, sys_desc: 'Type Va drip',
+  tanks: [{ id: 'ts2', kind: 'septic', name: 'Septic tank 2 (1720)' }, { id: 'tp2', kind: 'pump', name: 'Pump tank 2 (1720)' }], cards: [{ id: 'hw', title: 'Drip headworks and filter', items: ['Filter cleaned', 'Zone valves open and close'] }, { id: 'cond', title: 'Permit conditions', items: ['Contract on file with county'] }] };
+j = await J(await adm('/admin/api/system', { customer_id: wid, system: SETUP })); ok(j.ok && j.system.tanks.length === 2 && j.system.permit.bogus === undefined && j.system.zone_word === 'Zone', 'system setup saved (permit, addresses, tanks, cards)');
+j = await J(await adm('/admin/api/system?customer_id=' + wid + '&date=2026-10-26')); ok(j.system.permit.parcel === '78733' && j.system.cards[0].items.length === 2 && j.first === '', 'setup comes back; no inspection on file yet');
+ok(OWI0.permitInfo(j.system.permit, '2026-10-26').expired === true && OWI0.permitInfo(j.system.permit, '2026-10-26').expires === '2024-03-21', 'permit expiry: issued Mar 21 2019 + 60 months = Mar 21 2024, expired');
+ok(OWI0.nextDue('q1s', '2026-10-26', '') === '2027-01-25' && OWI0.nextDue('q1s', '2026-10-26', '2024-01-01') === '2027-04-26' && OWI0.nextDue('a', '2026-10-26') === '2027-10-26', 'next due follows the permit schedule (quarterly first year, then twice a year)');
+const xsys = () => ({ ...SETUP, tanks: [{ ...SETUP.tanks[0], gal: 1000, shape: 'rect', a: 93, b: 52, liquid_depth: 52 }, { ...SETUP.tanks[1], gal: 1000, shape: 'rect', a: 93, b: 52, design_pdr: 17.8, floats: { alarm: 40, on: 25, off: 20 } }] });
+const xform = o => form({ septic_gal: 1000, tanks: { ts2: { checks: { risers: 'yes', lids: 'no', screen_ok: 'yes' }, sludge: 18, scum: 2, liquid_depth: 52, gal: 1000, shape: 'rect', a: 93, b: 52, pumped: '2024-05-01', pump_needed: 'No' },
+  tp2: { checks: { floats: 'yes', alarm: 'yes' }, gal: 1000, shape: 'rect', a: 93, b: 52, design_pdr: 17.8, floats: { alarm: 40, on: 25, off: 20 }, flow: { off: 40.5, on: 45.5, min: 5 } }, nope: { checks: { lids: 'no' } } },
+  cards: { hw: { rows: [{ l: 'Filter cleaned', a: 'yes' }, { l: 'Zone valves open and close', a: 'no' }, { l: 'Air release valves working', a: 'yes' }] }, cond: { rows: [{ l: 'Contract on file with county', a: 'yes' }] }, other: { rows: [{ l: 'x', a: 'no' }] } },
+  malfunction: { found: true, notified: 'Called Thomas Boyce on the visit day' }, ...o });
+const wp = await J(await adm('/admin/api/inspection', { customer_id: wid, visit_date: '2026-10-26', data: xform(), system: xsys() })); ok(wp.ok, 'inspection with extra tanks and cards saved');
+j = await J(await adm('/admin/api/customer/' + wid)); const wr = j.reports.find(x => x.id === wp.id), wd = wr.insp.data, wc = wr.insp.calc;
+ok(Object.keys(wd.tanks).join() === 'ts2,tp2' && Object.keys(wd.cards).join() === 'hw,cond', 'only tanks and cards that exist in the setup are kept (unknown ids are dropped)');
+ok(wc.tanks.ts2.sludge_pct === 34.6 && wc.tanks.ts2.pump_now === true && wc.tanks.ts2.formulas.sludge === '18 / 52 = 34.6%', 'extra septic tank: 18 of 52 in = 34.6%, pump now');
+ok(wc.tanks.tp2.gpi === 20.9 && wc.tanks.tp2.depth === 5 && wc.tanks.tp2.vol === 105 && wc.tanks.tp2.pdr === 21 && wc.tanks.tp2.eff === 118 && wc.tanks.tp2.eff_ok === false && wc.tanks.tp2.dose === 105 && wc.tanks.tp2.formulas.vol === '5 x 20.9 = 105 gal', 'extra pump tank: its own flow test, efficiency and dose with formulas');
+j = await J(await adm('/admin/api/system?customer_id=' + wid + '&date=2026-12-01')); ok(j.system.tanks[1].gpi === 20.9 && j.system.tanks[1].design_pdr === 17.8 && j.system.tanks[1].floats.on === 25 && j.first === '2026-10-26', 'tank sizes and floats are remembered on the system');
+// setup edits keep what visits saved
+const again = { ...SETUP, tanks: [{ id: 'ts2', kind: 'septic', name: 'Back septic tank' }, { id: 'tp2', kind: 'pump', name: 'Back pump tank' }] };
+j = await J(await adm('/admin/api/system', { customer_id: wid, system: again })); ok(j.system.tanks[0].name === 'Back septic tank' && j.system.tanks[0].a === 93 && j.system.tanks[1].design_pdr === 17.8, 'renaming a tank in setup keeps its saved size and design numbers');
+j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP, tanks: [] } })); ok(j.system.tanks.length === 0, 'a tank can be removed in setup');
+await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP, cards: SETUP.cards } });
+ok(wr.checks.length === 4 + 4 && wr.checks.find(x => x.label === 'Septic tank 2 (1720)').status === 'repair' && wr.checks.find(x => x.label === 'Drip headworks and filter').status === 'repair' && wr.checks.find(x => x.label === 'Permit conditions').status === 'pass', 'roll-up includes each extra tank and card');
+ok(OWI0.problems(wd).length === 3, 'problems counted across the form, tanks and cards: control panel, lid, zone valves');
+// the reports show it all
+const wh = OWI0.homeHtml({ visit_date: '2026-10-26', insp: wr.insp }, { name: 'Sean Wilkins', address: '1718 Charlie Brooks Rd' }, wd.operator);
+ok(wh.includes('Septic tank 2 (1720)') && wh.includes('Pump tank 2 (1720)') && wh.includes('Drip headworks and filter') && wh.includes('Solids in Septic tank 2 (1720)') && wh.includes('Septic tank 1 (1718)') && wh.includes('Pump tank 1 (1718)'), 'homeowner copy: named tanks, extra rows and numbers');
+const wch = OWI0.countyHtml({ visit_date: '2026-10-26', insp: wr.insp }, { name: 'Sean Wilkins', address: '1718 Charlie Brooks Rd', county: 'Chatham', permit: 'x' }, wd.operator);
+ok(wch.includes('78733') && wch.includes('PREH201803187') && wch.includes('Issued Mar 21, 2019, valid until Mar 21, 2024') && wch.includes('6 bedrooms, up to 12 occupants') && wch.includes('Quarterly the first year, then twice a year') && wch.includes('1720 Charlie Brooks Rd'), 'county copy: parcel, permit numbers and dates, capacity, schedule, both addresses');
+ok(wch.includes('<h3>Septic tank 2 (1720)</h3>') && wch.includes('34.6% of liquid depth') && wch.includes('<h3>Pump tank 2 (1720)</h3>') && wch.includes('118% (outside 10% of design)') && wch.includes('<h3>Drip headworks and filter</h3>') && wch.includes('Zone valves open and close'), 'county copy: each extra tank and card with its own numbers');
+ok(wch.includes('Malfunction found at this visit.') && wch.includes('Called Thomas Boyce on the visit day'), 'county copy: malfunction and county notice');
+ok(wch.includes('<th>Zone</th>'), 'county copy: field lines are called Zones when the system says so');
+ok(!/expired/i.test(wch), 'county copy prints permit dates but never the word expired');
+ok(wh.includes('<li><u>Have Septic tank 2 (1720) pumped by a licensed pumper within 30 days.</u></li>') && wh.includes('Hire a licensed contractor to fix Septic tank 2 (1720): risers and lids intact.') && wh.includes('check the pump flow at Pump tank 2 (1720)') && !wh.includes('Nothing needed right now'), 'problems on extra tanks always appear in what the owner should do');
+const old2 = OWI0.countyHtml({ visit_date: '2026-10-26', insp: { data: { ...rep2.insp.data }, calc: rep2.insp.calc, photos: 0 } }, { name: 'Ann Home', address: '12 Oak St' }, rep2.insp.data.operator);
+ok(old2.includes('Septic tank') && old2.includes('<th>Lateral</th>') && !old2.includes('Malfunction found'), 'older inspections (no extras) still render the same');
+
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);

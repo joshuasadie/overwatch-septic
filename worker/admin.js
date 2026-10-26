@@ -1,7 +1,7 @@
 // Admin API (Cloudflare Access protected): customers, contracts, reports.
 import { reply, clean, id, EMAIL, siteOrigin, sendMail, readJson, originOk, verifyAccess, ensureSchema } from './lib.js';
 import { createInvoice, markPaid, releaseInvoice, releaseReport, sendCountyReport, sendNotice, noticeDrafts, toCents, etDate, daysBetween } from './billing.js';
-import { operatorOf, systemInfo, createInspection, attachInspections, uploadPhoto, servePhoto, deleteInspectionFiles } from './inspection.js';
+import { operatorOf, systemInfo, createInspection, saveSystem, attachInspections, uploadPhoto, servePhoto, deleteInspectionFiles } from './inspection.js';
 import { createContract, resendContract, voidContract, countersign, publicView } from './contracts.js';
 
 export const READINGS = { pump_min: 'Pump run time (minutes per cycle)', sludge_in: 'Sludge depth (inches in tank)', water_gpd: 'Water use (gallons per day)' };
@@ -125,6 +125,12 @@ export async function adminApi(request, env, path) {
     if (!(await env.DB.prepare('SELECT 1 AS x FROM customers WHERE id = ?').bind(cid).first())) return reply({ ok: false, error: 'Not found.' }, 404);
     const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.get('date') || '') ? sp.get('date') : etDate();
     return reply({ ok: true, ...(await systemInfo(env, cid, date)) });
+  }
+  if (path === '/admin/api/system' && method === 'POST') {
+    const j = await readJson(request, 65536); if (j.res) return j.res;
+    const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(String(j.body.customer_id || '')).first();
+    if (!c) return reply({ ok: false, error: 'Not found.' }, 404);
+    return out(await saveSystem(env, email, c, j.body.system || {}));
   }
   if (path === '/admin/api/inspection' && method === 'POST') {
     const j = await readJson(request, 65536); if (j.res) return j.res;
