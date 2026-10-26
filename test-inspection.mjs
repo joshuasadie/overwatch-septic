@@ -159,4 +159,23 @@ ok(wh.includes('<li><u>Have Septic tank 2 (1720) pumped by a licensed pumper wit
 const old2 = OWI0.countyHtml({ visit_date: '2026-10-26', insp: { data: { ...rep2.insp.data }, calc: rep2.insp.calc, photos: 0 } }, { name: 'Ann Home', address: '12 Oak St' }, rep2.insp.data.operator);
 ok(old2.includes('Septic tank') && old2.includes('<th>Lateral</th>') && !old2.includes('Malfunction found'), 'older inspections (no extras) still render the same');
 
+
+// ---- state approved-tank list lookup
+import { readFileSync } from 'node:fs';
+const TL = JSON.parse(readFileSync(new URL('./site/admin/tank-list.json', import.meta.url)));
+ok(TL.length > 1000, 'approved-tank list loaded (' + TL.length + ' tanks)');
+let hit = OWI0.findTanks(TL, 'STB-760'); ok(hit.length === 1 && hit[0][2] === 'Shoaf Precast, Inc', 'STB-760 is found: Shoaf Precast');
+let fill = OWI0.tankFill(hit[0]); ok(fill.gal === 1000 && fill.a === 100 && fill.b === 46 && fill.shape === 'rect' && fill.gpi === 19.9 && fill.liq === 50, 'STB-760: 1,000 gal, inside 100 x 46, 19.9 gal/in, about 50 in of liquid');
+hit = OWI0.findTanks(TL, ' pt-308 '); fill = OWI0.tankFill(hit[0]); ok(hit.length === 1 && fill.a === 100 && fill.b === 50 && fill.gpi === 21.6 && fill.liq === 46, 'PT-308 (any case, spaces ignored): inside 100 x 50, 21.6 gal/in, about 46 in');
+ok(OWI0.findTanks(TL, 'SHOAF-STB-760-1000').length === 1 && OWI0.findTanks(TL, 'shoaf-stb-760').length === 2, 'the full imprint finds one tank; part of it lists every close match (STB-760 and STB-760R)');
+ok(OWI0.findTanks(TL, 'PT-96').length > 1, 'a model number used by several manufacturers returns each, so you can choose');
+ok(OWI0.findTanks(TL, 'zz').length === 0 && OWI0.findTanks(TL, 'NOT-A-TANK').length === 0, 'unknown or too-short model numbers find nothing');
+const oct = TL.find(r => r[5] === 'o' && r[9]); fill = OWI0.tankFill(oct); ok(fill.a === null && fill.gpi === oct[9] && /gal\/in/.test(fill.note), 'an octagonal tank has no usable length and width, so gallons per inch comes from the list');
+// dimensions saved from setup reach the visit form
+j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP, septic_model: 'STB-760', septic_gal: 1000, septic_shape: 'rect', septic_a: 100, septic_b: 46, pump_model: 'PT-308', pump_gal: 1000, tank_shape: 'rect', tank_a: 100, tank_b: 50, gpi: 99,
+  tanks: [{ id: 'ts2', kind: 'septic', name: 'Septic tank 2 (1720)', model: 'STB-760', gal: 1000, shape: 'rect', a: 100, b: 46 }, { id: 'tp2', kind: 'pump', name: 'Pump tank 2 (1720)', model: 'PT-308', gal: 1000, shape: 'rect', a: 100, b: 50, gpi: 7 }] } }));
+ok(j.system.septic_model === 'STB-760' && j.system.pump_model === 'PT-308' && j.system.septic_a === 100 && j.system.tank_a === 100 && j.system.tank_b === 50, 'tank models and inside dimensions are saved in setup');
+ok(j.system.gpi === 21.6 && j.system.tanks[1].gpi === 21.6 && j.system.tanks[1].model === 'PT-308' && j.system.tanks[0].a === 100, 'gallons per inch is worked out on the server from the saved dimensions, not trusted from the browser');
+j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP, tanks: [{ id: 'ts2', kind: 'septic', name: 'Renamed' }, { id: 'tp2', kind: 'pump', name: 'Pump 2' }] } })); ok(j.system.tanks[0].a === 100 && j.system.tanks[0].model === 'STB-760' && j.system.pump_model === 'PT-308', 'a setup save that leaves the sizes out does not wipe them');
+
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);

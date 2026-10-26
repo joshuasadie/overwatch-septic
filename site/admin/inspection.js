@@ -114,7 +114,7 @@
     var lat = []; document.querySelectorAll('#latb tr').forEach(function (tr) { var i = tr.getAttribute('data-lat'); lat.push({ length: num('lat_len_' + i), design: num('lat_des_' + i) }); });
     var b = JSON.parse(JSON.stringify(ctx.sys || {}));
     Object.assign(b, { sys_desc: val('s_desc'), design_flow: num('s_flow'), septic_gal: num('s_sgal'), liquid_depth: num('s_ld'), pump_gal: num('s_pgal'), gpi: num('s_gpi'), tank_shape: val('s_shape'), tank_a: num('s_a'), tank_b: num('s_b'), floats: { alarm: num('i_fa'), on: num('i_fon'), off: num('i_foff') }, dose: num('f_dose'), design_pdr: num('s_dpdr'), laterals: lat });
-    b.tanks = (ctx.sys.tanks || []).map(function (t) { var x = tankData(t); return { id: t.id, kind: t.kind, name: t.name, gal: x.gal, shape: x.shape, a: x.a, b: x.b, gpi: x.gpi, liquid_depth: x.liquid_depth, design_pdr: x.design_pdr, floats: x.floats }; });
+    b.tanks = (ctx.sys.tanks || []).map(function (t) { var x = tankData(t); return { id: t.id, kind: t.kind, name: t.name, model: t.model, gal: x.gal, shape: x.shape, a: x.a, b: x.b, gpi: x.gpi, liquid_depth: x.liquid_depth, design_pdr: x.design_pdr, floats: x.floats }; });
     b.cards = (ctx.sys.cards || []).map(function (cd) { return { id: cd.id, title: cd.title, items: cardRows(cd.id).map(function (r) { return r.l; }) }; });
     return b;
   }
@@ -258,19 +258,32 @@
   }
 
   // ---- System setup: permit, addresses, names, tanks and check cards (tank sizes and readings are entered during visits)
-  var SU = null;
+  var SU = null, TANKS = null;
   var rid = function () { return Math.random().toString(36).slice(2, 8); };
+  // the state's approved-tank list, loaded the first time a model number is typed
+  function tankList() { if (TANKS) return Promise.resolve(TANKS); return fetch('/admin/tank-list.json', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; }).then(function (l) { TANKS = l; return l; }); }
+  // one tank's fields: name, model number from the permit or the tank, size, and inside dimensions
+  function tankBlock(P, t, label, rm) {
+    var f = function (k, l, v, x) { return fld(P + k, l, 'value="' + E(v == null ? '' : v) + '" ' + (x || '')); };
+    return '<div class="item" style="display:block" data-tb="' + P + '"><div class="row" style="justify-content:space-between"><b>' + E(label) + '</b>' + (rm === undefined ? '' : '<button type="button" class="b danger" data-rmtank="' + rm + '">Remove</button>') + '</div>' +
+      '<div class="two">' + f('name', 'Name', t.name, 'maxlength="60"') + f('model', 'Tank model number (e.g. STB-760 or PT-308)', t.model, 'maxlength="60" autocomplete="off"') + '</div><div class="msg" id="' + P + 'pick" hidden></div><p class="mute sm" id="' + P + 'note"></p>' +
+      '<div class="three">' + f('gal', 'Size (gal)', t.gal, dec) + '<div><label for="' + P + 'shape">Shape</label><select id="' + P + 'shape"><option value="rect"' + (t.shape === 'round' ? '' : ' selected') + '>Rectangular</option><option value="round"' + (t.shape === 'round' ? ' selected' : '') + '>Round</option></select></div><div></div>' + f('a', 'Inside length or diameter (in)', t.a, dec) + f('b', 'Inside width (in)', t.b, dec) + '<div><label for="' + P + 'gpi">Gallons per inch</label><input id="' + P + 'gpi" class="auto" readonly tabindex="-1" value="' + E(t.gpi == null ? '' : t.gpi) + '"></div></div></div>';
+  }
+  function readTank(P, t) {
+    var g = function (k) { return num(P + k); }; t.name = val(P + 'name'); t.model = val(P + 'model'); t.gal = g('gal'); t.shape = val(P + 'shape'); t.a = g('a'); t.b = g('b');
+    var q = OWI.gpi(t.shape, t.a, t.b); t.gpi = q !== null ? q : (t.gpi_list || t.gpi || null); $(P + 'gpi').value = t.gpi == null ? '' : t.gpi;
+  }
   function setupHtml() {
     var p = SU.permit, pi = OWI.permitInfo(p, today()), f = function (id, label, v, extra) { return fld(id, label, 'value="' + E(v == null ? '' : v) + '" ' + (extra || '')); };
-    var h = '<h2>System setup</h2><p class="mute">' + E(D.customer.name) + '. Fill this in once. Every visit form is built from it. Tank sizes and float settings are entered during a visit and remembered.</p><div class="msg" id="sm" role="status"></div>';
+    var h = '<h2>System setup</h2><p class="mute">' + E(D.customer.name) + '. Fill this in once. Every visit form is built from it. Type a tank model number and the size and inside dimensions fill in from the state approved-tank list.</p><div class="msg" id="sm" role="status"></div>';
     h += '<div class="fcard" style="padding:12px 14px"><h3>Start from a template</h3><p class="mute sm">A template only sets which check cards start on the list. You can add or remove anything afterward.</p><div class="row">' + OWI.TEMPLATES.map(function (t) { return '<button type="button" class="b alt" data-tpl="' + t.k + '">' + E(t.t) + '</button>'; }).join('') + '</div></div>';
     h += '<div class="fcard" style="padding:12px 14px"><h3>Permit and county details</h3><div class="two">' + f('su_county', 'County', p.county) + f('su_parcel', 'Parcel number', p.parcel) + f('su_type', 'System type', p.type) + f('su_desc', 'Description of system', SU.sys_desc) +
       f('su_issued', 'Operation permit issued', p.issued, 'type="date"') + f('su_months', 'Valid for (months)', p.months, dec) + '<div><label for="su_exp">Expires</label><input id="su_exp" class="auto" readonly tabindex="-1" value="' + E(pi.expires ? OW.date(pi.expires) : '') + '"></div>' +
       f('su_ca', 'Construction authorization no.', p.ca_no) + f('su_ip', 'Improvement permit no.', p.ip_no) + f('su_other', 'Other permit or approval no.', p.other_no) + f('su_flow', 'Design flow (gallons per day)', SU.design_flow, dec) + f('su_bed', 'Bedrooms', p.bedrooms, dec) + f('su_occ', 'Max occupants', p.occupants, dec) +
       '<div><label for="su_freq">Inspection frequency</label><select id="su_freq">' + OWI.FREQ.map(function (q) { return '<option value="' + q[0] + '"' + (q[0] === p.freq ? ' selected' : '') + '>' + E(q[1]) + '</option>'; }).join('') + '</select></div></div><p class="note" id="su_warn"' + (pi.expired ? '' : ' hidden') + '>The permit date entered is past its expiry. The visit form will show a warning until a new permit date is saved.</p></div>';
     h += '<div class="fcard" style="padding:12px 14px"><h3>Owners and addresses</h3>' + f('su_owners', 'Owner(s)', p.owners) + (SU.addresses.length ? SU.addresses : ['']).map(function (a, i) { return f('su_addr' + i, 'System address ' + (i + 1), a); }).join('') + '<button type="button" class="b alt" id="suAddr" style="margin-top:6px">Add another address</button></div>';
-    h += '<div class="fcard" style="padding:12px 14px"><h3>Tanks</h3><div class="two">' + f('su_sname', 'First septic tank name', SU.septic_name, 'placeholder="Septic tank"') + f('su_pname', 'First pump tank name', SU.pump_name, 'placeholder="Pump tank"') + '</div><p class="mute sm">Add a card for each extra tank. Each gets its own checks, numbers and calculations.</p>' +
-      SU.tanks.map(function (t, i) { return '<div class="item"><span class="pill mute">' + (t.kind === 'pump' ? 'Pump tank' : 'Septic tank') + '</span><input id="su_tn' + i + '" value="' + E(t.name) + '" maxlength="60" aria-label="Tank name" style="flex:1 1 220px"><button type="button" class="b danger" data-rmtank="' + i + '">Remove</button></div>'; }).join('') +
+    h += '<div class="fcard" style="padding:12px 14px"><h3>Tanks</h3><p class="mute sm">Add a card for each extra tank. Each gets its own checks, numbers and calculations. Float settings and liquid depth are entered during a visit.</p>' +
+      tankBlock('su_s_', SU.sep, 'First septic tank') + tankBlock('su_p_', SU.pmp, 'First pump tank') + SU.tanks.map(function (t, i) { return tankBlock('su_t' + i + '_', t, (t.kind === 'pump' ? 'Pump tank' : 'Septic tank') + ' ' + (i + 2), i); }).join('') +
       '<div class="row" style="margin-top:8px"><button type="button" class="b alt" data-addtank="septic">Add septic tank</button><button type="button" class="b alt" data-addtank="pump">Add pump tank</button></div>' +
       '<div style="margin-top:10px"><label for="su_zone">Field lines are called</label><select id="su_zone"><option' + (SU.zone_word === 'Zone' ? '' : ' selected') + '>Lateral</option><option' + (SU.zone_word === 'Zone' ? ' selected' : '') + '>Zone</option></select></div></div>';
     h += '<div class="fcard" style="padding:12px 14px"><h3>Check cards</h3><p class="mute sm">Each card is a list of yes/no checks on every visit: drip headworks, a treatment unit, permit conditions. One check per line.</p>' +
@@ -278,20 +291,39 @@
       '<div class="row" style="margin-top:8px"><button type="button" class="b alt" id="suCard">Add a check card</button><button type="button" class="b alt" id="suCond">Add permit conditions card</button></div></div>';
     return h + '<div class="row" style="margin-top:12px"><button type="button" class="b" id="suSave">Save setup</button><button type="button" class="b alt" id="suCancel">Close</button></div>';
   }
+  function tankFor(P) { if (P === 'su_s_') return SU.sep; if (P === 'su_p_') return SU.pmp; var m = /^su_t(\d+)_$/.exec(P); return m ? SU.tanks[Number(m[1])] : null; }
   function readSetup() {
     if (!$('su_county')) return;
     var p = SU.permit; p.county = val('su_county'); p.parcel = val('su_parcel'); p.type = val('su_type'); p.issued = val('su_issued'); p.months = num('su_months'); p.ca_no = val('su_ca'); p.ip_no = val('su_ip'); p.other_no = val('su_other'); p.bedrooms = num('su_bed'); p.occupants = num('su_occ'); p.freq = val('su_freq'); p.owners = val('su_owners');
-    SU.sys_desc = val('su_desc'); SU.design_flow = num('su_flow'); SU.septic_name = val('su_sname'); SU.pump_name = val('su_pname'); SU.zone_word = val('su_zone');
+    SU.sys_desc = val('su_desc'); SU.design_flow = num('su_flow'); SU.zone_word = val('su_zone');
     SU.addresses = []; for (var i = 0; $('su_addr' + i); i++) if (val('su_addr' + i)) SU.addresses.push(val('su_addr' + i));
-    SU.tanks.forEach(function (t, i) { t.name = val('su_tn' + i); });
+    readTank('su_s_', SU.sep); readTank('su_p_', SU.pmp); SU.tanks.forEach(function (t, i) { readTank('su_t' + i + '_', t); });
     SU.cards.forEach(function (c, i) { c.title = val('su_ct' + i); c.items = $('su_ci' + i).value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean); });
   }
   function showSetup(keepMsg) { var m = keepMsg && $('sm') ? $('sm').textContent : ''; $('panel').innerHTML = setupHtml(); if (m) $('sm').textContent = m; }
+  // a model number was typed: look it up and fill the size and inside dimensions
+  function lookupModel(P) {
+    var t = tankFor(P); if (!t) return; var q = val(P + 'model'), note = $(P + 'note'), pick = $(P + 'pick'); pick.hidden = true; pick.innerHTML = ''; note.textContent = '';
+    if (q.replace(/\s/g, '').length < 3) return;
+    tankList().then(function (list) {
+      if (val(P + 'model') !== q) return; var hits = OWI.findTanks(list, q);
+      if (!hits.length) { note.textContent = list.length ? 'Not found in the state approved-tank list. Enter the size and inside dimensions yourself.' : 'The tank list could not be loaded. Enter the size and inside dimensions yourself.'; return; }
+      var apply = function (r) { var o = OWI.tankFill(r); $(P + 'gal').value = o.gal; $(P + 'shape').value = o.shape; $(P + 'a').value = o.a == null ? '' : o.a; $(P + 'b').value = o.b == null ? '' : o.b; t.gpi_list = o.gpi; $(P + 'gpi').value = o.gpi == null ? '' : o.gpi; note.textContent = o.note; recalcGpi(P); };
+      if (hits.length === 1) return apply(hits[0]);
+      pick.hidden = false; pick.innerHTML = '<label for="' + P + 'sel">More than one manufacturer uses ' + E(q.toUpperCase()) + '. Which one?</label><select id="' + P + 'sel"><option value="">Choose...</option>' + hits.map(function (r, i) { return '<option value="' + i + '">' + E(r[2] + ' (' + r[3] + '), ' + r[4] + ' gal') + '</option>'; }).join('') + '</select>';
+      $(P + 'sel').onchange = function () { if (this.value !== '') apply(hits[Number(this.value)]); };
+    });
+  }
+  function recalcGpi(P) { var t = tankFor(P); if (!t) return; var g = OWI.gpi(val(P + 'shape'), val(P + 'a'), val(P + 'b')); $(P + 'gpi').value = g !== null ? g : (t.gpi_list || ''); }
   A.setup = function () {
     D = A.S.d; $('panel').classList.add('wide'); $('panel').innerHTML = '<h2>System setup</h2><p class="mute">Loading...</p>'; $('panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
     OW.api('/admin/api/system?customer_id=' + D.customer.id + '&date=' + today()).then(function (j) {
       if (!j.ok) return A.fail(j); var s = j.system || {}, pm = s.permit || {};
-      SU = { sys_desc: s.sys_desc || '', design_flow: s.design_flow == null ? null : s.design_flow, septic_name: s.septic_name || '', pump_name: s.pump_name || '', zone_word: s.zone_word || 'Lateral', addresses: (s.addresses || []).slice(), tanks: (s.tanks || []).map(function (t) { return { id: t.id, kind: t.kind, name: t.name }; }), cards: (s.cards || []).map(function (c) { return { id: c.id, title: c.title, items: (c.items || []).slice() }; }),
+      SU = { sys_desc: s.sys_desc || '', design_flow: s.design_flow == null ? null : s.design_flow, zone_word: s.zone_word || 'Lateral', addresses: (s.addresses || []).slice(),
+        sep: { name: s.septic_name || '', model: s.septic_model || '', gal: s.septic_gal, shape: s.septic_shape || 'rect', a: s.septic_a, b: s.septic_b, gpi: null },
+        pmp: { name: s.pump_name || '', model: s.pump_model || '', gal: s.pump_gal, shape: s.tank_shape || 'rect', a: s.tank_a, b: s.tank_b, gpi: s.gpi },
+        tanks: (s.tanks || []).map(function (t) { return { id: t.id, kind: t.kind, name: t.name, model: t.model || '', gal: t.gal, shape: t.shape || 'rect', a: t.a, b: t.b, gpi: t.gpi }; }),
+        cards: (s.cards || []).map(function (c) { return { id: c.id, title: c.title, items: (c.items || []).slice() }; }),
         permit: { county: pm.county || D.customer.county || '', parcel: pm.parcel || '', type: pm.type || (D.customer.sys_type ? 'Type ' + D.customer.sys_type : ''), issued: pm.issued || '', months: pm.months == null ? null : pm.months, ca_no: pm.ca_no || '', ip_no: pm.ip_no || '', other_no: pm.other_no || '', bedrooms: pm.bedrooms == null ? null : pm.bedrooms, occupants: pm.occupants == null ? null : pm.occupants, freq: pm.freq || '', owners: pm.owners || D.customer.name || '' } };
       if (!SU.addresses.length && D.customer.address) SU.addresses = [D.customer.address];
       showSetup(); wireSetup();
@@ -299,21 +331,24 @@
   };
   function wireSetup() {
     var P = $('panel');
-    P.oninput = function (e) { if (e.target.id === 'su_issued' || e.target.id === 'su_months') { var pi = OWI.permitInfo({ issued: val('su_issued'), months: num('su_months') }, today()); $('su_exp').value = pi.expires ? OW.date(pi.expires) : ''; $('su_warn').hidden = !pi.expired; } };
+    P.oninput = function (e) { var id = e.target.id; if (id === 'su_issued' || id === 'su_months') { var pi = OWI.permitInfo({ issued: val('su_issued'), months: num('su_months') }, today()); $('su_exp').value = pi.expires ? OW.date(pi.expires) : ''; $('su_warn').hidden = !pi.expired; } var m = /^(su_(?:s|p|t\d+)_)(shape|a|b)$/.exec(id); if (m) recalcGpi(m[1]); };
+    P.onchange = function (e) { var m = /^(su_(?:s|p|t\d+)_)model$/.exec(e.target.id); if (m) lookupModel(m[1]); };
     P.onclick = function (e) {
       var t = e.target, g = function (a) { var b = t.closest('[' + a + ']'); return b ? b.getAttribute(a) : null; };
       if (!$('suSave')) return;
       if (t.id === 'suCancel') { A.refresh(); return; }
       if (g('data-tpl')) { readSetup(); var tp = OWI.TEMPLATES.filter(function (x) { return x.k === g('data-tpl'); })[0]; SU.zone_word = tp.zone; tp.cards.forEach(function (c) { if (!SU.cards.some(function (x) { return x.title === c.title; })) SU.cards.push({ id: rid(), title: c.title, items: c.items.slice() }); }); showSetup(); return; }
       if (t.id === 'suAddr') { readSetup(); if (SU.addresses.length < 4) SU.addresses.push(''); showSetup(); return; }
-      if (g('data-addtank')) { readSetup(); if (SU.tanks.length < 8) { var k = g('data-addtank'), n = SU.tanks.filter(function (x) { return x.kind === k; }).length + 2; SU.tanks.push({ id: rid(), kind: k, name: (k === 'pump' ? 'Pump tank ' : 'Septic tank ') + n }); } showSetup(); return; }
+      if (g('data-addtank')) { readSetup(); if (SU.tanks.length < 8) { var k = g('data-addtank'), n = SU.tanks.filter(function (x) { return x.kind === k; }).length + 2; SU.tanks.push({ id: rid(), kind: k, name: (k === 'pump' ? 'Pump tank ' : 'Septic tank ') + n, model: '', gal: null, shape: 'rect', a: null, b: null, gpi: null }); } showSetup(); return; }
       if (g('data-rmtank') !== null) { readSetup(); SU.tanks.splice(Number(g('data-rmtank')), 1); showSetup(); return; }
       if (t.id === 'suCard') { readSetup(); if (SU.cards.length < 8) SU.cards.push({ id: rid(), title: 'Other checks', items: [] }); showSetup(); return; }
       if (t.id === 'suCond') { readSetup(); if (SU.cards.length < 8) SU.cards.push({ id: rid(), title: 'Permit conditions', items: OWI.CONDITIONS.slice() }); showSetup(); return; }
       if (g('data-rmcard') !== null) { readSetup(); SU.cards.splice(Number(g('data-rmcard')), 1); showSetup(); return; }
       if (t.id === 'suSave') {
         readSetup(); var m = $('sm'); m.className = 'msg'; m.textContent = 'Saving...';
-        OW.api('/admin/api/system', { customer_id: D.customer.id, system: SU }).then(function (j) { if (!j.ok) { m.className = 'msg err'; m.textContent = j.error || 'Could not save.'; return; } OW.toast('System setup saved.'); m.className = 'msg'; m.textContent = 'Saved.'; });
+        var S = SU, body = { permit: S.permit, addresses: S.addresses, sys_desc: S.sys_desc, design_flow: S.design_flow, zone_word: S.zone_word, cards: S.cards, tanks: S.tanks.map(function (x) { return { id: x.id, kind: x.kind, name: x.name, model: x.model, gal: x.gal, shape: x.shape, a: x.a, b: x.b, gpi: x.gpi }; }),
+          septic_name: S.sep.name, septic_model: S.sep.model, septic_gal: S.sep.gal, septic_shape: S.sep.shape, septic_a: S.sep.a, septic_b: S.sep.b, pump_name: S.pmp.name, pump_model: S.pmp.model, pump_gal: S.pmp.gal, tank_shape: S.pmp.shape, tank_a: S.pmp.a, tank_b: S.pmp.b, gpi: S.pmp.gpi };
+        OW.api('/admin/api/system', { customer_id: D.customer.id, system: body }).then(function (j) { if (!j.ok) { m.className = 'msg err'; m.textContent = j.error || 'Could not save.'; return; } OW.toast('System setup saved.'); m.className = 'msg'; m.textContent = 'Saved.'; });
       }
     };
   }
