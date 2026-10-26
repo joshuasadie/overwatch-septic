@@ -34,3 +34,15 @@ Setup:
 5. In the admin portal, add each county's Environmental Health email under Counties. Without it, county copies and notices are blocked and you are told.
 
 Tests: `npm test` runs the API tests, including a clock that moves day by day through the 60-day sequence.
+
+## Inspection reports
+
+`New inspection` on a customer in the admin opens the form modeled on the state's certified operator maintenance/monitoring report. It makes two copies from one visit: a plain-language homeowner report (portal and PDF) and the technical county report (emailed link and PDF). Notes:
+
+- Calculations (depth pumped, volume, PDR and PDR efficiency, sludge percent, per-day meters, design events) are done in `site/inspect-core.js`, which both the browser and the Worker use. The Worker recomputes them when a report is saved.
+- Tank sizes, design numbers and laterals are saved per customer (`systems` table) after the first report. Each report is stored in `inspections`. No existing tables changed.
+- Pump warning at 33% sludge of the liquid depth; PDR warning outside 90% to 110% of design.
+- Operator name and certificate come from `OPERATOR_NAME` and `OPERATOR_CERT` in `wrangler.jsonc`.
+- Photos: JPEG only, resized in the browser, up to 8 per report, stored in the R2 bucket under `reports/<id>/`. The owner sees them only after the report is released.
+- Private comments are never sent to the owner or the county.
+- Canned wording and job lists live in `site/inspect-core.js` (`WORDS`, `JOBS`, `TICKS`).

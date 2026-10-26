@@ -7,6 +7,7 @@
 <div class="top"><span id="brand"></span><span class="row"><span class="who" id="who"></span><button class="b alt" id="out" hidden>Sign out</button></span></div>
 <section class="card" id="hello"><p class="mute">Loading...</p></section>
 <div id="todo" class="in" style="padding:0"></div>
+<section class="card" id="rview" hidden><div class="row" style="justify-content:space-between"><h2 style="margin:0">Your check-up report</h2><button class="b alt" id="rclose">Close</button></div><div id="rbody" style="margin-top:10px"></div></section>
 <section class="card" id="viewer" hidden><div class="row" style="justify-content:space-between"><h2 style="margin:0">Agreement</h2><button class="b alt" id="close">Close</button></div>
 <div class="doc" id="doc" tabindex="0" style="margin-top:10px"></div><div class="sigs" id="sigs"></div>
 <form id="sf" novalidate hidden><label for="nm">Type your full name to sign</label><input id="nm" autocomplete="name" maxlength="100">
@@ -19,4 +20,4 @@
 <section class="card"><h2>How your system is doing</h2><p class="mute" style="margin:0 0 10px">Readings from each visit. A steady line is good news.</p><div class="charts" id="ch"></div></section>
 <section class="card"><h2>Need help?</h2><p style="margin:0 0 8px">If your alarm is going off, send an alarm request.</p><a class="b" href="/#request">Send an alarm request</a></section>
 </div>
-<script src="/vendor/pdf-lib.min.js"></script><script src="/ow.js"></script><script src="/portal/portal.js"></script></body></html>
+<script src="/vendor/pdf-lib.min.js"></script><script src="/inspect-core.js"></script><script src="/inspect-view.js"></script><script src="/ow.js"></script><script src="/portal/portal.js"></script></body></html>

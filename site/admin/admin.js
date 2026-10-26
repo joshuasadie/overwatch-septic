@@ -2,6 +2,7 @@
   var $ = OW.$, E = OW.esc, S = { list: [], sel: null, d: null, cfg: null, editing: null };
   $('brand').innerHTML = OW.brand('/');
   var LS = { get: function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }, set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+  window.OWA = { S: S, LS: LS, fail: fail, get cfg() { return S.cfg; }, refresh: function () { return refresh(); } };
   var CHECKS = ['Pump and float switches', 'Alarm and control panel', 'Drain field', 'Tank condition'];
   function fail(j) { OW.toast(j.error || 'Something went wrong.'); }
 
@@ -56,7 +57,7 @@
   function renderDetail() {
     var d = S.d, c = d.customer, open = d.contracts.filter(function (x) { return x.status === 'sent' || x.status === 'owner_signed'; }).length;
     var h = '<div class="grid2"><section class="card"><h2>' + E(c.name) + '</h2><p class="mute" style="margin:0 0 10px">' + [c.email, c.phone, c.county && c.county + ' County', c.permit && 'Permit ' + c.permit].filter(Boolean).map(E).join(' &middot; ') + '<br>' + E(c.address) + '</p>' + (c.notes ? '<p class="mute" style="font-size:14px">' + E(c.notes) + '</p>' : '') +
-      '<div class="row"><button class="b" id="bSend"' + (open ? ' title="An agreement is already open"' : '') + '>Send contract</button><button class="b alt" id="bRep">Add visit report</button><button class="b alt" id="bEdit">Edit</button></div>' +
+      '<div class="row"><button class="b" id="bSend"' + (open ? ' title="An agreement is already open"' : '') + '>Send contract</button><button class="b" id="bInsp">New inspection</button><button class="b alt" id="bRep">Add visit report</button><button class="b alt" id="bEdit">Edit</button></div>' +
       '<h3 style="margin:16px 0 4px">Contracts</h3><ul class="list">' + (d.contracts.map(function (x) {
         var btns = '<button class="b alt" data-act="view" data-id="' + x.id + '">View</button>';
         if (x.status === 'sent') btns += '<button class="b alt" data-act="resend" data-id="' + x.id + '">Resend link</button>';
@@ -66,9 +67,9 @@
         return '<li><span><b>Inspection and Maintenance Agreement</b><small>Sent ' + E(OW.date(x.created_at)) + (x.owner.signed_at ? ' &middot; customer signed ' + E(OW.date(x.owner.signed_at)) : '') + (x.contractor.signed_at ? ' &middot; you signed ' + E(OW.date(x.contractor.signed_at)) : '') + '</small></span><span class="row">' + OW.pill(x.status) + btns + '</span></li>';
       }).join('') || '<li class="mute">None yet.</li>') + '</ul>' +
       '<h3 style="margin:16px 0 4px">Reports</h3><ul class="list">' + (d.reports.map(function (r) {
-        return '<li><span><b>Visit report, ' + E(OW.date(r.visit_date)) + '</b><small>' + (r.kind === 'upload' ? 'Uploaded PDF' : 'Entered in form') + (r.notes ? ' &middot; ' + E(r.notes.slice(0, 60)) : '') + (r.state === 'held' ? '' : r.county_sent_at ? ' &middot; county copy sent' : ' &middot; county copy not sent') + '</small></span><span class="row">' + (r.state === 'held' ? '<span class="pill warn">Held until paid</span>' : (r.county_sent_at ? '' : '<button class="b alt" data-county-send="' + r.id + '">Send county copy</button>')) + '<button class="b alt" data-rep="pdf" data-id="' + r.id + '">PDF</button><button class="b alt" data-rep="mail" data-id="' + r.id + '">Email customer</button><button class="b danger" data-rep="del" data-id="' + r.id + '">Delete</button></span></li>';
+        return '<li><span><b>' + (r.kind === 'inspection' ? 'Inspection report, ' : 'Visit report, ') + E(OW.date(r.visit_date)) + '</b><small>' + (r.kind === 'upload' ? 'Uploaded PDF' : r.kind === 'inspection' ? E(r.insp ? r.insp.data.status : 'Inspection') + (r.insp && r.insp.calc.pump_now ? ' &middot; time to pump' : '') : 'Entered in form') + (r.notes ? ' &middot; ' + E(r.notes.slice(0, 60)) : '') + (r.state === 'held' ? '' : r.county_sent_at ? ' &middot; county copy sent' : ' &middot; county copy not sent') + '</small></span><span class="row">' + (r.state === 'held' ? '<span class="pill warn">Held until paid</span>' : (r.county_sent_at ? '' : '<button class="b alt" data-county-send="' + r.id + '">Send county copy</button>')) + '' + (r.kind === 'inspection' && r.insp ? '<button class="b alt" data-rep="view" data-id="' + r.id + '">View</button><button class="b alt" data-rep="pdf" data-id="' + r.id + '">Homeowner PDF</button><button class="b alt" data-rep="cpdf" data-id="' + r.id + '">County PDF</button>' : '<button class="b alt" data-rep="pdf" data-id="' + r.id + '">PDF</button>') + '<button class="b alt" data-rep="mail" data-id="' + r.id + '">Email customer</button><button class="b danger" data-rep="del" data-id="' + r.id + '">Delete</button></span></li>';
       }).join('') || '<li class="mute">None yet.</li>') + '</ul></section>' +
-      '<section class="card" id="panel"><h2>Next step</h2><p class="mute">Choose Send contract or Add visit report.</p></section></div>' +
+      '<section class="card" id="panel"><h2>Next step</h2><p class="mute">Choose Send contract or New inspection.</p></section></div>' +
       '<section class="card"><h2>' + E(c.name) + ': readings over time</h2><div class="charts">' + OW.charts(d.reports) + '</div></section>' +
       '<div class="row"><button class="b danger" id="bDel">Delete customer</button></div>';
     $('detail').innerHTML = h;
@@ -136,6 +137,7 @@
     if (t.id === 'bEdit') return void editCustomer(S.d.customer);
     if (t.id === 'bSend') return void contractForm();
     if (t.id === 'bRep') return void reportForm();
+    if (t.id === 'bInsp') return void OWA.inspect();
     if (t.id === 'bDel') { if (confirm('Delete ' + S.d.customer.name + ' and all their reports?')) OW.api('/admin/api/customer-delete', { id: S.sel }).then(function (j) { if (!j.ok) return fail(j); S.sel = null; S.d = null; $('detail').innerHTML = ''; loadList(); OW.toast('Customer deleted.'); }); return; }
     var rv = t.closest('[data-rv]'); if (rv) return void review(rv.getAttribute('data-rv'), rv.getAttribute('data-kind'));
     var pc = t.closest('.pickc'); if (pc) return void select(pc.getAttribute('data-cid'));
@@ -159,6 +161,9 @@
     }
     if (r) {
       var rid = r.getAttribute('data-id'), k = r.getAttribute('data-rep'), rep = S.d.reports.filter(function (z) { return z.id === rid; })[0];
+      if (k === 'view') return void OWA.view(rep, 'home');
+      if (k === 'cpdf') return void OWA.pdf(rep, 'county');
+      if (k === 'pdf' && rep.kind === 'inspection') return void OWA.pdf(rep, 'home');
       if (k === 'pdf') { if (rep.has_pdf) window.open('/admin/api/reports/' + rid + '/pdf', '_blank', 'noopener'); else OW.reportPdf(rep, S.d.customer).then(function (b) { OW.download(b, 'report-' + rep.visit_date + '.pdf'); }); }
       if (k === 'mail') OW.api('/admin/api/report-notify', { id: rid }).then(function (j) { j.ok ? OW.toast('Email sent.') : fail(j); });
       if (k === 'del' && confirm('Delete this report? The customer will no longer see it.')) OW.api('/admin/api/report-delete', { id: rid }).then(function (j) { j.ok ? OW.toast('Deleted.') : fail(j); refresh(); });

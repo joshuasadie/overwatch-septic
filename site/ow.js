@@ -28,26 +28,39 @@
 
   // ---- charts: one small line chart per reading, oldest to newest
   OW.READINGS = [
+    { k: 'pdr_eff', t: 'Pump flow compared with design', u: 'percent of design. Within 10% of 100 is normal', col: '--c1', band: [90, 110], w: 'Why it matters: the pump rate compared with what the system was designed for. Staying within 10% of 100% means the pump and pipes work as intended. Outside that range needs attention.' },
+    { k: 'pdr', t: 'Pump delivery rate (PDR)', u: 'gallons per minute', col: '--c2', w: 'Why it matters: how fast the pump moves water to the drain field. A slow climb or drop over several visits shows wear, a clog or a leak before the system fails.' },
+    { k: 'sludge_pct', t: 'Sludge, share of tank depth', u: 'percent of the liquid depth. Pump at 33% or more', col: '--c3', th: 100 / 3, w: 'Why it matters: solids settle in the tank over time. At one third of the tank depth or more they can carry over into the drain field and ruin it. At 33% the line turns red and it is time to pump.' },
+    { k: 'events_day', t: 'Dose events per day', u: 'times the pump turns on per day', col: '--c2', ds: 'events_design', w: 'Why it matters: how many times a day the pump turns on, compared with the design (design flow divided by dose volume). Much higher than design means more water is entering than the system was built for, such as a leak. Much lower can mean a stuck float or little use.' },
+    { k: 'et_day', t: 'Elapsed time (ET), hours per day', u: 'hours the pump ran per day', col: '--c1', w: 'Why it matters: how many hours a day the pump runs. A sudden rise can mean a leaking toilet or a failing float. A steady line means steady water use.' },
+    { k: 'lat1_head', t: 'Lateral 1 head', u: 'feet of pressure at the end of the pipe', col: '--c3', w: 'Why it matters: the water pressure at the end of a drain field pipe. Even pressure means the pipes spread effluent evenly. A drop can mean a clog, and a rise can mean a blocked or crushed pipe.' },
     { k: 'pump_min', t: 'Pump run time', u: 'minutes per cycle', col: '--c1' },
     { k: 'sludge_in', t: 'Sludge depth', u: 'inches in tank', col: '--c2' },
     { k: 'water_gpd', t: 'Water use', u: 'gallons per day', col: '--c3' }
   ];
-  function chart(def, pts) {
-    var W = 300, H = 150, L = 38, R = 10, T = 12, B = 26;
-    var vs = pts.map(function (p) { return p.v; }), mx = Math.max.apply(null, vs), mn = Math.min(0, Math.min.apply(null, vs));
+  function chart(def, pts, extra) {
+    var W = 300, H = 150, L = 38, R = 10, T = 12, B = 26, ex = extra || [];
+    var vs = pts.map(function (p) { return p.v; }).concat(ex.map(function (e) { return e.v; })), mx = Math.max.apply(null, vs), mn = Math.min(0, Math.min.apply(null, vs));
     if (mx === mn) mx = mn + 1; mx = mx + (mx - mn) * 0.12;
     var n = pts.length, x = function (i) { return n === 1 ? (L + W - R) / 2 : L + i * (W - L - R) / (n - 1); }, y = function (v) { return T + (1 - (v - mn) / (mx - mn)) * (H - T - B); };
     var g = ''; [mn, (mn + mx) / 2, mx].forEach(function (t) { g += '<line class="axis" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t) + '" y2="' + y(t) + '"/><text class="lab" x="' + (L - 5) + '" y="' + (y(t) + 4) + '" text-anchor="end">' + (Math.round(t * 10) / 10) + '</text>'; });
+    ex.forEach(function (e) { g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(e.v) + '" y2="' + y(e.v) + '" stroke="var(' + e.col + ')" stroke-width="1.5" stroke-dasharray="5 4"/><text class="lab" x="' + (e.right ? W - R : L + 4) + '" y="' + (y(e.v) + (e.below ? 13 : -4)) + '" text-anchor="' + (e.right ? 'end' : 'start') + '" style="fill:var(' + e.col + ');font-weight:600">' + OW.esc(e.label) + '</text>'; });
     var step = Math.ceil(n / 5), lx = pts.map(function (p, i) { return (i % step === 0 || i === n - 1) ? '<text class="lab" x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="' + (n > 1 && i === n - 1 ? 'end' : 'middle') + '">' + OW.esc(new Date(p.d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', year: '2-digit' })) + '</text>' : ''; }).join('');
     var line = n > 1 ? '<polyline points="' + pts.map(function (p, i) { return x(i) + ',' + y(p.v); }).join(' ') + '" fill="none" stroke="var(' + def.col + ')" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' : '';
     var dots = pts.map(function (p, i) { return '<circle cx="' + x(i) + '" cy="' + y(p.v) + '" r="' + (i === n - 1 ? 4.5 : 3) + '" fill="var(' + def.col + ')"><title>' + OW.esc(OW.date(p.d)) + ': ' + p.v + '</title></circle>'; }).join('');
     var last = pts[n - 1];
-    return '<div class="ch"><h3>' + def.t + '</h3><small>' + def.u + '</small><svg class="c" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + def.t + ', latest ' + last.v + ' ' + def.u + '">' + g + line + dots + lx + '<text class="lab" x="' + x(n - 1) + '" y="' + (y(last.v) - 9) + '" text-anchor="' + (n > 1 ? 'end' : 'middle') + '" style="font-weight:600">' + last.v + '</text></svg></div>';
+    return '<div class="ch"><h3>' + def.t + '</h3><small>' + def.u + '</small><svg class="c" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + def.t + ', latest ' + last.v + ' ' + def.u + '">' + g + line + dots + lx + '<text class="lab" x="' + x(n - 1) + '" y="' + (y(last.v) - 9) + '" text-anchor="' + (n > 1 ? 'end' : 'middle') + '" style="font-weight:600">' + last.v + '</text></svg>' + (def.w ? '<p class="why">' + OW.esc(def.w) + '</p>' : '') + '</div>';
   }
   OW.charts = function (reports) {
     var out = OW.READINGS.map(function (def) {
-      var pts = reports.filter(function (r) { return r.readings && r.readings[def.k] != null; }).map(function (r) { return { d: r.visit_date, v: Number(r.readings[def.k]) }; }).sort(function (a, b) { return a.d < b.d ? -1 : 1; });
-      return pts.length ? chart(def, pts) : '';
+      var rs = reports.filter(function (r) { return r.readings && r.readings[def.k] != null; }).sort(function (a, b) { return a.visit_date < b.visit_date ? -1 : 1; });
+      var pts = rs.map(function (r) { return { d: r.visit_date, v: Number(r.readings[def.k]) }; });
+      if (!pts.length) return '';
+      var ex = [];
+      if (def.th) ex.push({ v: def.th, col: '--bad', label: 'Pump at 33%', right: true });
+      if (def.band) { ex.push({ v: def.band[1], col: '--good', label: '110%', right: true }); ex.push({ v: def.band[0], col: '--good', label: '90%', right: true, below: true }); }
+      if (def.ds) { var dv = rs[rs.length - 1].readings[def.ds]; if (dv != null) ex.push({ v: Number(dv), col: '--good', label: 'Design ' + dv, below: true }); }
+      return chart(def, pts, ex);
     }).join('');
     return out || '<p class="mute">Graphs appear after the first visit report with readings.</p>';
   };
@@ -73,6 +86,7 @@
           y -= o.after == null ? 5 : o.after;
         },
         gap: function (n) { y -= n; },
+        image: function (bytes) { return doc.embedJpg(bytes).then(function (img) { var sc = Math.min(250 / img.width, 180 / img.height, 1), w = img.width * sc, h = img.height * sc; L.need(h + 8); page.drawImage(img, { x: M, y: y - h, width: w, height: h }); y -= h + 8; }); },
         rule: function () { L.need(10); page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.6, color: PDFLib.rgb(0.7, 0.65, 0.55) }); y -= 10; },
         save: function () {
           var pages = doc.getPages();
@@ -116,6 +130,59 @@
       if (!(r.checks || []).length) L.text('None recorded.', { indent: 10 });
       if (r.notes) { L.gap(6); L.text('Notes', { bold: true }); L.text(r.notes, { indent: 10 }); }
       L.gap(8); L.text('Overwatch Septic, LLC provides inspection and maintenance. Repairs and pumping are done by licensed contractors.', { size: 9, italic: true });
+      return L.save();
+    });
+  };
+
+  // ---- inspection reports: the homeowner copy and the county copy
+  function v(x, u) { return x === null || x === undefined || x === '' ? '-' : x + (u ? ' ' + u : ''); }
+  OW.inspHomePdf = function (rep, cust, op, photos) {
+    var d = rep.insp.data, c = rep.insp.calc, ov = OWI.overall(d.status);
+    return layout(window.PDFLib, 'Your septic system check-up').then(function (L) {
+      L.text('YOUR SEPTIC SYSTEM CHECK-UP', { bold: true, size: 16, center: true, after: 8 });
+      L.text(cust.name + ', ' + cust.address, {}); L.text('Checked ' + OW.date(rep.visit_date) + ' by ' + op.name + ', certified operator, Overwatch Septic, LLC.', { after: 8 });
+      L.rule(); L.text(ov[1], { bold: true, size: 13, after: 2 }); L.text(ov[2], { after: 8 });
+      var acts = OWI.actions(d);
+      if (acts.length || d.recs) {
+        L.text('What to do', { bold: true, size: 13 });
+        acts.forEach(function (a, i) { L.text((i + 1) + '. ' + a, { indent: 10, after: 3 }); });
+        if (d.recs) L.text(d.recs, { indent: 10 });
+        L.text('Overwatch does not do repairs or pumping. We can tell you what to ask the contractor for, and we will confirm the fix at your next visit.', { italic: true, size: 9.5 });
+      }
+      L.gap(4); L.text('What we checked', { bold: true, size: 13 });
+      [['septic', 'Septic tank'], ['pumptank', 'Pump tank, floats, alarm'], ['panel', 'Control panel'], ['field', 'Drain field']].forEach(function (p) {
+        var r = OWI.wordRow(d, p[0]); if (!r) return; L.text(p[1] + ': ' + r.label, { bold: true, indent: 10, after: 1 }); L.text(r.text, { indent: 20, after: 6 });
+      });
+      L.text('Your numbers, in plain terms', { bold: true, size: 13 });
+      var f = OWI.wordRow(d, 'flow'), s = OWI.wordRow(d, 'solids'), t = OWI.wordRow(d, 'runtime');
+      if (f) { L.text('Pump flow: ' + (c.pdr !== null ? c.pdr + ' gallons per minute' + (d.flow.design_pdr ? ' (designed for ' + d.flow.design_pdr + ')' : '') : '-'), { bold: true, indent: 10, after: 1 }); L.text(f.text, { indent: 20, after: 6 }); }
+      if (s) { L.text('Solids in the septic tank: ' + (c.sludge_pct !== null ? Math.round(c.sludge_pct) + '% of the tank depth (' + v(d.septic.sludge) + ' in of ' + v(d.liquid_depth) + ' in)' : '-'), { bold: true, indent: 10, after: 1 }); L.text(s.text, { indent: 20, after: 6 }); }
+      if (t) { L.text('How often the pump runs: ' + (c.events_day !== null ? c.events_day + ' times a day' + (c.events_design !== null ? ' (designed for ' + c.events_design + ')' : '') : '-'), { bold: true, indent: 10, after: 1 }); L.text(t.text, { indent: 20, after: 6 }); }
+      L.text('Next check-up due: ' + (d.next_due ? OW.date(d.next_due) : 'to be scheduled'), { bold: true });
+      var chain = Promise.resolve();
+      if (photos && photos.length) { chain = chain.then(function () { L.gap(4); L.text('Photos from the visit', { bold: true, size: 13 }); }); photos.forEach(function (b) { chain = chain.then(function () { return L.image(b); }); }); }
+      return chain.then(function () { L.gap(6); L.text(op.name + ', certified operator, certificate ' + op.cert + '. A technical copy of this report is filed with the county. Overwatch Septic, LLC provides inspection and maintenance. Repairs and pumping are done by licensed contractors.', { size: 9, italic: true }); return L.save(); });
+    });
+  };
+  OW.inspCountyPdf = function (rep, cust, op, sys) {
+    var d = rep.insp.data, c = rep.insp.calc, yn = { yes: 'Yes', no: 'No', na: 'N/A' };
+    return layout(window.PDFLib, 'Certified operator maintenance/monitoring report').then(function (L) {
+      L.text('CERTIFIED OPERATOR MAINTENANCE/MONITORING REPORT', { bold: true, size: 13, center: true, after: 8 });
+      [['Owner', cust.name], ['Permit #', cust.permit], ['Location', cust.address + (cust.county ? '. ' + cust.county + ' County' : '')], ['System', ((sys && sys.sys_desc) || (cust.sys_type ? 'Type ' + cust.sys_type : '')) + (sys && sys.design_flow ? '. Design flow ' + sys.design_flow + ' gpd' : '')], ['Date of inspection', OW.date(rep.visit_date)], ['Last inspection', c.days ? c.days + ' days earlier' : '-'], ['Type of inspection', d.inspect_type], ['Operator (ORC)', op.name + ', ' + op.cert + ', Overwatch Septic, LLC']].forEach(function (p) { L.text(p[0] + ': ' + (p[1] || '-'), { size: 10, after: 1 }); });
+      L.gap(4); L.rule();
+      OWI.SECTIONS.forEach(function (sec) {
+        L.text(sec.t, { bold: true, after: 2 });
+        sec.items.forEach(function (it) { var a = (d.checks[sec.k] || {})[it[0]]; L.text(it[1] + ': ' + (yn[a] || '-'), { size: 10, indent: 10, after: 0, bold: a === 'no' && it[2] !== 'i' }); });
+        if (sec.k === 'septic' || sec.k === 'pump') { var x = d[sec.k]; L.text('Tank ' + v(sec.k === 'septic' ? d.septic_gal : d.pump_gal, 'gal') + (sec.k === 'septic' ? ', liquid depth ' + v(d.liquid_depth, 'in') : ', ' + v(d.gpi, 'gal/in')) + '. Scum ' + v(x.scum, 'in') + ', sludge ' + v(x.sludge, 'in') + (sec.k === 'septic' && c.sludge_pct !== null ? ' (' + c.sludge_pct + '% of liquid depth)' : '') + '. Last pumpout ' + (x.pumped ? OW.date(x.pumped) : '-') + '. Pumping needed: ' + x.pump_needed + '.', { size: 10, indent: 10 }); }
+        if (sec.k === 'controls') L.text('Float settings (inches above tank bottom): alarm ' + v(d.floats.alarm) + ', pump on ' + v(d.floats.on) + ', pump off ' + v(d.floats.off) + '.', { size: 10, indent: 10 });
+        L.gap(3);
+      });
+      if ((d.laterals || []).length) { L.text('Lateral readings', { bold: true, after: 2 }); d.laterals.forEach(function (l) { L.text('Lateral ' + l.n + ': length ' + v(l.length) + ', design head ' + v(l.design) + ', turnup height ' + v(l.turnup) + ', last time ' + v(l.last) + ', baseline ' + v(l.baseline) + ', valves left at ' + v(l.left) + ', adjusted to ' + v(l.adjusted), { size: 10, indent: 10, after: 1 }); }); L.gap(3); }
+      L.text('Flow test and meters', { bold: true, after: 2 });
+      [['Water level, pump off (start)', v(d.flow.off, 'in')], ['Water level, pump on (after run)', v(d.flow.on, 'in')], ['Depth pumped', v(c.depth, 'in')], ['Volume pumped (depth x ' + v(d.flow.gpi || d.gpi) + ' gal/in)', v(c.vol, 'gal')], ['Run time of test', v(d.flow.min, 'min')], ['Measured PDR (pump delivery rate)', v(c.pdr, 'gpm')], ['Design PDR', v(d.flow.design_pdr, 'gpm')], ['PDR efficiency', c.eff === null ? '-' : c.eff + '%' + (c.eff_ok ? '' : ' (outside 10% of design)')], ['Dose volume / drawdown', v(d.flow.dose, 'gal') + ' / ' + v(d.flow.drawdown, 'in')], ['ET (elapsed time) hours', v(d.meters.et) + (c.et_used !== null ? ' (used ' + c.et_used + ', ' + v(c.et_day) + ' per day)' : '')], ['Events', v(d.meters.events) + (c.ev_used !== null ? ' (used ' + c.ev_used + ', ' + v(c.events_day) + ' per day, design ' + v(c.events_design) + ')' : '')]].forEach(function (p) { L.text(p[0] + ': ' + p[1], { size: 10, indent: 10, after: 0 }); });
+      L.gap(5); L.text('Status of system: ' + d.status + '.  Next inspection due: ' + (d.next_due ? OW.date(d.next_due) : '-'), { bold: true });
+      if (d.recs) L.text('Recommendations for owner: ' + d.recs);
+      L.gap(4); L.text('Certified operator: ' + op.name + ', ' + op.cert + ', ' + OW.date(rep.visit_date) + '. Repairs and pumping are performed by licensed contractors.', { size: 9, italic: true });
       return L.save();
     });
   };
