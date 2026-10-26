@@ -80,6 +80,8 @@ export const SCHEMA = [
   'CREATE INDEX IF NOT EXISTS contracts_customer ON contracts (customer_id)',
   "CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, visit_date TEXT NOT NULL, kind TEXT NOT NULL, readings TEXT NOT NULL DEFAULT '{}', checks TEXT NOT NULL DEFAULT '[]', notes TEXT NOT NULL DEFAULT '', pdf_key TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, created_by TEXT NOT NULL DEFAULT '')",
   'CREATE INDEX IF NOT EXISTS reports_customer ON reports (customer_id, visit_date)',
+  'CREATE TABLE IF NOT EXISTS inspections (report_id TEXT PRIMARY KEY, data TEXT NOT NULL, calc TEXT NOT NULL, photos INTEGER NOT NULL DEFAULT 0)',
+  "CREATE TABLE IF NOT EXISTS systems (customer_id TEXT PRIMARY KEY, data TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL)",
   'CREATE TABLE IF NOT EXISTS login_tokens (hash TEXT PRIMARY KEY, customer_id TEXT NOT NULL, expires_at TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0)',
   'CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, customer_id TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS login_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, eh TEXT NOT NULL, ih TEXT NOT NULL)',

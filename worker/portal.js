@@ -1,4 +1,5 @@
 // Customer portal: emailed sign-in link (no passwords), then contracts, reports, and readings for that customer only.
+import { operatorOf, attachInspections, servePhoto } from './inspection.js';
 import { reply, clean, sha, rand, isoIn, siteOrigin, originOk, getCookie, sendMail, turnstileOk, readJson, esc, EMAIL, ensureSchema } from './lib.js';
 import { publicView, signAsOwner } from './contracts.js';
 import { checkoutUrl, reportLocked, etDate } from './billing.js';
@@ -81,9 +82,10 @@ export async function portalApi(request, env, path) {
     const contracts = (await env.DB.prepare("SELECT * FROM contracts WHERE customer_id = ? AND status != 'void' ORDER BY created_at DESC").bind(c.id).all()).results.map(x => publicView(x, c, held.has(x.id)));
     const states = new Map((await env.DB.prepare('SELECT report_id, released_at FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(c.id).all()).results.map(x => [x.report_id, x.released_at]));
     const reports = (await env.DB.prepare('SELECT id, visit_date, kind, readings, checks, notes, pdf_key FROM reports WHERE customer_id = ? ORDER BY visit_date DESC').bind(c.id).all()).results.map(r => states.has(r.id) && !states.get(r.id) ? { id: r.id, visit_date: r.visit_date, locked: true } : { id: r.id, visit_date: r.visit_date, kind: r.kind, readings: JSON.parse(r.readings), checks: JSON.parse(r.checks), notes: r.notes, has_pdf: !!r.pdf_key });
+    await attachInspections(env, reports, true);
     const today = etDate();
     const invoices = inv.filter(i => i.status === 'open' || !i.released_at).map(i => ({ id: i.id, kind: i.kind, amount_cents: i.amount_cents, status: i.status, created_date: i.created_date, release_date: i.release_date, flag: i.flag, notice_state: i.notice_state, term_date: i.term_date, visit_date: i.kind === 'visit' ? (reports.find(r => r.id === i.ref_id) || {}).visit_date || '' : '', overdue_days: Math.max(0, Math.round((new Date(today + 'T12:00:00Z') - new Date(i.created_date + 'T12:00:00Z')) / 864e5)) }));
-    return reply({ ok: true, customer: { name: c.name, email: c.email, address: c.address, sys_type: c.sys_type }, contracts, reports, invoices, stripe: !!env.STRIPE_SECRET_KEY });
+    return reply({ ok: true, customer: { name: c.name, email: c.email, address: c.address, sys_type: c.sys_type, county: c.county, permit: c.permit }, operator: operatorOf(env), contracts, reports, invoices, stripe: !!env.STRIPE_SECRET_KEY });
   }
   if (path === '/portal/api/logout' && method === 'POST') {
     await env.DB.prepare('DELETE FROM sessions WHERE hash = ?').bind(s.hash).run();
@@ -103,6 +105,12 @@ export async function portalApi(request, env, path) {
     if (!i) return reply({ ok: false, error: 'This invoice is not open.' }, 404);
     const r = await checkoutUrl(env, i, c);
     return r.error ? reply({ ok: false, error: r.error }, 503) : reply({ ok: true, url: r.url });
+  }
+  m = /^\/portal\/api\/reports\/([a-f0-9]{20})\/photo\/(\d{1,2})$/.exec(path);
+  if (m && method === 'GET') {
+    const r = await env.DB.prepare('SELECT id FROM reports WHERE id = ? AND customer_id = ?').bind(m[1], c.id).first();
+    if (!r || await reportLocked(env, m[1])) return reply({ ok: false, error: 'Not found.' }, 404);
+    return servePhoto(env, m[1], Number(m[2]));
   }
   m = /^\/portal\/api\/reports\/([a-f0-9]{20})\/pdf$/.exec(path);
   if (m && method === 'GET') {

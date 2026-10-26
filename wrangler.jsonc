@@ -14,6 +14,8 @@
     "MAIL_FROM": "Overwatch Septic <Joshua@overwatchseptic.com>",
     "ACCESS_TEAM_DOMAIN": "wild-frost-0e20.cloudflareaccess.com",
     "ACCESS_AUD": "7f5cc56281726b42e1742de51d7f20198a268dda0b559911511433d38a053822",
+    "OPERATOR_NAME": "Joshua Klein",
+    "OPERATOR_CERT": "SS-1019571",
     "ADMIN_EMAILS": "Joshua@overwatchseptic.com",
     "ALLOWED_ORIGINS": "https://overwatchseptic.com,https://www.overwatchseptic.com"
   }

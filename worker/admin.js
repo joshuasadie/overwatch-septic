@@ -1,6 +1,7 @@
 // Admin API (Cloudflare Access protected): customers, contracts, reports.
 import { reply, clean, id, EMAIL, siteOrigin, sendMail, readJson, originOk, verifyAccess, ensureSchema } from './lib.js';
 import { createInvoice, markPaid, releaseInvoice, releaseReport, sendCountyReport, sendNotice, noticeDrafts, toCents, etDate, daysBetween } from './billing.js';
+import { operatorOf, systemInfo, createInspection, attachInspections, uploadPhoto, servePhoto, deleteInspectionFiles } from './inspection.js';
 import { createContract, resendContract, voidContract, countersign, publicView } from './contracts.js';
 
 export const READINGS = { pump_min: 'Pump run time (minutes per cycle)', sludge_in: 'Sludge depth (inches in tank)', water_gpd: 'Water use (gallons per day)' };
@@ -56,7 +57,7 @@ export async function adminApi(request, env, path) {
     return new Response(await obj.arrayBuffer(), { headers: { 'content-type': 'application/pdf', 'content-disposition': `inline; filename="report-${rep.visit_date}.pdf"`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
   }
 
-  if (path === '/admin/api/config' && method === 'GET') return reply({ ok: true, me: email, readings: READINGS, stripe: !!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET), defaults: (env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET) ? { origination: '100', visit: '250' } : { origination: '0', visit: '0' } });
+  if (path === '/admin/api/config' && method === 'GET') return reply({ ok: true, me: email, operator: operatorOf(env), readings: READINGS, stripe: !!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET), defaults: (env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET) ? { origination: '100', visit: '250' } : { origination: '0', visit: '0' } });
   if (path === '/admin/api/customers' && method === 'GET') {
     const rows = (await env.DB.prepare('SELECT * FROM customers ORDER BY name COLLATE NOCASE').all()).results;
     const cs = (await env.DB.prepare('SELECT customer_id, status, created_at FROM contracts WHERE status != ? ORDER BY created_at').bind('void').all()).results;
@@ -88,6 +89,7 @@ export async function adminApi(request, env, path) {
     const reports = (await env.DB.prepare('SELECT id, visit_date, kind, readings, checks, notes, pdf_key, created_at FROM reports WHERE customer_id = ? ORDER BY visit_date DESC').bind(c.id).all()).results.map(r => ({ ...r, readings: JSON.parse(r.readings), checks: JSON.parse(r.checks), has_pdf: !!r.pdf_key, pdf_key: undefined }));
     const states = new Map((await env.DB.prepare('SELECT report_id, released_at, county_sent_at, county_to FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(c.id).all()).results.map(x => [x.report_id, x]));
     for (const r of reports) { const st = states.get(r.id); r.state = st ? (st.released_at ? 'released' : 'held') : 'released'; r.county_sent_at = st ? st.county_sent_at : ''; r.county_to = st ? st.county_to : ''; }
+    await attachInspections(env, reports, false);
     return reply({ ok: true, customer: c, contracts, reports, invoices: await invoiceRows(env, 'i.customer_id = ?', [c.id]) });
   }
   if (path === '/admin/api/customer-delete' && method === 'POST') {
@@ -99,7 +101,8 @@ export async function adminApi(request, env, path) {
     if (signed.n) return reply({ ok: false, error: 'This customer has a signed agreement. Signed agreements are kept as records, so the customer cannot be deleted here.' }, 400);
     const reps = (await env.DB.prepare('SELECT pdf_key FROM reports WHERE customer_id = ?').bind(cid).all()).results;
     if (env.FILES) for (const r of reps) if (r.pdf_key) await env.FILES.delete(r.pdf_key);
-    await env.DB.batch([env.DB.prepare('DELETE FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM invoices WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM reports WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM contracts WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM sessions WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM login_tokens WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM customers WHERE id = ?').bind(cid), audit(env, email, 'customer-deleted', cid, c.name)]);
+    await deleteInspectionFiles(env, (await env.DB.prepare('SELECT id FROM reports WHERE customer_id = ?').bind(cid).all()).results.map(x => x.id));
+    await env.DB.batch([env.DB.prepare('DELETE FROM inspections WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM systems WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM invoices WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM reports WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM contracts WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM sessions WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM login_tokens WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM customers WHERE id = ?').bind(cid), audit(env, email, 'customer-deleted', cid, c.name)]);
     return reply({ ok: true });
   }
 
@@ -117,6 +120,21 @@ export async function adminApi(request, env, path) {
     return out(await countersign(env, email, cid, j.body.name));
   }
 
+  if (path === '/admin/api/system' && method === 'GET') {
+    const sp = new URL(request.url).searchParams, cid = sp.get('customer_id') || '';
+    if (!(await env.DB.prepare('SELECT 1 AS x FROM customers WHERE id = ?').bind(cid).first())) return reply({ ok: false, error: 'Not found.' }, 404);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.get('date') || '') ? sp.get('date') : etDate();
+    return reply({ ok: true, ...(await systemInfo(env, cid, date)) });
+  }
+  if (path === '/admin/api/inspection' && method === 'POST') {
+    const j = await readJson(request, 65536); if (j.res) return j.res;
+    const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(String(j.body.customer_id || '')).first();
+    if (!c) return reply({ ok: false, error: 'Not found.' }, 404);
+    return out(await createInspection(env, email, c, j.body));
+  }
+  m = /^\/admin\/api\/reports\/([a-f0-9]{20})\/photo(?:\/(\d{1,2}))?$/.exec(path);
+  if (m && method === 'POST' && !m[2]) return out(await uploadPhoto(env, request, m[1]));
+  if (m && method === 'GET' && m[2]) return servePhoto(env, m[1], Number(m[2]));
   if (path === '/admin/api/report' && method === 'POST') {
     const j = await readJson(request, 32768); if (j.res) return j.res;
     const b = j.body, c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(String(b.customer_id || '')).first();
@@ -147,7 +165,8 @@ export async function adminApi(request, env, path) {
     const r = await env.DB.prepare('SELECT pdf_key FROM reports WHERE id = ?').bind(String(j.body.id || '')).first();
     if (!r) return reply({ ok: false, error: 'Not found.' }, 404);
     if (r.pdf_key && env.FILES) await env.FILES.delete(r.pdf_key);
-    await env.DB.batch([env.DB.prepare('DELETE FROM report_state WHERE report_id = ?').bind(String(j.body.id)), env.DB.prepare("DELETE FROM invoices WHERE kind = 'visit' AND ref_id = ?").bind(String(j.body.id)), env.DB.prepare('DELETE FROM reports WHERE id = ?').bind(String(j.body.id)), audit(env, email, 'report-deleted', String(j.body.id))]);
+    await deleteInspectionFiles(env, [String(j.body.id)]);
+    await env.DB.batch([env.DB.prepare('DELETE FROM inspections WHERE report_id = ?').bind(String(j.body.id)), env.DB.prepare('DELETE FROM report_state WHERE report_id = ?').bind(String(j.body.id)), env.DB.prepare("DELETE FROM invoices WHERE kind = 'visit' AND ref_id = ?").bind(String(j.body.id)), env.DB.prepare('DELETE FROM reports WHERE id = ?').bind(String(j.body.id)), audit(env, email, 'report-deleted', String(j.body.id))]);
     return reply({ ok: true });
   }
 
