@@ -16,6 +16,7 @@
   OW.STATUS = { terminated: ['Cancelled for nonpayment', 'bad'], sent: ['Waiting on customer', 'warn'], owner_signed: ['Needs your signature', 'warn'], complete: ['Signed', 'good'], void: ['Cancelled', 'mute'], none: ['Not sent', 'bad'] };
   OW.pill = function (s, forCustomer) { var x = OW.STATUS[s] || OW.STATUS.none; var label = x[0]; if (forCustomer) label = { sent: 'Needs your signature', owner_signed: 'Signed by you, waiting on us', complete: 'Signed', terminated: 'Cancelled for nonpayment', void: 'Cancelled' }[s] || label; return '<span class="pill ' + x[1] + '">' + OW.esc(label) + '</span>'; };
   OW.LOGO = '<svg width="40" height="40" viewBox="0 0 100 100" fill="none" stroke="var(--brz)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="50" cy="50" r="47" fill="var(--slate)"/><g stroke="var(--onslate)"><path d="M30 23 50 11 70 23Z"/><path d="M38 23V34M62 23V34"/><path d="M38 34 31 62M62 34 69 62M36 54 64 40M64 54 36 40" stroke-width="2.2"/></g><path d="M40 29Q50 21 60 29Q50 37 40 29Z" stroke-width="2"/><circle cx="50" cy="29" r="2.4" fill="var(--brz)" stroke="none"/><rect x="26" y="62" width="48" height="12" rx="6"/><path d="M42 62v-3M58 62v-3M16 68h10M74 68h10M30 81h40M36 87h28M41 93h18" stroke-width="2.2"/></svg>';
+  OW.CONTACT = { email: 'Joshua@overwatchseptic.com', site: 'overwatchseptic.com' };
   OW.brand = function (href) { return '<a class="brand" href="' + (href || '/') + '">' + OW.LOGO + '<span><b>OVERWATCH</b><i>SEPTIC SYSTEMS</i></span></a>'; };
 
   // ---- contract text as HTML
@@ -82,11 +83,19 @@
           var words = L.safe(s).split(/\s+/), line = '', lines = [], maxw = W - 2 * M - ind;
           words.forEach(function (w) { var t = line ? line + ' ' + w : w; if (font.widthOfTextAtSize(t, size) > maxw && line) { lines.push(line); line = w; } else line = t; });
           if (line) lines.push(line);
-          lines.forEach(function (ln) { L.need(lead); page.drawText(ln, { x: M + ind + (o.center ? (maxw - font.widthOfTextAtSize(ln, size)) / 2 : 0), y: y - size, size: size, font: font, color: PDFLib.rgb(0.1, 0.1, 0.1) }); y -= lead; });
+          lines.forEach(function (ln) { L.need(lead); var lx = M + ind + (o.center ? (maxw - font.widthOfTextAtSize(ln, size)) / 2 : 0); page.drawText(ln, { x: lx, y: y - size, size: size, font: font, color: PDFLib.rgb(0.1, 0.1, 0.1) }); if (o.underline) page.drawLine({ start: { x: lx, y: y - size - 1.8 }, end: { x: lx + font.widthOfTextAtSize(ln, size), y: y - size - 1.8 }, thickness: 0.9, color: PDFLib.rgb(0.1, 0.1, 0.1) }); y -= lead; });
           y -= o.after == null ? 5 : o.after;
         },
         gap: function (n) { y -= n; },
         image: function (bytes) { return doc.embedJpg(bytes).then(function (img) { var sc = Math.min(250 / img.width, 180 / img.height, 1), w = img.width * sc, h = img.height * sc; L.need(h + 8); page.drawImage(img, { x: M, y: y - h, width: w, height: h }); y -= h + 8; }); },
+        letterhead: function (lines) {
+          var h = 48, tx = M + (L.logo ? h + 10 : 0);
+          if (L.logo) page.drawImage(L.logo, { x: M, y: y - h, width: h, height: h });
+          page.drawText('OVERWATCH', { x: tx, y: y - 22, size: 18, font: fb, color: PDFLib.rgb(0.12, 0.1, 0.08) });
+          page.drawText('SEPTIC, LLC', { x: tx, y: y - 36, size: 9, font: fb, color: PDFLib.rgb(0.66, 0.45, 0.12) });
+          (lines || []).forEach(function (t, i) { var tt = L.safe(t), w = f.widthOfTextAtSize(tt, 9); page.drawText(tt, { x: W - M - w, y: y - 11 - i * 11, size: 9, font: f, color: PDFLib.rgb(0.25, 0.22, 0.18) }); });
+          y -= h + 8; L.rule(); y -= 2;
+        },
         rule: function () { L.need(10); page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.6, color: PDFLib.rgb(0.7, 0.65, 0.55) }); y -= 10; },
         save: function () {
           var pages = doc.getPages();
@@ -94,12 +103,14 @@
           return doc.save();
         }
       };
-      L.add(); return L;
+      L.add();
+      return fetch('/logo-pdf.png', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.arrayBuffer() : null; }).then(function (b) { return b ? doc.embedPng(b) : null; }).catch(function () { return null; }).then(function (img) { L.logo = img; return L; });
     });
   }
   OW.contractPdf = function (c) {
     var t = c.text;
     return layout(window.PDFLib, t.title).then(function (L) {
+      L.letterhead([OW.CONTACT.email, OW.CONTACT.site]);
       L.text(t.title, { bold: true, size: 15, center: true, after: 10 });
       t.intro.forEach(function (p) { L.text(p, {}); });
       t.sections.forEach(function (s) { L.gap(4); L.text(s.h, { bold: true }); s.p.forEach(function (p) { L.text(p, { indent: /^([a-z]\)|\d\))/.test(p) ? 14 : 0 }); }); });
@@ -118,6 +129,7 @@
   };
   OW.reportPdf = function (r, cust) {
     return layout(window.PDFLib, 'Septic visit report').then(function (L) {
+      L.letterhead([OW.CONTACT.email, OW.CONTACT.site]);
       L.text('SEPTIC VISIT REPORT', { bold: true, size: 15, center: true, after: 10 });
       L.text('Customer: ' + cust.name, {}); L.text('Property: ' + cust.address, {}); if (cust.sys_type) L.text('System: Type ' + cust.sys_type, {});
       L.text('Visit date: ' + OW.date(r.visit_date), { after: 8 }); L.rule();
@@ -139,16 +151,20 @@
   OW.inspHomePdf = function (rep, cust, op, photos) {
     var d = rep.insp.data, c = rep.insp.calc, ov = OWI.overall(d.status);
     return layout(window.PDFLib, 'Your septic system check-up').then(function (L) {
-      L.text('YOUR SEPTIC SYSTEM CHECK-UP', { bold: true, size: 16, center: true, after: 8 });
-      L.text(cust.name + ', ' + cust.address, {}); L.text('Checked ' + OW.date(rep.visit_date) + ' by ' + op.name + ', certified operator, Overwatch Septic, LLC.', { after: 8 });
-      L.rule(); L.text(ov[1], { bold: true, size: 13, after: 2 }); L.text(ov[2], { after: 8 });
+      L.letterhead([op.name + ', certified operator', op.cert, OW.CONTACT.email, OW.CONTACT.site]);
+      L.text('YOUR SEPTIC SYSTEM CHECK-UP', { bold: true, size: 16, center: true, after: 6 });
+      L.text(cust.name + ', ' + cust.address + '. Checked ' + OW.date(rep.visit_date) + '.', { center: true, after: 8 });
       var acts = OWI.actions(d);
-      if (acts.length || d.recs) {
-        L.text('What to do', { bold: true, size: 13 });
-        acts.forEach(function (a, i) { L.text((i + 1) + '. ' + a, { indent: 10, after: 3 }); });
+      L.text('WHAT YOU NEED TO DO', { bold: true, size: 13, after: 3 });
+      if (acts.length) {
+        acts.forEach(function (a, i) { L.text((i + 1) + '. ' + a, { indent: 10, after: 3, underline: true }); });
         if (d.recs) L.text(d.recs, { indent: 10 });
         L.text('Overwatch does not do repairs or pumping. We can tell you what to ask the contractor for, and we will confirm the fix at your next visit.', { italic: true, size: 9.5 });
+      } else {
+        L.text('Nothing needed right now. See you at your next check-up.', { indent: 10, underline: true, after: 3 });
+        if (d.recs) L.text(d.recs, { indent: 10 });
       }
+      L.gap(4); L.rule(); L.text(ov[1], { bold: true, size: 13, after: 2 }); L.text(ov[2], { after: 8 });
       L.gap(4); L.text('What we checked', { bold: true, size: 13 });
       [['septic', 'Septic tank'], ['pumptank', 'Pump tank, floats, alarm'], ['panel', 'Control panel'], ['field', 'Drain field']].forEach(function (p) {
         var r = OWI.wordRow(d, p[0]); if (!r) return; L.text(p[1] + ': ' + r.label, { bold: true, indent: 10, after: 1 }); L.text(r.text, { indent: 20, after: 6 });
@@ -167,6 +183,7 @@
   OW.inspCountyPdf = function (rep, cust, op, sys) {
     var d = rep.insp.data, c = rep.insp.calc, yn = { yes: 'Yes', no: 'No', na: 'N/A' };
     return layout(window.PDFLib, 'Certified operator maintenance/monitoring report').then(function (L) {
+      L.letterhead([op.name + ', certified operator', op.cert, OW.CONTACT.email, OW.CONTACT.site]);
       L.text('CERTIFIED OPERATOR MAINTENANCE/MONITORING REPORT', { bold: true, size: 13, center: true, after: 8 });
       [['Owner', cust.name], ['Permit #', cust.permit], ['Location', cust.address + (cust.county ? '. ' + cust.county + ' County' : '')], ['System', ((sys && sys.sys_desc) || (cust.sys_type ? 'Type ' + cust.sys_type : '')) + (sys && sys.design_flow ? '. Design flow ' + sys.design_flow + ' gpd' : '')], ['Date of inspection', OW.date(rep.visit_date)], ['Last inspection', c.days ? c.days + ' days earlier' : '-'], ['Type of inspection', d.inspect_type], ['Operator (ORC)', op.name + ', ' + op.cert + ', Overwatch Septic, LLC']].forEach(function (p) { L.text(p[0] + ': ' + (p[1] || '-'), { size: 10, after: 1 }); });
       L.gap(4); L.rule();

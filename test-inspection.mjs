@@ -112,6 +112,9 @@ ok(OWI0.gpi('rect', 93, 52) === 20.9 && OWI0.gpi('round', 78) === 20.7 && OWI0.g
 const OWI = globalThis.OWI; const insp = { data: rep2.insp.data, calc: rep2.insp.calc, photos: 1 };
 const home = OWI.homeHtml({ visit_date: '2026-10-26', insp }, { name: 'Ann Home', address: '12 Oak St' }, rep2.insp.data.operator, n => '/p/' + n);
 ok(home.includes('Overall: needs a small repair soon.') && home.includes('Hire a licensed contractor to replace the control panel contactor.') && home.includes('(designed for 17.8)') && home.includes('17%</b> of the tank depth') && home.includes('/p/1'), 'homeowner copy: overall, jobs, numbers vs design, photo');
+ok(home.indexOf('What you need to do') < home.indexOf('Overall:') && home.includes('<li><u>Hire a licensed contractor'), 'homeowner copy: the action items come first and are underlined');
+const none = OWI.homeHtml({ visit_date: '2026-10-26', insp: { data: { ...insp.data, todo: { jobs: [], ticks: [], extra: '' }, recs: '' }, calc: insp.calc, photos: 0 } }, { name: 'A', address: 'x' }, { name: 'J', cert: 'S' });
+ok(none.includes('Nothing needed right now. See you at your next check-up.'), 'homeowner copy: says so when nothing is needed');
 ok(!home.includes('PRIVATE') && !home.includes('<script'), 'homeowner copy has no private comments or scripts');
 const evil = OWI.homeHtml({ visit_date: '2026-10-26', insp: { data: { ...insp.data, recs: '<script>alert(1)</script>' }, calc: insp.calc, photos: 0 } }, { name: '<b>x</b>', address: 'y' }, { name: 'J', cert: 'S' });
 ok(!evil.includes('<script>') && !evil.includes('<b>x</b>'), 'text is escaped in the report');

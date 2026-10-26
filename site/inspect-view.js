@@ -5,21 +5,21 @@
   var dt = function (iso) { if (!iso) return ''; var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso); if (!m) return iso; return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m[2] - 1] + ' ' + (+m[3]) + ', ' + m[1]; };
   var v = function (x, u) { return x === null || x === undefined || x === '' ? '-' : x + (u ? ' ' + u : ''); };
   OWI.esc = esc; OWI.dt = dt;
-  OWI.CSS = '.rp{font:15px/1.5 Georgia,"Times New Roman",serif;color:#111;background:#fff;border:1px solid #ccc;border-radius:6px;padding:18px 20px;max-width:760px}.rp h2{font:700 22px Georgia,serif;margin:0 0 4px}.rp h3{font:700 16px Georgia,serif;margin:16px 0 4px}.rp p{margin:4px 0}.rp table{width:100%;border-collapse:collapse;font-size:14px;margin:4px 0}.rp th,.rp td{text-align:left;padding:4px 6px;border-bottom:1px solid #ccc;vertical-align:top}.rp th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#444}.rp .g{color:#1f6b3f}.rp .w{color:#a14a05}.rp .b{color:#a31f18}.rp .c{color:#444}.rp .ov{border:2px solid;border-radius:6px;padding:10px 12px;margin:10px 0}.rp .ov.g{border-color:#1f6b3f}.rp .ov.w{border-color:#a14a05}.rp .ov.b{border-color:#a31f18}.rp .grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px}.rp .sm{font-size:12px;color:#444}.rp .tw{overflow-x:auto}.rp ol{margin:4px 0;padding-left:22px}.rp .ph{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.rp .ph img{width:150px;height:110px;object-fit:cover;border-radius:4px;border:1px solid #ccc}@media(max-width:560px){.rp .grid{grid-template-columns:1fr}}';
+  OWI.CSS = '.rp{font:15px/1.5 Georgia,"Times New Roman",serif;color:#111;background:#fff;border:1px solid #ccc;border-radius:6px;padding:18px 20px;max-width:760px}.rp h2{font:700 22px Georgia,serif;margin:0 0 4px}.rp h3{font:700 16px Georgia,serif;margin:16px 0 4px}.rp p{margin:4px 0}.rp table{width:100%;border-collapse:collapse;font-size:14px;margin:4px 0}.rp th,.rp td{text-align:left;padding:4px 6px;border-bottom:1px solid #ccc;vertical-align:top}.rp th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#444}.rp .g{color:#1f6b3f}.rp .w{color:#a14a05}.rp .b{color:#a31f18}.rp .c{color:#444}.rp .ov{border:2px solid;border-radius:6px;padding:10px 12px;margin:10px 0}.rp .ov.g{border-color:#1f6b3f}.rp .ov.w{border-color:#a14a05}.rp .ov.b{border-color:#a31f18}.rp .ov.todo{border-color:#a14a05}.rp .ov.todo u{text-decoration-thickness:1.5px;text-underline-offset:3px}.rp .grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px}.rp .sm{font-size:12px;color:#444}.rp .tw{overflow-x:auto}.rp ol{margin:4px 0;padding-left:22px}.rp .ph{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.rp .ph img{width:150px;height:110px;object-fit:cover;border-radius:4px;border:1px solid #ccc}@media(max-width:560px){.rp .grid{grid-template-columns:1fr}}';
   var yn = function (a) { return a === 'yes' ? 'Yes' : a === 'no' ? 'No' : a === 'na' ? 'N/A' : '-'; };
 
   // rep: { visit_date, insp: { data, calc, photos } }, cust: { name, address, county, permit, sys_type }, op: { name, cert }
   OWI.homeHtml = function (rep, cust, op, photoUrl) {
     var d = rep.insp.data, c = rep.insp.calc, ov = OWI.overall(d.status), h = '';
     h += '<div class="rp"><h2>Your septic system check-up</h2><p>' + esc(cust.name) + ', ' + esc(cust.address) + '. Checked ' + esc(dt(rep.visit_date)) + ' by ' + esc(op.name) + ', certified operator, Overwatch Septic, LLC.</p>';
-    h += '<div class="ov ' + ov[0] + '"><b class="' + ov[0] + '">' + esc(ov[1]) + '</b><br>' + esc(ov[2]) + '</div>';
     var acts = OWI.actions(d);
-    if (acts.length || d.recs) {
-      h += '<h3>What to do</h3>';
-      if (acts.length) h += '<ol>' + acts.map(function (a) { return '<li>' + esc(a) + '</li>'; }).join('') + '</ol>';
+    h += '<div class="ov todo"><b class="w">What you need to do</b>';
+    if (acts.length) {
+      h += '<ol>' + acts.map(function (a) { return '<li><u>' + esc(a) + '</u></li>'; }).join('') + '</ol>';
       if (d.recs) h += '<p>' + esc(d.recs) + '</p>';
       h += '<p class="sm">Overwatch does not do repairs or pumping. We can tell you what to ask the contractor for, and we will confirm the fix at your next visit.</p>';
-    }
+    } else { h += '<p><u>Nothing needed right now. See you at your next check-up.</u></p>' + (d.recs ? '<p>' + esc(d.recs) + '</p>' : ''); }
+    h += '</div><div class="ov ' + ov[0] + '"><b class="' + ov[0] + '">' + esc(ov[1]) + '</b><br>' + esc(ov[2]) + '</div>';
     h += '<h3>What we checked</h3><div class="tw"><table><thead><tr><th>Part</th><th>Result</th><th>What this means for you</th></tr></thead><tbody>';
     ['septic', 'pumptank', 'panel', 'field'].forEach(function (k) { var r = OWI.wordRow(d, k), def = OWI.WORDS.filter(function (q) { return q.k === k; })[0]; if (r) h += '<tr><td>' + esc(def.t) + '</td><td class="' + r.tone + '"><b>' + esc(r.label) + '</b></td><td>' + esc(r.text) + '</td></tr>'; });
     h += '</tbody></table></div><h3>Your numbers, in plain terms</h3><div class="tw"><table><thead><tr><th>Measure</th><th>Your system</th><th>What it tells us</th></tr></thead><tbody>';
