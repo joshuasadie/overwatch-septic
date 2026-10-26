@@ -11,8 +11,8 @@ const num = v => { const n = OWI.n(v); return n !== null && n >= 0 && n < 1e6 ? 
 
 export function cleanSystem(b) {
   b = b || {};
-  return { sys_desc: clean(b.sys_desc, 80), design_flow: num(b.design_flow), septic_gal: num(b.septic_gal), liquid_depth: num(b.liquid_depth), pump_gal: num(b.pump_gal), gpi: num(b.gpi), dose: num(b.dose), design_pdr: num(b.design_pdr),
-    laterals: (Array.isArray(b.laterals) ? b.laterals : []).slice(0, 12).map(l => ({ length: num(l && l.length), design: num(l && l.design) })) };
+  return { sys_desc: clean(b.sys_desc, 80), tank_shape: b.tank_shape === 'round' ? 'round' : 'rect', tank_a: num(b.tank_a), tank_b: num(b.tank_b), design_flow: num(b.design_flow), septic_gal: num(b.septic_gal), liquid_depth: num(b.liquid_depth), pump_gal: num(b.pump_gal), gpi: num(b.gpi), dose: num(b.dose), design_pdr: num(b.design_pdr),
+    floats: { alarm: num(b.floats && b.floats.alarm), on: num(b.floats && b.floats.on), off: num(b.floats && b.floats.off) }, laterals: (Array.isArray(b.laterals) ? b.laterals : []).slice(0, 12).map(l => ({ length: num(l && l.length), design: num(l && l.design) })) };
 }
 
 // the newest earlier inspection: the "last time" column and the per-day meter math start from it
@@ -36,8 +36,13 @@ export async function createInspection(env, who, c, b) {
   if (d.septic.sludge !== null && d.liquid_depth && d.septic.sludge > d.liquid_depth) return { error: 'Sludge depth is deeper than the liquid depth. Please check both numbers.' };
   if (d.flow.on !== null && d.flow.off !== null && d.flow.on < d.flow.off) return { error: 'The pump-on water level should be higher than the pump-off level. Please check the flow test.' };
   const prev = await previous(env, c.id, date);
-  const calc = OWI.calc(d, { design_flow: sys.design_flow, design_pdr: d.flow.design_pdr, dose: d.flow.dose, prev, date });
-  d.operator = op;
+  const g = OWI.gpi(d.tank_shape, d.tank_a, d.tank_b); if (g !== null) { d.gpi = g; d.flow.gpi = g; sys.gpi = g; }
+  const cx = { design_flow: sys.design_flow, design_pdr: d.flow.design_pdr, dose: d.flow.dose, prev, date };
+  const calc = OWI.calc(d, cx); calc.formulas = OWI.formulas(d, calc, cx);
+  if (g !== null) calc.formulas.gpi = OWI.gpiFormula(d.tank_shape, d.tank_a, d.tank_b);
+  if (calc.drawdown !== null) d.flow.drawdown = calc.drawdown;
+  if (calc.dose !== null) d.flow.dose = calc.dose;
+  d.operator = op; sys.tank_shape = d.tank_shape; sys.tank_a = d.tank_a; sys.tank_b = d.tank_b;
   const rid = id(), now = new Date().toISOString();
   await env.DB.batch([
     env.DB.prepare('INSERT INTO reports (id, customer_id, visit_date, kind, readings, checks, notes, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(rid, c.id, date, 'inspection', JSON.stringify(OWI.readings(d, calc)), JSON.stringify(OWI.rollup(d)), d.recs.slice(0, 2000), now, who),

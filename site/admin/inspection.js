@@ -6,7 +6,8 @@
   var tri = function (s, k) { return '<span class="tri" data-s="' + s + '" data-i="' + k + '"><button type="button" data-v="yes" aria-pressed="false">Yes</button><button type="button" data-v="no" aria-pressed="false">No</button><button type="button" data-v="na" aria-pressed="false">N/A</button></span>'; };
   var fld = function (id, label, extra, cls) { return '<div><label for="' + id + '">' + label + '</label><input id="' + id + '" ' + (extra || '') + (cls ? ' class="' + cls + '"' : '') + '></div>'; };
   var dec = 'inputmode="decimal" autocomplete="off"';
-  var auto = function (id, label) { return fld(id, label, 'readonly tabindex="-1"', 'auto'); };
+  var fm = function (id) { return '<div class="fm" id="FM_' + id + '"></div>'; };
+  var auto = function (id, label) { return '<div><label for="' + id + '">' + label + '</label><input id="' + id + '" readonly tabindex="-1" class="auto">' + fm(id) + '</div>'; };
   var val = function (id) { var e = $(id); return e ? e.value.trim() : ''; };
   var num = function (id) { return OWI.n(val(id)); };
   var det = function (title, body, open, id) { return '<details class="fcard"' + (open ? ' open' : '') + '><summary><h3>' + title + '</h3><span class="pill mute" id="' + id + '"></span></summary><div class="fbody">' + body + '</div></details>'; };
@@ -16,7 +17,7 @@
   function checklist(sec) { return sec.items.map(function (it) { return '<div class="item"><span>' + E(it[1]) + '</span>' + tri(sec.k, it[0]) + '</div>'; }).join(''); }
   function latRow(i, l) {
     l = l || {}; var f = function (k, v, c) { return '<td><input id="lat_' + k + '_' + i + '" ' + dec + (c ? ' class="' + c + '"' : '') + ' value="' + E(v == null ? '' : v) + '" aria-label="Lateral ' + (i + 1) + ' ' + k + '"></td>'; };
-    return '<tr data-lat="' + i + '"><td>' + (i + 1) + '</td>' + f('len', l.length) + f('des', l.design) + f('tu', '') + f('last', l.last) + f('base', l.baseline) + f('left', '') + f('adj', '') + '</tr>';
+    return '<tr data-lat="' + i + '"><td>' + (i + 1) + '</td>' + f('len', l.length) + f('des', l.design) + f('tu', '') + f('last', l.last) + f('base', l.baseline) + f('left', '') + f('adj', '') + '<td id="lat_pc_' + i + '" class="sm"></td></tr>';
   }
 
   function build(sys, prev) {
@@ -24,39 +25,39 @@
     h += det('1. System and visit', '<div class="two">' + fld('i_date', 'Date of inspection', 'type="date" value="' + today() + '"') + '<div><label for="i_type">Type of inspection</label><select id="i_type">' + OWI.TYPES.map(function (t) { return '<option>' + t + '</option>'; }).join('') + '</select></div>' +
       fld('s_desc', 'Type of system', 'value="' + E(sys.sys_desc || (D.customer.sys_type ? 'Type ' + D.customer.sys_type : '')) + '"') + fld('s_flow', 'Design flow (gpd)', dec + ' value="' + E(sys.design_flow == null ? '' : sys.design_flow) + '"') +
       fld('s_sgal', 'Septic tank (gal)', dec + ' value="' + E(sys.septic_gal == null ? '' : sys.septic_gal) + '"') + fld('s_ld', 'Liquid depth (in)', dec + ' value="' + E(sys.liquid_depth == null ? '' : sys.liquid_depth) + '"') +
-      fld('s_pgal', 'Pump tank (gal)', dec + ' value="' + E(sys.pump_gal == null ? '' : sys.pump_gal) + '"') + fld('s_gpi', 'Pump tank gallons per inch', dec + ' value="' + E(sys.gpi == null ? '' : sys.gpi) + '"') +
-      fld('s_dose', 'Dose volume (gal)', dec + ' value="' + E(sys.dose == null ? '' : sys.dose) + '"') + fld('s_dpdr', 'Design PDR, pump delivery rate (gpm)', dec + ' value="' + E(sys.design_pdr == null ? '' : sys.design_pdr) + '"') + '</div>' +
-      '<div id="gpiBox" class="gpibox" hidden><b>Gallons per inch of the pump tank</b><div class="two"><div><label for="g_shape">Tank shape</label><select id="g_shape"><option value="rect">Rectangular</option><option value="round">Round</option></select></div><div id="g_rw"></div></div><div class="two" id="g_dims"></div><p class="mute sm" id="g_res"></p><button type="button" class="b" id="g_use">Use this number</button></div><button type="button" class="b alt" id="gpiCalc" style="margin-top:6px">Calculate gallons per inch</button>' +
+      fld('s_pgal', 'Pump tank (gal)', dec + ' value="' + E(sys.pump_gal == null ? '' : sys.pump_gal) + '"') + '<div><label for="s_shape">Pump tank shape</label><select id="s_shape"><option value="rect"' + (sys.tank_shape === 'rect' || !sys.tank_shape ? ' selected' : '') + '>Rectangular</option><option value="round"' + (sys.tank_shape === 'round' ? ' selected' : '') + '>Round</option></select></div>' +
+      fld('s_a', 'Inside length or diameter (in)', dec + ' value="' + E(sys.tank_a == null ? '' : sys.tank_a) + '"') + '<div id="s_bw">' + fld('s_b', 'Inside width (in)', dec + ' value="' + E(sys.tank_b == null ? '' : sys.tank_b) + '"') + '</div>' +
+      '<div><label for="s_gpi">Pump tank gallons per inch</label><input id="s_gpi" ' + dec + ' value="' + E(sys.gpi == null ? '' : sys.gpi) + '">' + fm('s_gpi') + '</div>' + fld('s_dpdr', 'Design PDR, pump delivery rate (gpm)', dec + ' value="' + E(sys.design_pdr == null ? '' : sys.design_pdr) + '"') + '</div>' +
       '<p class="mute sm">Owner, permit and system details come from the customer. Tank sizes, design numbers and laterals are saved here after your first report, so you type them once.</p>' +
       '<div class="two">' + auto('a_days', 'Days since last inspection') + auto('a_last', 'Last inspection') + '</div>', true, 'c1');
     h += det('2. Septic tank', checklist(OWI.SECTIONS[0]) + '<div class="three">' + fld('i_sc', 'Scum (in)', dec) + fld('i_sl', 'Sludge (in)', dec) + auto('i_slp', 'Sludge, % of liquid depth') + '</div><p id="slw" class="mute sm"></p><div class="two">' + fld('i_spd', 'Date of last pumpout', 'type="date"') + '<div><label for="i_spn">Pumping needed?</label><select id="i_spn"><option>No</option><option>Yes</option></select></div></div>', false, 'c2');
     h += det('3. Pump tank', checklist(OWI.SECTIONS[1]) + '<div class="two">' + fld('i_psc', 'Scum (in)', dec) + fld('i_psl', 'Sludge (in)', dec) + fld('i_ppd', 'Date of last pumpout', 'type="date"') + '<div><label for="i_ppn">Pumping needed?</label><select id="i_ppn"><option>No</option><option>Yes</option></select></div></div>', false, 'c3');
-    h += det('4. Pump, piping and controls', checklist(OWI.SECTIONS[2]) + '<h4>Float settings (inches above tank bottom)</h4><div class="three">' + fld('i_fa', 'Alarm', dec) + fld('i_fon', 'Pump on', dec) + fld('i_foff', 'Pump off', dec) + '</div>', false, 'c4');
+    h += det('4. Pump, piping and controls', checklist(OWI.SECTIONS[2]) + '<h4>Float settings (inches above tank bottom)</h4><div class="three">' + fld('i_fa', 'Alarm', dec + ' value="' + E((sys.floats || {}).alarm == null ? '' : sys.floats.alarm) + '"') + fld('i_fon', 'Pump on', dec + ' value="' + E((sys.floats || {}).on == null ? '' : sys.floats.on) + '"') + fld('i_foff', 'Pump off', dec + ' value="' + E((sys.floats || {}).off == null ? '' : sys.floats.off) + '"') + '</div>', false, 'c4');
     var lats = (sys.laterals && sys.laterals.length ? sys.laterals : [{}, {}, {}, {}]).map(function (l, i) { var t = prev && prev.turnups && prev.turnups[i]; return latRow(i, { length: l.length, design: l.design, last: t == null ? '' : t }); }).join('');
-    h += det('5. Lateral field', checklist(OWI.SECTIONS[3]) + '<h4>Lateral head readings</h4><div class="tw"><table class="lat"><thead><tr><th>Lateral</th><th>Length</th><th>Design head</th><th>Turnup height</th><th>Head last time</th><th>Baseline head</th><th>Valves left at</th><th>Adjusted to</th></tr></thead><tbody id="latb">' + lats + '</tbody></table></div><button type="button" class="b alt" id="addLat" style="margin-top:6px">Add lateral</button>', false, 'c5');
-    h += det('6. Flow test and meters', '<div class="two">' + fld('f_dose', 'Dose volume (gal)', dec) + fld('f_draw', 'Drawdown (in)', dec) + '</div><h4>Pump rate test</h4><div class="calc">' +
-      calcRow('f_off', 'Water level, pump off (start)', 'in', false) + calcRow('f_on', 'Water level, pump on (after run)', 'in', false) + calcRow('f_dp', 'Depth pumped', 'in', true) + calcRow('f_gpi', 'Times gallons per inch', 'gal/in', false) + calcRow('f_vol', 'Volume pumped', 'gal', true) + calcRow('f_min', 'Divided by minutes', 'min', false) + calcRow('f_pdr', 'Measured PDR (pump delivery rate)', 'gpm', true) + calcRow('f_dpdr', 'Design PDR', 'gpm', true) + calcRow('f_eff', 'PDR efficiency', '%', true) + '</div>' +
+    h += det('5. Lateral field', checklist(OWI.SECTIONS[3]) + '<h4>Lateral head readings</h4><div class="tw"><table class="lat"><thead><tr><th>Lateral</th><th>Length</th><th>Design head</th><th>Turnup height</th><th>Head last time</th><th>Baseline head</th><th>Valves left at</th><th>Adjusted to</th><th>Off design</th></tr></thead><tbody id="latb">' + lats + '</tbody></table></div><button type="button" class="b alt" id="addLat" style="margin-top:6px">Add lateral</button>', false, 'c5');
+    h += det('6. Flow test and meters', '<div class="two">' + auto('f_draw', 'Drawdown (in)') + auto('f_dose', 'Dose volume (gal)') + '</div><h4>Pump rate test</h4><div class="calc">' +
+      calcRow('f_off', 'Water level, pump off (start)', 'in', false) + calcRow('f_on', 'Water level, pump on (after run)', 'in', false) + calcRow('f_dp', 'Depth pumped', 'in', true) + calcRow('f_gpi', 'Times gallons per inch', 'gal/in', true) + calcRow('f_vol', 'Volume pumped', 'gal', true) + calcRow('f_min', 'Divided by minutes', 'min', false) + calcRow('f_pdr', 'Measured PDR (pump delivery rate)', 'gpm', true) + calcRow('f_dpdr', 'Design PDR', 'gpm', true) + calcRow('f_eff', 'PDR efficiency', '%', true) + '</div>' +
       '<p class="note" id="pdrwarn" hidden></p><p class="mute sm">A warning shows when PDR efficiency is more than 10% above or below design.</p><h4>Meter readings</h4><div class="tw"><table><thead><tr><th></th><th>Today</th><th>Last time</th><th>Used</th><th>Per day</th><th>Design per day</th></tr></thead><tbody>' +
       '<tr><td>ET (elapsed time) hours</td><td><input id="m_et" ' + dec + ' aria-label="ET hours today"></td><td><input id="m_etl" class="auto" readonly tabindex="-1"></td><td><input id="m_etu" class="auto" readonly tabindex="-1"></td><td><input id="m_etd" class="auto" readonly tabindex="-1"></td><td><input id="m_etg" class="auto" readonly tabindex="-1"></td></tr>' +
-      '<tr><td>Events</td><td><input id="m_ev" ' + dec + ' aria-label="Events today"></td><td><input id="m_evl" class="auto" readonly tabindex="-1"></td><td><input id="m_evu" class="auto" readonly tabindex="-1"></td><td><input id="m_evd" class="auto" readonly tabindex="-1"></td><td><input id="m_evg" class="auto" readonly tabindex="-1"></td></tr></tbody></table></div>', true, 'c6');
+      '<tr><td>Events</td><td><input id="m_ev" ' + dec + ' aria-label="Events today"></td><td><input id="m_evl" class="auto" readonly tabindex="-1"></td><td><input id="m_evu" class="auto" readonly tabindex="-1"></td><td><input id="m_evd" class="auto" readonly tabindex="-1"></td><td><input id="m_evg" class="auto" readonly tabindex="-1"></td></tr></tbody></table></div><div class="fm" id="FM_meters"></div>', true, 'c6');
     h += det('7. Homeowner wording', '<p class="mute sm">Pick the closest canned response for each part. The sentence appears on the homeowner report. You can edit it, or choose Custom to write your own.</p>' + OWI.WORDS.map(function (w) {
       return '<div class="wd"><div class="row" style="justify-content:space-between"><label for="w_s_' + w.k + '">' + E(w.t) + '</label><span class="pill" id="w_p_' + w.k + '"></span></div><select id="w_s_' + w.k + '" data-w="' + w.k + '">' + w.o.map(function (o, i) { return '<option value="' + i + '">' + E(o[0]) + '</option>'; }).join('') + '</select><textarea id="w_t_' + w.k + '" maxlength="600" aria-label="Wording for ' + E(w.t) + '"></textarea></div>';
     }).join('') +
       '<h4>What the owner should do</h4><div class="item"><label class="ck"><input type="checkbox" id="job_on"> Hire a licensed contractor to</label><select id="job_s" style="flex:1 1 240px;min-width:0">' + OWI.JOBS.map(function (j) { return '<option>' + E(j) + '</option>'; }).join('') + '</select></div><div id="job_more"></div><button type="button" class="b alt" id="addJob" style="margin:4px 0 8px">Add another contractor job</button>' +
       OWI.TICKS.map(function (t, i) { return '<label class="ck"><input type="checkbox" class="tick" data-i="' + i + '"> ' + E(t) + '</label>'; }).join('') + '<label for="t_extra">Anything else for the owner (optional)</label><textarea id="t_extra" maxlength="400"></textarea>', false, 'c7');
     h += det('8. Finish', '<label for="i_recs">Recommendations for owner</label><textarea id="i_recs" maxlength="1500"></textarea><label for="i_com">Comments (private to you, never shown to the owner or county)</label><textarea id="i_com" maxlength="1500"></textarea>' +
-      '<div class="two"><div><label for="i_status">Status of system</label><select id="i_status">' + OWI.STATUS.map(function (t) { return '<option>' + t + '</option>'; }).join('') + '</select></div>' + fld('i_next', 'Next inspection due', 'type="date" value="' + addDays(today(), 180) + '"') + '</div>' +
+      '<div class="two"><div><label for="i_status">Status of system</label><select id="i_status">' + OWI.STATUS.map(function (t) { return '<option>' + t + '</option>'; }).join('') + '</select></div>' + fld('i_next', 'Next inspection due', 'type="date" value="' + addDays(today(), 180) + '"') + '</div><p class="mute sm" id="stw"></p>' +
       '<label for="i_photos">Photos (optional, up to 8)</label><input id="i_photos" type="file" accept="image/*" multiple><div id="pthumbs" class="row" style="margin-top:6px"></div>' +
       '<label for="i_sign">Certified operator signature</label><input id="i_sign" class="auto" readonly tabindex="-1" value="' + E(A.cfg.operator.name + ', ' + A.cfg.operator.cert) + '">' +
       '<label for="i_amt">Invoice amount ($). Use 0 to waive it</label><input id="i_amt" ' + dec + ' value="' + E(A.LS.get('ow_visit') || (A.cfg && A.cfg.defaults.visit) || '0') + '"><p class="mute sm">With an invoice, the owner and the county get nothing until it is paid and 3 business days have passed. With 0, both get the report right away.</p>' +
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Save report</button><button class="b alt" type="button" id="clearDraft">Clear form</button></div><div class="msg" id="im" role="status"></div>', true, 'c8');
     return h + '</form>';
   }
-  function calcRow(id, label, unit, isAuto) { return '<div class="cl"><label for="' + id + '">' + label + '</label><input id="' + id + '" ' + (isAuto ? 'class="auto" readonly tabindex="-1"' : dec) + '><span class="u">' + unit + '</span></div>'; }
+  function calcRow(id, label, unit, isAuto) { return '<div class="cl"><label for="' + id + '">' + label + '</label><input id="' + id + '" ' + (isAuto ? 'class="auto" readonly tabindex="-1"' : dec) + '><span class="u">' + unit + '</span></div>' + (isAuto ? fm(id) : ''); }
 
   // ---- reading the form
   function collect() {
-    var d = { inspect_type: val('i_type'), septic_gal: num('s_sgal'), liquid_depth: num('s_ld'), pump_gal: num('s_pgal'), gpi: num('s_gpi'), checks: {}, words: {}, laterals: [] };
+    var d = { inspect_type: val('i_type'), septic_gal: num('s_sgal'), liquid_depth: num('s_ld'), pump_gal: num('s_pgal'), gpi: num('s_gpi'), tank_shape: val('s_shape'), tank_a: num('s_a'), tank_b: num('s_b'), checks: {}, words: {}, laterals: [] };
     OWI.SECTIONS.forEach(function (sec) { d.checks[sec.k] = {}; sec.items.forEach(function (it) { var b = document.querySelector('.tri[data-s="' + sec.k + '"][data-i="' + it[0] + '"] button[aria-pressed="true"]'); if (b) d.checks[sec.k][it[0]] = b.getAttribute('data-v'); }); });
     d.septic = { scum: num('i_sc'), sludge: num('i_sl'), pumped: val('i_spd'), pump_needed: val('i_spn') }; d.pump = { scum: num('i_psc'), sludge: num('i_psl'), pumped: val('i_ppd'), pump_needed: val('i_ppn') };
     d.floats = { alarm: num('i_fa'), on: num('i_fon'), off: num('i_foff') };
@@ -69,17 +70,23 @@
     d.recs = $('i_recs').value; d.comments = $('i_com').value; d.status = val('i_status'); d.next_due = val('i_next');
     return d;
   }
-  function system() { var lat = []; document.querySelectorAll('#latb tr').forEach(function (tr) { var i = tr.getAttribute('data-lat'); lat.push({ length: num('lat_len_' + i), design: num('lat_des_' + i) }); }); return { sys_desc: val('s_desc'), design_flow: num('s_flow'), septic_gal: num('s_sgal'), liquid_depth: num('s_ld'), pump_gal: num('s_pgal'), gpi: num('s_gpi'), dose: num('s_dose'), design_pdr: num('s_dpdr'), laterals: lat }; }
+  function system() { var lat = []; document.querySelectorAll('#latb tr').forEach(function (tr) { var i = tr.getAttribute('data-lat'); lat.push({ length: num('lat_len_' + i), design: num('lat_des_' + i) }); }); return { sys_desc: val('s_desc'), design_flow: num('s_flow'), septic_gal: num('s_sgal'), liquid_depth: num('s_ld'), pump_gal: num('s_pgal'), gpi: num('s_gpi'), tank_shape: val('s_shape'), tank_a: num('s_a'), tank_b: num('s_b'), floats: { alarm: num('i_fa'), on: num('i_fon'), off: num('i_foff') }, dose: num('f_dose'), design_pdr: num('s_dpdr'), laterals: lat }; }
   function setv(id, v) { var e = $(id); if (e) e.value = v == null ? '' : v; }
   function fmt(x) { return x === null || x === undefined ? '' : x; }
 
   // ---- live numbers
   function recalc() {
+    // gallons per inch comes from the tank size when it is entered
+    var g = OWI.gpi(val('s_shape'), val('s_a'), val('s_b')), sg = $('s_gpi'); $('s_bw').hidden = val('s_shape') === 'round';
+    if (g !== null) { sg.value = g; sg.readOnly = true; sg.classList.add('auto'); } else { sg.readOnly = false; sg.classList.remove('auto'); }
+    setv('f_gpi', val('s_gpi'));
     var d = collect(), date = val('i_date') || today(), sys = system();
-    // keep the flow-test copies in step with the system boxes unless typed over
-    ['f_dose:s_dose', 'f_gpi:s_gpi'].forEach(function (p) { var a = p.split(':'), e = $(a[0]); if (!e.dataset.own) e.value = val(a[1]); });
-    d.flow.dose = num('f_dose'); d.flow.gpi = num('f_gpi');
-    var c = OWI.calc(d, { design_flow: sys.design_flow, design_pdr: sys.design_pdr, dose: sys.dose, prev: ctx.prev ? { date: ctx.prev.date, et: ctx.prev.et, events: ctx.prev.events } : null, date: date });
+    var cx = { design_flow: sys.design_flow, design_pdr: sys.design_pdr, dose: null, prev: ctx.prev ? { date: ctx.prev.date, et: ctx.prev.et, events: ctx.prev.events } : null, date: date };
+    var c = OWI.calc(d, cx); setv('f_draw', fmt(c.drawdown)); setv('f_dose', fmt(c.dose)); d.flow.drawdown = c.drawdown; d.flow.dose = c.dose;
+    var F = OWI.formulas(d, c, cx); F.gpi = g === null ? '' : OWI.gpiFormula(val('s_shape'), val('s_a'), val('s_b'));
+    [['a_days', F.days], ['f_draw', F.drawdown], ['f_dose', F.dose], ['f_dp', F.depth], ['f_vol', F.vol], ['f_pdr', F.pdr], ['f_eff', F.eff], ['i_slp', F.sludge], ['s_gpi', F.gpi], ['f_gpi', F.gpi], ['meters', [F.et, F.events, F.events_design && 'Design events: ' + F.events_design, F.et_design && 'Design ET: ' + F.et_design].filter(Boolean).join(' | ')]].forEach(function (z) { var e = $('FM_' + z[0]); if (e) e.textContent = z[1] || ''; });
+    document.querySelectorAll('#latb tr').forEach(function (tr) { var i = tr.getAttribute('data-lat'), pc = OWI.latPct({ design: num('lat_des_' + i), turnup: num('lat_tu_' + i) }); $('lat_pc_' + i).textContent = pc === null ? '' : (pc > 0 ? '+' : '') + pc + '% vs design'; });
+    var sp = $('i_spn'); if (!sp.dataset.touched && c.sludge_pct !== null) sp.value = c.pump_now ? 'Yes' : 'No';
     setv('a_days', c.days == null ? '' : c.days); setv('a_last', ctx.prev ? OW.date(ctx.prev.date) : 'No earlier inspection');
     setv('f_dp', fmt(c.depth)); setv('f_vol', fmt(c.vol)); setv('f_pdr', fmt(c.pdr)); setv('f_dpdr', fmt(sys.design_pdr)); setv('f_eff', fmt(c.eff));
     var w = $('pdrwarn'); w.hidden = c.eff_ok !== false; if (c.eff_ok === false) w.textContent = 'PDR efficiency is ' + c.eff + '%. Design is 90% to 110%. Check the pump, filter and discharge line, and add a note in Recommendations.';
@@ -93,6 +100,9 @@
     var bad = OWI.problems(d).length; $('needs').textContent = bad + (bad === 1 ? ' item needs' : ' items need') + ' attention'; $('needs').className = 'pill ' + (bad ? 'bad' : 'warn');
     var counts = {}; OWI.SECTIONS.forEach(function (sec, i) { counts[sec.k] = [Object.keys(d.checks[sec.k]).length, sec.items.length]; });
     ['septic:c2', 'pump:c3', 'controls:c4', 'field:c5'].forEach(function (z) { var a = z.split(':'); $(a[1]).textContent = counts[a[0]][0] + ' of ' + counts[a[0]][1] + ' answered'; });
+    var answered = 0; OWI.SECTIONS.forEach(function (sec) { answered += counts[sec.k][0]; }); var ck = d.checks.controls || {};
+    var sug = !answered ? 'Incomplete inspection' : (ck.alarm === 'no' || ck.floats === 'no') ? 'Malfunctioning' : (bad || c.eff_ok === false || c.pump_now) ? 'Needs maintenance' : 'Compliant', st = $('i_status');
+    if (!st.dataset.touched && answered) st.value = sug; $('stw').textContent = answered ? 'Suggested from your answers: ' + sug + '. You can change it.' : '';
     return d;
   }
   function suggest(k, idx) { var s = $('w_s_' + k); if (idx === null || s.dataset.touched) return; if (Number(s.value) !== idx) { s.value = idx; setWord(k); } }
@@ -117,11 +127,6 @@
   function pressTri(t, v) { t.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === v)); }); }
   function addLat() { var n = document.querySelectorAll('#latb tr').length; if (n >= 12) return; $('latb').insertAdjacentHTML('beforeend', latRow(n, {})); }
   function addJob(sel) { var n = document.querySelectorAll('#job_more select').length; if (n >= 5) return; $('job_more').insertAdjacentHTML('beforeend', '<div class="item"><label class="ck"><input type="checkbox" checked> Hire a licensed contractor to</label><select style="flex:1 1 240px;min-width:0" aria-label="Another contractor job">' + OWI.JOBS.map(function (j) { return '<option' + (j === sel ? ' selected' : '') + '>' + E(j) + '</option>'; }).join('') + '</select></div>'); }
-
-  // ---- gallons per inch calculator
-  function gpiDims() { var r = val('g_shape') === 'round'; $('g_dims').innerHTML = r ? fld('g_a', 'Inside diameter (in)', dec) : fld('g_a', 'Inside length (in)', dec) + fld('g_b', 'Inside width (in)', dec); gpiShow(); }
-  function gpiVal() { return OWI.gpi(val('g_shape'), val('g_a'), $('g_b') ? val('g_b') : null); }
-  function gpiShow() { var v = gpiVal(); $('g_res').textContent = v === null ? 'Enter the inside size of the tank.' : v + ' gallons per inch'; $('g_use').disabled = v === null; }
 
   // ---- photos: shrink on the phone before sending
   function shrink(file) {
@@ -148,12 +153,10 @@
   };
   function wire() {
     var f = $('inf');
-    f.addEventListener('input', function (e) { if (e.target.id && e.target.id.indexOf('g_') === 0) gpiShow(); if (e.target.id === 'f_dose' || e.target.id === 'f_gpi') e.target.dataset.own = 1; recalc(); save(); });
-    f.addEventListener('change', function (e) { var t = e.target; if (t.id === 'g_shape') gpiDims(); if (t.dataset && t.dataset.w) { t.dataset.touched = 1; setWord(t.dataset.w); } recalc(); save(); });
+    f.addEventListener('input', function (e) { recalc(); save(); });
+    f.addEventListener('change', function (e) { var t = e.target; if (t.id === 'i_spn' || t.id === 'i_status') t.dataset.touched = 1; if (t.dataset && t.dataset.w) { t.dataset.touched = 1; setWord(t.dataset.w); } recalc(); save(); });
     f.addEventListener('click', function (e) {
       var b = e.target.closest('.tri button'); if (b) { var t = b.parentNode, v = b.getAttribute('data-v'); pressTri(t, b.getAttribute('aria-pressed') === 'true' ? '' : v); recalc(); save(); return; }
-      if (e.target.id === 'gpiCalc') { $('gpiBox').hidden = !$('gpiBox').hidden; gpiDims(); return; }
-      if (e.target.id === 'g_use') { var gv = gpiVal(); if (gv !== null) { $('s_gpi').value = gv; $('f_gpi').dataset.own = ''; $('gpiBox').hidden = true; recalc(); save(); } return; }
       if (e.target.id === 'addLat') { addLat(); save(); } if (e.target.id === 'addJob') { addJob(); save(); }
       var px = e.target.closest('[data-px]'); if (px) { photos.splice(Number(px.getAttribute('data-px')), 1); thumbs(); }
       if (e.target.id === 'clearDraft' && confirm('Clear everything you entered on this form?')) { try { localStorage.removeItem(draftKey); } catch (x) {} A.inspect(); }

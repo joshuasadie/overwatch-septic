@@ -30,12 +30,12 @@ const jpg = new Uint8Array(400); jpg.set([0xff, 0xd8, 0xff, 0xe0]);
 const files = new Map(); env.FILES = { put: async (k, v) => { files.set(k, v); }, get: async k => files.has(k) ? { arrayBuffer: async () => files.get(k) } : null, delete: async k => { files.delete(k); } };
 const raw = (path, body, type) => call(path, { method: 'POST', headers: { 'cf-access-jwt-assertion': tok, origin: O, 'content-type': type }, body });
 let j = await J(await adm('/admin/api/customer', { name: 'Ann Home', email: 'ann@home.com', address: '12 Oak St, Pittsboro', county: 'Chatham', sys_type: 'V', permit: 'P-2019-3381' })); const cid = j.id;
-const SYS = { sys_desc: 'Low Pressure Pipe, Type V', design_flow: 120, septic_gal: 1000, liquid_depth: 52, pump_gal: 1000, gpi: 21, dose: 105, design_pdr: 17.8, laterals: [{ length: 40, design: 3 }, { length: 40, design: 3.4 }] };
+const SYS = { floats: { alarm: 40, on: 25, off: 20 }, sys_desc: 'Low Pressure Pipe, Type V', design_flow: 120, septic_gal: 1000, liquid_depth: 52, pump_gal: 1000, gpi: 21, dose: 105, design_pdr: 17.8, laterals: [{ length: 40, design: 3 }, { length: 40, design: 3.4 }] };
 const form = (o = {}) => ({ inspect_type: 'Regular semi-annual', septic_gal: 1000, liquid_depth: 52, pump_gal: 1000, gpi: 21,
   checks: { septic: { risers: 'yes', lids: 'yes', infil: 'yes', screen_req: 'yes', screen_ok: 'yes' }, pump: { risers: 'yes', lids: 'yes', infil: 'yes' }, controls: { rope: 'yes', alarm: 'yes', panel: 'no', floats: 'yes' }, field: { surf: 'yes', other: 'no' } },
-  septic: { scum: 4, sludge: 9, pumped: '2024-05-01', pump_needed: 'No' }, pump: { scum: 1, sludge: 2, pump_needed: 'No' }, floats: { alarm: 40, on: 30, off: 20 },
+  septic: { scum: 4, sludge: 9, pumped: '2024-05-01', pump_needed: 'No' }, pump: { scum: 1, sludge: 2, pump_needed: 'No' }, floats: { alarm: 40, on: 25, off: 20 },
   laterals: [{ length: 40, design: 3, turnup: 3.1, last: 3, baseline: 3, left: 3, adjusted: 3 }, { length: 40, design: 3.4, turnup: 3.4 }],
-  flow: { dose: 105, drawdown: 5, off: 40.5, on: 45.5, gpi: 21, min: 5, design_pdr: 17.8 }, meters: { et: 1460, events: 8770 },
+  flow: { off: 40.5, on: 45.5, min: 5, design_pdr: 17.8 }, meters: { et: 1460, events: 8770 },
   words: { septic: { i: 0, t: 'Lids sound.' }, pumptank: { i: 0, t: 'Floats work.' }, panel: { i: 1, t: 'Contactor is pitting.' }, field: { i: 0, t: 'Dry.' }, flow: { i: 1, t: 'A little high.' }, solids: { i: 0, t: 'Fine.' }, runtime: { i: 0, t: 'Steady.' } },
   todo: { jobs: ['Replace the control panel contactor', 'Not a real job'], ticks: [2, 99], extra: '' }, recs: 'Plan to replace the contactor.', comments: 'PRIVATE: owner has a dog that bites', status: 'Needs maintenance', next_due: '2027-04-26', ...o });
 const post = (date, data, system = SYS) => adm('/admin/api/inspection', { customer_id: cid, visit_date: date, data, system });
@@ -63,6 +63,14 @@ ok(rep2.state === 'held', 'report is held until you finish it (payment rules sti
 ok(JSON.stringify(rep2.insp.data.todo) === JSON.stringify({ jobs: ['Replace the control panel contactor'], ticks: [2], extra: '' }), 'unknown job and tick values are dropped');
 ok(rep2.insp.data.operator.cert === 'SS-1019571' && rep2.insp.data.comments.startsWith('PRIVATE'), 'operator certificate is recorded; private comments kept for you');
 ok(rep2.checks.length === 4 && rep2.checks.find(x => x.label === 'Control panel').status === 'repair' && rep2.checks.find(x => x.label === 'Drain field').status === 'pass', 'four roll-up checks for the older screens');
+// drawdown, dose volume and gallons per inch are worked out on the server
+ok(c2.drawdown === 5 && c2.dose === 105 && rep2.insp.data.flow.dose === 105 && rep2.insp.data.flow.drawdown === 5, 'drawdown = pump on - pump off (25 - 20) and dose = 5 x 21 = 105 gal');
+ok(c2.formulas.depth === '45.5 - 40.5 = 5 in' && c2.formulas.vol === '5 x 21 = 105 gal' && c2.formulas.pdr === '105 / 5 = 21 gpm' && c2.formulas.eff === '21 / 17.8 = 118%' && c2.formulas.sludge === '9 / 52 = 17.3%' && c2.formulas.events_design === '120 gpd / 105 gal = 1.1 per day', 'formulas show the real numbers');
+const r5 = await J(await post('2026-10-29', form({ tank_shape: 'rect', tank_a: 93, tank_b: 52, gpi: 5, floats: { on: 26, off: 20 } }))); j = await J(await adm('/admin/api/customer/' + cid)); const rep5 = j.reports.find(r => r.id === r5.id);
+ok(rep5.insp.data.gpi === 20.9 && rep5.insp.calc.dose === 125 && rep5.insp.calc.formulas.gpi === '93 x 52 / 231 = 20.9 gal/in', 'gallons per inch comes from the tank size (93 x 52 / 231 = 20.9), not the typed value');
+j = await J(await adm('/admin/api/system?customer_id=' + cid + '&date=2026-12-01')); ok(j.system.tank_a === 93 && j.system.tank_shape === 'rect' && j.system.gpi === 20.9, 'tank size is saved with the system');
+ok(j.system.floats.on === 25 && j.system.floats.off === 20 && j.system.floats.alarm === 40, 'float settings are saved with the system too');
+await adm('/admin/api/report-delete', { id: r5.id });
 // pump now at 33%
 const r3 = await J(await post('2026-10-27', form({ septic: { sludge: 18, scum: 2 } }))); j = await J(await adm('/admin/api/customer/' + cid));
 ok(j.reports.find(r => r.id === r3.id).insp.calc.pump_now === true, '18 in of 52 in is 34.6%: pump now');
@@ -82,6 +90,7 @@ let r = await call('/r/' + link); const html = await r.text();
 ok(r.status === 200 && html.includes('CERTIFIED OPERATOR MAINTENANCE/MONITORING REPORT') && html.includes('P-2019-3381') && html.includes('SS-1019571') && html.includes('118% (outside 10% of design)') && html.includes('Needs maintenance'), 'county page is the technical state-style report with the certificate number');
 ok(!html.includes('PRIVATE') && !html.includes('dog'), 'private comments never reach the county');
 ok(html.includes('Low Pressure Pipe, Type V') && html.includes('Design flow 120 gpd') && html.includes('185 days earlier'), 'county page shows the system and days since last visit');
+ok(html.includes('How the numbers were calculated') && html.includes('45.5 - 40.5 = 5 in') && html.includes('+3%'), 'county page shows the formulas and how far each lateral is from design');
 // customer portal: homeowner copy
 sent.length = 0; await call('/login/api/request', { method: 'POST', headers: { origin: O, 'content-type': 'application/json', 'cf-connecting-ip': '5.5.5.5' }, body: JSON.stringify({ email: 'ann@home.com', token: 't' }) });
 const lt = sent[0].text.match(/verify\?t=([A-Za-z0-9_-]+)/)[1];

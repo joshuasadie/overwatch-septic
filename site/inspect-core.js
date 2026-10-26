@@ -37,6 +37,10 @@
   OWI.calc = function (d, ctx) {
     ctx = ctx || {}; var f = d.flow || {}, m = d.meters || {}, o = {};
     var off = n(f.off), on = n(f.on), gpi = n(f.gpi) || n(d.gpi), min = n(f.min), dpdr = n(f.design_pdr) || n(ctx.design_pdr);
+    var fon = n(d.floats && d.floats.on), foff = n(d.floats && d.floats.off);
+    o.drawdown = fon !== null && foff !== null && fon >= foff ? r1(fon - foff) : null;
+    var gpid = n(d.gpi) || gpi;
+    o.dose = o.drawdown !== null && gpid ? Math.round(o.drawdown * gpid) : null;
     o.depth = off !== null && on !== null ? r1(on - off) : null;
     o.vol = o.depth !== null && gpi ? Math.round(o.depth * gpi) : null;
     o.pdr = o.vol !== null && min ? r1(o.vol / min) : null;
@@ -53,11 +57,34 @@
     o.ev_used = ev !== null && n(prev.events) !== null ? ev - n(prev.events) : null;
     o.et_day = o.et_used !== null && o.days ? r2(o.et_used / o.days) : null;
     o.events_day = o.ev_used !== null && o.days ? r1(o.ev_used / o.days) : null;
-    var dose = n(f.dose) || n(ctx.dose), dflow = n(ctx.design_flow);
+    var dose = o.dose || n(f.dose) || n(ctx.dose), dflow = n(ctx.design_flow);
     o.events_design = dose && dflow ? r1(dflow / dose) : null;
     o.et_design = o.events_design !== null && dpdr ? r2(o.events_design * (dose / dpdr) / 60) : null;
     return o;
   };
+
+
+  OWI.latPct = function (l) { var de = n(l && l.design), t = n(l && l.turnup); return de && t !== null ? Math.round((t - de) / de * 100) : null; };
+  // the arithmetic behind each calculated number, with the real values: shown under the boxes and on the county report
+  OWI.formulas = function (d, c, ctx) {
+    ctx = ctx || {}; var f = d.flow || {}, m = d.meters || {}, fl = d.floats || {}, F = {}, p = ctx.prev || {};
+    var gpi = n(f.gpi) || n(d.gpi), dpdr = n(f.design_pdr) || n(ctx.design_pdr), nn = function (x) { return x === null || x === undefined ? null : x; };
+    if (c.drawdown !== null) F.drawdown = fl.on + ' - ' + fl.off + ' = ' + c.drawdown + ' in';
+    if (c.dose !== null) F.dose = c.drawdown + ' x ' + (n(d.gpi) || gpi) + ' = ' + c.dose + ' gal';
+    if (c.depth !== null) F.depth = f.on + ' - ' + f.off + ' = ' + c.depth + ' in';
+    if (c.vol !== null) F.vol = c.depth + ' x ' + gpi + ' = ' + c.vol + ' gal';
+    if (c.pdr !== null) F.pdr = c.vol + ' / ' + f.min + ' = ' + c.pdr + ' gpm';
+    if (c.eff !== null) F.eff = c.pdr + ' / ' + dpdr + ' = ' + c.eff + '%';
+    if (c.sludge_pct !== null) F.sludge = d.septic.sludge + ' / ' + d.liquid_depth + ' = ' + c.sludge_pct + '%';
+    if (c.days !== null) F.days = ctx.date + ' minus ' + p.date + ' = ' + c.days + ' days';
+    if (c.et_day !== null) F.et = m.et + ' - ' + p.et + ' = ' + c.et_used + ' hours; ' + c.et_used + ' / ' + c.days + ' days = ' + c.et_day + ' per day';
+    if (c.events_day !== null) F.events = m.events + ' - ' + p.events + ' = ' + c.ev_used + ' events; ' + c.ev_used + ' / ' + c.days + ' days = ' + c.events_day + ' per day';
+    var dose = c.dose || n(f.dose) || n(ctx.dose);
+    if (c.events_design !== null) F.events_design = ctx.design_flow + ' gpd / ' + dose + ' gal = ' + c.events_design + ' per day';
+    if (c.et_design !== null) F.et_design = c.events_design + ' x (' + dose + ' gal / ' + dpdr + ' gpm / 60) = ' + c.et_design + ' hours per day';
+    return F;
+  };
+  OWI.gpiFormula = function (shape, a, b) { var g = OWI.gpi(shape, a, b); if (g === null) return ''; return shape === 'round' ? '3.1416 x (' + a + ' / 2)^2 / 231 = ' + g + ' gal/in' : a + ' x ' + b + ' / 231 = ' + g + ' gal/in'; };
 
   // the numbers that get graphed, one value per visit
   OWI.readings = function (d, c) {
@@ -94,6 +121,7 @@
     var s = b || {}, d = { checks: {}, words: {}, laterals: [] };
     d.inspect_type = OWI.TYPES.indexOf(s.inspect_type) >= 0 ? s.inspect_type : OWI.TYPES[0];
     ['septic_gal', 'liquid_depth', 'pump_gal', 'gpi'].forEach(function (k) { d[k] = N(s[k]); });
+    d.tank_shape = s.tank_shape === 'round' ? 'round' : 'rect'; d.tank_a = N(s.tank_a); d.tank_b = N(s.tank_b);
     OWI.SECTIONS.forEach(function (sec) { d.checks[sec.k] = {}; sec.items.forEach(function (it) { var a = s.checks && s.checks[sec.k] && s.checks[sec.k][it[0]]; if (YN.indexOf(a) >= 0) d.checks[sec.k][it[0]] = a; }); });
     ['septic', 'pump'].forEach(function (k) { var x = s[k] || {}; d[k] = { scum: N(x.scum), sludge: N(x.sludge), pumped: /^\d{4}-\d{2}-\d{2}$/.test(x.pumped || '') ? x.pumped : '', pump_needed: x.pump_needed === 'Yes' ? 'Yes' : 'No' }; });
     var fl = s.floats || {}; d.floats = { alarm: N(fl.alarm), on: N(fl.on), off: N(fl.off) };

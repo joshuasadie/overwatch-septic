@@ -48,7 +48,7 @@
       if (sec.k === 'controls') h += '<p>Float settings, inches above tank bottom: alarm ' + v(d.floats.alarm) + ', pump on ' + v(d.floats.on) + ', pump off ' + v(d.floats.off) + '.</p>';
     });
     if (lat.length) {
-      h += '<div class="tw"><table><thead><tr><th>Lateral</th><th>Length</th><th>Design head</th><th>Turnup height</th><th>Last time</th><th>Baseline</th><th>Valves left at</th><th>Adjusted to</th></tr></thead><tbody>' + lat.map(function (l) { return '<tr><td>' + l.n + '</td><td>' + v(l.length) + '</td><td>' + v(l.design) + '</td><td>' + v(l.turnup) + '</td><td>' + v(l.last) + '</td><td>' + v(l.baseline) + '</td><td>' + v(l.left) + '</td><td>' + v(l.adjusted) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+      h += '<div class="tw"><table><thead><tr><th>Lateral</th><th>Length</th><th>Design head</th><th>Turnup height</th><th>Last time</th><th>Baseline</th><th>Off design</th><th>Valves left at</th><th>Adjusted to</th></tr></thead><tbody>' + lat.map(function (l) { var pc = OWI.latPct(l); return '<tr><td>' + l.n + '</td><td>' + v(l.length) + '</td><td>' + v(l.design) + '</td><td>' + v(l.turnup) + '</td><td>' + v(l.last) + '</td><td>' + v(l.baseline) + '</td><td>' + (pc === null ? '-' : (pc > 0 ? '+' : '') + pc + '%') + '</td><td>' + v(l.left) + '</td><td>' + v(l.adjusted) + '</td></tr>'; }).join('') + '</tbody></table></div>';
     }
     h += '<h3>Flow test and meters</h3><div class="tw"><table><tbody>';
     h += '<tr><td>Water level, pump off (start)</td><td>' + v(d.flow.off, 'in') + '</td><td>Dose volume</td><td>' + v(d.flow.dose, 'gal') + '</td></tr>';
@@ -58,6 +58,8 @@
     h += '<tr><td>Design PDR</td><td>' + v(d.flow.design_pdr, 'gpm') + '</td><td>PDR efficiency</td><td>' + (c.eff === null ? '-' : (c.eff_ok ? c.eff + '%' : '<b>' + c.eff + '% (outside 10% of design)</b>')) + '</td></tr>';
     h += '<tr><td>ET (elapsed time) hours</td><td>' + v(d.meters.et) + (c.et_used !== null ? ' (used ' + c.et_used + ', ' + v(c.et_day) + ' per day)' : '') + '</td><td>Events</td><td>' + v(d.meters.events) + (c.ev_used !== null ? ' (used ' + c.ev_used + ', ' + v(c.events_day) + ' per day, design ' + v(c.events_design) + ')' : '') + '</td></tr>';
     h += '</tbody></table></div>';
+    var fm = c.formulas || {}, fl = [['Depth pumped', fm.depth], ['Volume pumped', fm.vol], ['Measured PDR', fm.pdr], ['PDR efficiency', fm.eff], ['Sludge, % of liquid depth', fm.sludge], ['Days since last inspection', fm.days], ['ET (elapsed time)', fm.et], ['Events', fm.events], ['Design events per day', fm.events_design], ['Dose volume', fm.dose], ['Gallons per inch', fm.gpi]].filter(function (x) { return x[1]; });
+    if (fl.length) h += '<p class="sm"><b>How the numbers were calculated</b></p><ul class="sm" style="margin:2px 0;padding-left:20px">' + fl.map(function (x) { return '<li>' + esc(x[0]) + ': ' + esc(x[1]) + '</li>'; }).join('') + '</ul>';
     h += '<p><b>Status of system:</b> ' + esc(d.status) + '. <b>Next inspection due:</b> ' + esc(dt(d.next_due) || '-') + '.</p>';
     if (d.recs) h += '<p><b>Recommendations for owner:</b> ' + esc(d.recs) + '</p>';
     h += '<p class="sm"><i>Certified operator: ' + esc(op.name) + ', ' + esc(op.cert) + ', ' + esc(dt(rep.visit_date)) + '. Repairs and pumping are performed by licensed contractors.</i></p></div>';
