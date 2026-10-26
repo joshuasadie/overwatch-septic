@@ -164,6 +164,24 @@
     if (fromDims) c.formulas.gpi = OWI.gpiFormula(t.shape, t.a, t.b);
     c.gpi = g; return c;
   };
+  // state approved-tank list rows: [model, imprint, maker, county, gallons, shape r|c|o, inside length, inside width, inside height, gal/in]
+  var squash = function (x) { return String(x == null ? '' : x).toUpperCase().replace(/\s+/g, ''); };
+  OWI.findTanks = function (list, q) {
+    q = squash(q); if (q.length < 3) return [];
+    var hit = (list || []).filter(function (r) { return r[0] === q || squash(r[1]) === q; });
+    if (hit.length || q.length < 6) return hit;
+    hit = (list || []).filter(function (r) { return squash(r[1]).indexOf(q) >= 0; });
+    return hit.length <= 8 ? hit : [];
+  };
+  OWI.tankFill = function (r) {
+    var o = { gal: r[4], shape: r[5] === 'c' ? 'round' : 'rect', a: null, b: null, gpi: null, h: r[8] || null, maker: r[2], county: r[3], imprint: r[1] };
+    if (r[5] === 'r' && r[6] && r[7]) { o.a = r[6]; o.b = r[7]; } else if (r[5] === 'c' && r[6]) o.a = r[6];
+    o.gpi = o.a ? OWI.gpi(o.shape, o.a, o.b) : null; if (o.gpi === null) o.gpi = r[9] || null;
+    o.liq = o.gpi ? Math.round(o.gal / o.gpi) : null;
+    o.note = r[2] + ' (' + r[3] + '). ' + o.gal.toLocaleString('en-US') + ' gal. ' + (r[5] === 'r' && r[6] && r[7] ? 'Inside ' + r[6] + ' x ' + r[7] + ' in' + (r[8] ? ', ' + r[8] + ' in tall' : '') + '. ' : r[5] === 'o' ? 'Octagonal or hexagonal: the list gives ' + (r[9] || '?') + ' gal/in and no usable length and width, so gallons per inch comes from the list. ' : 'The list gives no inside size for this tank. Measure it. ') + (o.liq ? 'About ' + o.liq + ' in of liquid holds the full ' + o.gal.toLocaleString('en-US') + ' gal. Measure the real liquid depth at the outlet.' : '');
+    return o;
+  };
+
   // the extra tanks and check cards of one report, ready to show (shared by the web pages and the PDFs)
   OWI.extras = function (d, c) {
     var out = { tanks: [], cards: [], malfunction: d.malfunction && d.malfunction.found ? d.malfunction : null }, ct = (c && c.tanks) || {};
