@@ -46,3 +46,9 @@ Tests: `npm test` runs the API tests, including a clock that moves day by day th
 - Photos: JPEG only, resized in the browser, up to 8 per report, stored in the R2 bucket under `reports/<id>/`. The owner sees them only after the report is released.
 - Private comments are never sent to the owner or the county.
 - Canned wording and job lists live in `site/inspect-core.js` (`WORDS`, `JOBS`, `TICKS`).
+
+### Flexible systems (System setup)
+
+Each customer has a **System setup** (admin > customer > System setup): permit and county details (issue date, months valid, permit numbers, bedrooms, inspection schedule), addresses, names for the first tanks, any number of extra septic and pump tanks, whether field lines are called laterals or zones, and **check cards** (yes/no lists such as drip headworks, a treatment unit or permit conditions). Templates only pre-fill check cards. The visit form is built from the setup: every tank gets its own checks, readings and calculations, every card its own checks, and you can add a check on the spot (it is kept for next time). Tank sizes and float settings typed during a visit are remembered on the system.
+
+The form warns when the operation permit has expired or is about to, suggests the next check-up from the permit schedule, and counts 48 hours from a malfunction. Problems on extra tanks and cards always appear in the owner's "What you need to do". The county copy prints the permit dates but never the word "expired". Older inspections without extras still render as before. Data lives in the `systems` row (`permit`, `addresses`, `tanks`, `cards`) and in each inspection (`tanks`, `cards`, `malfunction`, `sysinfo`), so no schema change is needed.

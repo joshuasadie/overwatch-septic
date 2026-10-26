@@ -148,13 +148,23 @@
 
   // ---- inspection reports: the homeowner copy and the county copy
   function v(x, u) { return x === null || x === undefined || x === '' ? '-' : x + (u ? ' ' + u : ''); }
+  function permitLines(d) {
+    var p = (d.sysinfo && d.sysinfo.permit) || {}, pi = OWI.permitInfo(p, '0000-00-00'), r = [];
+    var nos = [p.ca_no && 'Construction auth. ' + p.ca_no, p.ip_no && 'Improvement permit ' + p.ip_no, p.other_no].filter(Boolean).join('; ');
+    if (p.parcel) r.push(['Parcel', p.parcel]); if (nos) r.push(['Permit numbers', nos]);
+    if (p.issued) r.push(['Operation permit', 'Issued ' + OW.date(p.issued) + (pi.expires ? ', valid until ' + OW.date(pi.expires) : '')]);
+    if (p.bedrooms || p.occupants) r.push(['Design capacity', [p.bedrooms && p.bedrooms + ' bedrooms', p.occupants && 'up to ' + p.occupants + ' occupants'].filter(Boolean).join(', ')]);
+    var fr = OWI.FREQ.filter(function (f) { return f[0] === p.freq; })[0]; if (fr && fr[0]) r.push(['Inspection frequency', fr[1]]);
+    var ad = d.sysinfo && d.sysinfo.addresses; if (ad && ad.length > 1) r.push(['System addresses', ad.join('; ')]);
+    return r;
+  }
   OW.inspHomePdf = function (rep, cust, op, photos) {
     var d = rep.insp.data, c = rep.insp.calc, ov = OWI.overall(d.status);
     return layout(window.PDFLib, 'Your septic system check-up').then(function (L) {
       L.letterhead([op.name + ', certified operator', op.cert, OW.CONTACT.phone, OW.CONTACT.email, OW.CONTACT.site]);
       L.text('YOUR SEPTIC SYSTEM CHECK-UP', { bold: true, size: 16, center: true, after: 6 });
       L.text(cust.name + ', ' + cust.address + '. Checked ' + OW.date(rep.visit_date) + '.', { center: true, after: 8 });
-      var acts = OWI.actions(d);
+      var acts = OWI.actions(d, c);
       L.text('WHAT YOU NEED TO DO', { bold: true, size: 13, after: 3 });
       if (acts.length) {
         acts.forEach(function (a, i) { L.text((i + 1) + '. ' + a, { indent: 10, after: 3, underline: true }); });
@@ -166,14 +176,20 @@
       }
       L.gap(4); L.rule(); L.text(ov[1], { bold: true, size: 13, after: 2 }); L.text(ov[2], { after: 8 });
       L.gap(4); L.text('What we checked', { bold: true, size: 13 });
-      [['septic', 'Septic tank'], ['pumptank', 'Pump tank, floats, alarm'], ['panel', 'Control panel'], ['field', 'Drain field']].forEach(function (p) {
+      var nmz = (d.sysinfo && d.sysinfo.names) || {}, X = OWI.extras(d, c);
+      [['septic', nmz.septic || 'Septic tank'], ['pumptank', nmz.pump || 'Pump tank, floats, alarm'], ['panel', 'Control panel'], ['field', 'Drain field']].forEach(function (p) {
         var r = OWI.wordRow(d, p[0]); if (!r) return; L.text(p[1] + ': ' + r.label, { bold: true, indent: 10, after: 1 }); L.text(r.text, { indent: 20, after: 6 });
       });
+      X.tanks.concat(X.cards).forEach(function (x) { var q = OWI.plainExtra(x); L.text((x.name || x.title) + ': ' + q[0], { bold: true, indent: 10, after: 1 }); L.text(q[2], { indent: 20, after: 6 }); });
       L.text('Your numbers, in plain terms', { bold: true, size: 13 });
       var f = OWI.wordRow(d, 'flow'), s = OWI.wordRow(d, 'solids'), t = OWI.wordRow(d, 'runtime');
       if (f) { L.text('Pump flow: ' + (c.pdr !== null ? c.pdr + ' gallons per minute' + (d.flow.design_pdr ? ' (designed for ' + d.flow.design_pdr + ')' : '') : '-'), { bold: true, indent: 10, after: 1 }); L.text(f.text, { indent: 20, after: 6 }); }
       if (s) { L.text('Solids in the septic tank: ' + (c.sludge_pct !== null ? Math.round(c.sludge_pct) + '% of the tank depth (' + v(d.septic.sludge) + ' in of ' + v(d.liquid_depth) + ' in)' : '-'), { bold: true, indent: 10, after: 1 }); L.text(s.text, { indent: 20, after: 6 }); }
       if (t) { L.text('How often the pump runs: ' + (c.events_day !== null ? c.events_day + ' times a day' + (c.events_design !== null ? ' (designed for ' + c.events_design + ')' : '') : '-'), { bold: true, indent: 10, after: 1 }); L.text(t.text, { indent: 20, after: 6 }); }
+      X.tanks.forEach(function (x) {
+        if (x.kind === 'pump' && x.k.pdr != null) { L.text(x.name + ' flow: ' + x.k.pdr + ' gallons per minute' + (x.t.design_pdr ? ' (designed for ' + x.t.design_pdr + ')' : ''), { bold: true, indent: 10, after: 1 }); L.text(x.k.eff_ok === false ? OWI.plainExtra(x)[2] : 'About what it was designed to move.', { indent: 20, after: 6 }); }
+        if (x.kind === 'septic' && x.k.sludge_pct != null) { L.text('Solids in ' + x.name + ': ' + Math.round(x.k.sludge_pct) + '% of the tank depth (' + v(x.t.sludge) + ' in of ' + v(x.t.liquid_depth) + ' in)', { bold: true, indent: 10, after: 1 }); L.text(x.k.pump_now ? OWI.plainExtra(x)[2] : 'Below one third of the tank, so no pumping is needed yet.', { indent: 20, after: 6 }); }
+      });
       L.text('Next check-up due: ' + (d.next_due ? OW.date(d.next_due) : 'to be scheduled'), { bold: true });
       var chain = Promise.resolve();
       if (photos && photos.length) { chain = chain.then(function () { L.gap(4); L.text('Photos from the visit', { bold: true, size: 13 }); }); photos.forEach(function (b) { chain = chain.then(function () { return L.image(b); }); }); }
@@ -185,20 +201,33 @@
     return layout(window.PDFLib, 'Certified operator maintenance/monitoring report').then(function (L) {
       L.letterhead([op.name + ', certified operator', op.cert, OW.CONTACT.phone, OW.CONTACT.email, OW.CONTACT.site]);
       L.text('CERTIFIED OPERATOR MAINTENANCE/MONITORING REPORT', { bold: true, size: 13, center: true, after: 8 });
-      [['Owner', cust.name], ['Permit #', cust.permit], ['Location', cust.address + (cust.county ? '. ' + cust.county + ' County' : '')], ['System', ((sys && sys.sys_desc) || (cust.sys_type ? 'Type ' + cust.sys_type : '')) + (sys && sys.design_flow ? '. Design flow ' + sys.design_flow + ' gpd' : '')], ['Date of inspection', OW.date(rep.visit_date)], ['Last inspection', c.days ? c.days + ' days earlier' : '-'], ['Type of inspection', d.inspect_type], ['Operator (ORC)', op.name + ', ' + op.cert + ', Overwatch Septic, LLC']].forEach(function (p) { L.text(p[0] + ': ' + (p[1] || '-'), { size: 10, after: 1 }); });
+      [['Owner', cust.name], ['Permit #', cust.permit], ['Location', cust.address + (cust.county ? '. ' + cust.county + ' County' : '')], ['System', ((sys && sys.sys_desc) || (cust.sys_type ? 'Type ' + cust.sys_type : '')) + (sys && sys.design_flow ? '. Design flow ' + sys.design_flow + ' gpd' : '')], ['Date of inspection', OW.date(rep.visit_date)], ['Last inspection', c.days ? c.days + ' days earlier' : '-'], ['Type of inspection', d.inspect_type], ['Operator (ORC)', op.name + ', ' + op.cert + ', Overwatch Septic, LLC']].concat(permitLines(d)).forEach(function (p) { L.text(p[0] + ': ' + (p[1] || '-'), { size: 10, after: 1 }); });
+      var X = OWI.extras(d, c), nmz = (d.sysinfo && d.sysinfo.names) || {}, zw = (d.sysinfo && d.sysinfo.zone_word) || 'Lateral';
       L.gap(4); L.rule();
       OWI.SECTIONS.forEach(function (sec) {
-        L.text(sec.t, { bold: true, after: 2 });
+        L.text(sec.k === 'septic' ? (nmz.septic || sec.t) : sec.k === 'pump' ? (nmz.pump || sec.t) : sec.t, { bold: true, after: 2 });
         sec.items.forEach(function (it) { var a = (d.checks[sec.k] || {})[it[0]]; L.text(it[1] + ': ' + (yn[a] || '-'), { size: 10, indent: 10, after: 0, bold: a === 'no' && it[2] !== 'i' }); });
         if (sec.k === 'septic' || sec.k === 'pump') { var x = d[sec.k]; L.text('Tank ' + v(sec.k === 'septic' ? d.septic_gal : d.pump_gal, 'gal') + (sec.k === 'septic' ? ', liquid depth ' + v(d.liquid_depth, 'in') : ', ' + v(d.gpi, 'gal/in')) + '. Scum ' + v(x.scum, 'in') + ', sludge ' + v(x.sludge, 'in') + (sec.k === 'septic' && c.sludge_pct !== null ? ' (' + c.sludge_pct + '% of liquid depth)' : '') + '. Last pumpout ' + (x.pumped ? OW.date(x.pumped) : '-') + '. Pumping needed: ' + x.pump_needed + '.', { size: 10, indent: 10 }); }
         if (sec.k === 'controls') L.text('Float settings (inches above tank bottom): alarm ' + v(d.floats.alarm) + ', pump on ' + v(d.floats.on) + ', pump off ' + v(d.floats.off) + '.', { size: 10, indent: 10 });
         L.gap(3);
       });
-      if ((d.laterals || []).length) { L.text('Lateral readings', { bold: true, after: 2 }); d.laterals.forEach(function (l) { L.text('Lateral ' + l.n + ': length ' + v(l.length) + ', design head ' + v(l.design) + ', turnup height ' + v(l.turnup) + ', last time ' + v(l.last) + ', baseline ' + v(l.baseline) + ', valves left at ' + v(l.left) + ', off design ' + (OWI.latPct(l) === null ? '-' : OWI.latPct(l) + '%') + ', adjusted to ' + v(l.adjusted), { size: 10, indent: 10, after: 1 }); }); L.gap(3); }
+      if ((d.laterals || []).length) { L.text(zw + ' readings', { bold: true, after: 2 }); d.laterals.forEach(function (l) { L.text(zw + ' ' + l.n + ': length ' + v(l.length) + ', design head ' + v(l.design) + ', turnup height ' + v(l.turnup) + ', last time ' + v(l.last) + ', baseline ' + v(l.baseline) + ', valves left at ' + v(l.left) + ', off design ' + (OWI.latPct(l) === null ? '-' : OWI.latPct(l) + '%') + ', adjusted to ' + v(l.adjusted), { size: 10, indent: 10, after: 1 }); }); L.gap(3); }
       L.text('Flow test and meters', { bold: true, after: 2 });
       [['Water level, pump off (start)', v(d.flow.off, 'in')], ['Water level, pump on (after run)', v(d.flow.on, 'in')], ['Depth pumped', v(c.depth, 'in')], ['Volume pumped (depth x ' + v(d.flow.gpi || d.gpi) + ' gal/in)', v(c.vol, 'gal')], ['Run time of test', v(d.flow.min, 'min')], ['Measured PDR (pump delivery rate)', v(c.pdr, 'gpm')], ['Design PDR', v(d.flow.design_pdr, 'gpm')], ['PDR efficiency', c.eff === null ? '-' : c.eff + '%' + (c.eff_ok ? '' : ' (outside 10% of design)')], ['Dose volume / drawdown', v(d.flow.dose, 'gal') + ' / ' + v(d.flow.drawdown, 'in')], ['ET (elapsed time) hours', v(d.meters.et) + (c.et_used !== null ? ' (used ' + c.et_used + ', ' + v(c.et_day) + ' per day)' : '')], ['Events', v(d.meters.events) + (c.ev_used !== null ? ' (used ' + c.ev_used + ', ' + v(c.events_day) + ' per day, design ' + v(c.events_design) + ')' : '')]].forEach(function (p) { L.text(p[0] + ': ' + p[1], { size: 10, indent: 10, after: 0 }); });
+      X.tanks.forEach(function (x) {
+        var t = x.t, k = x.k; L.gap(3); L.text(x.name, { bold: true, after: 2 });
+        x.checks.forEach(function (q) { L.text(q.l + ': ' + (yn[q.a] || '-'), { size: 10, indent: 10, after: 0, bold: q.bad }); });
+        if (x.kind === 'septic') L.text('Tank ' + v(t.gal, 'gal') + ', liquid depth ' + v(t.liquid_depth, 'in') + '. Scum ' + v(t.scum, 'in') + ', sludge ' + v(t.sludge, 'in') + (k.sludge_pct != null ? ' (' + k.sludge_pct + '% of liquid depth)' : '') + '. Last pumpout ' + (t.pumped ? OW.date(t.pumped) : '-') + '. Pumping needed: ' + t.pump_needed + '.', { size: 10, indent: 10 });
+        else {
+          L.text('Tank ' + v(t.gal, 'gal') + ', ' + v(k.gpi, 'gal/in') + '. Floats (in): alarm ' + v(t.floats.alarm) + ', on ' + v(t.floats.on) + ', off ' + v(t.floats.off) + '.', { size: 10, indent: 10, after: 1 });
+          L.text('Water level off ' + v(t.flow.off, 'in') + ', on ' + v(t.flow.on, 'in') + '; depth pumped ' + v(k.depth, 'in') + '; volume ' + v(k.vol, 'gal') + '; run time ' + v(t.flow.min, 'min') + '; PDR ' + v(k.pdr, 'gpm') + ' (design ' + v(t.design_pdr, 'gpm') + '); efficiency ' + (k.eff == null ? '-' : k.eff + '%' + (k.eff_ok ? '' : ' (outside 10% of design)')) + '; dose ' + v(k.dose, 'gal') + ', drawdown ' + v(k.drawdown, 'in') + '.', { size: 10, indent: 10 });
+        }
+        Object.keys(k.formulas || {}).forEach(function (q) { L.text(k.formulas[q], { size: 9, indent: 10, after: 0 }); });
+      });
+      X.cards.forEach(function (x) { L.gap(3); L.text(x.title, { bold: true, after: 2 }); x.rows.forEach(function (q) { L.text(q.l + ': ' + (yn[q.a] || '-'), { size: 10, indent: 10, after: 0, bold: q.bad }); }); });
       var fm = c.formulas || {}, fl = [['Depth pumped', fm.depth], ['Volume pumped', fm.vol], ['Measured PDR', fm.pdr], ['PDR efficiency', fm.eff], ['Sludge, % of liquid depth', fm.sludge], ['Days since last inspection', fm.days], ['ET (elapsed time)', fm.et], ['Events', fm.events], ['Design events per day', fm.events_design], ['Dose volume', fm.dose], ['Gallons per inch', fm.gpi]].filter(function (x) { return x[1]; });
       if (fl.length) { L.gap(3); L.text('How the numbers were calculated', { bold: true, size: 10, after: 1 }); fl.forEach(function (x) { L.text(x[0] + ': ' + x[1], { size: 9, indent: 10, after: 0 }); }); }
+      if (X.malfunction) { L.gap(4); L.text('Malfunction found at this visit. County notified: ' + (X.malfunction.notified || 'not yet recorded') + '.', { bold: true }); }
       L.gap(5); L.text('Status of system: ' + d.status + '.  Next inspection due: ' + (d.next_due ? OW.date(d.next_due) : '-'), { bold: true });
       if (d.recs) L.text('Recommendations for owner: ' + d.recs);
       L.gap(4); L.text('Certified operator: ' + op.name + ', ' + op.cert + ', ' + OW.date(rep.visit_date) + '. Repairs and pumping are performed by licensed contractors.', { size: 9, italic: true });

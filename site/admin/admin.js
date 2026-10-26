@@ -57,7 +57,7 @@
   function renderDetail() {
     var d = S.d, c = d.customer, open = d.contracts.filter(function (x) { return x.status === 'sent' || x.status === 'owner_signed'; }).length;
     var h = '<div class="grid2"><section class="card"><h2>' + E(c.name) + '</h2><p class="mute" style="margin:0 0 10px">' + [c.email, c.phone, c.county && c.county + ' County', c.permit && 'Permit ' + c.permit].filter(Boolean).map(E).join(' &middot; ') + '<br>' + E(c.address) + '</p>' + (c.notes ? '<p class="mute" style="font-size:14px">' + E(c.notes) + '</p>' : '') +
-      '<div class="row"><button class="b" id="bSend"' + (open ? ' title="An agreement is already open"' : '') + '>Send contract</button><button class="b" id="bInsp">New inspection</button><button class="b alt" id="bRep">Add visit report</button><button class="b alt" id="bEdit">Edit</button></div>' +
+      '<div class="row"><button class="b" id="bSend"' + (open ? ' title="An agreement is already open"' : '') + '>Send contract</button><button class="b" id="bInsp">New inspection</button><button class="b alt" id="bSetup">System setup</button><button class="b alt" id="bRep">Add visit report</button><button class="b alt" id="bEdit">Edit</button></div>' +
       '<h3 style="margin:16px 0 4px">Contracts</h3><ul class="list">' + (d.contracts.map(function (x) {
         var btns = '<button class="b alt" data-act="view" data-id="' + x.id + '">View</button>';
         if (x.status === 'sent') btns += '<button class="b alt" data-act="resend" data-id="' + x.id + '">Resend link</button>';
@@ -138,6 +138,7 @@
     if (t.id === 'bSend') return void contractForm();
     if (t.id === 'bRep') return void reportForm();
     if (t.id === 'bInsp') return void OWA.inspect();
+    if (t.id === 'bSetup') return void OWA.setup();
     if (t.id === 'bDel') { if (confirm('Delete ' + S.d.customer.name + ' and all their reports?')) OW.api('/admin/api/customer-delete', { id: S.sel }).then(function (j) { if (!j.ok) return fail(j); S.sel = null; S.d = null; $('detail').innerHTML = ''; loadList(); OW.toast('Customer deleted.'); }); return; }
     var rv = t.closest('[data-rv]'); if (rv) return void review(rv.getAttribute('data-rv'), rv.getAttribute('data-kind'));
     var pc = t.closest('.pickc'); if (pc) return void select(pc.getAttribute('data-cid'));
