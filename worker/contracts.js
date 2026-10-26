@@ -100,14 +100,9 @@ export async function countersign(env, who, cid, name) {
   if (!r.meta || r.meta.changes !== 1) return { status: 409, error: 'Already signed.' };
   const customer = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(c.customer_id).first();
   await env.DB.prepare('INSERT INTO audit (at, who, action, target, detail) VALUES (?, ?, ?, ?, ?)').bind(now, who, 'contract-complete', cid, customer.name).run();
-<<<<<<< HEAD
   const origin = siteOrigin(env), cents = toCents(JSON.parse(c.terms).origination_fee);
   if (cents) { const inv = await createInvoice(env, who, customer, 'origination', cid, cents); return { ok: true, emailed: inv.emailed, invoice: inv.id }; }
   const emailed = await sendMail(env, customer.email, 'Your septic agreement is fully signed', [`Hello ${customer.name},`, '', 'Overwatch Septic has signed your Inspection and Maintenance Agreement. It is now in effect.', '', `You can see and download the signed copy in your customer portal: ${origin}/login/`, '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
-=======
-  const origin = siteOrigin(env);
-  const emailed = await sendMail(env, customer.email, 'Your septic agreement is fully signed', [`Hello ${customer.name},`, '', 'Overwatch Septic has signed your Inspection and Maintenance Agreement. It is now in effect.', '', `You can see and download the signed copy in your customer portal: ${origin}/login/`, '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
->>>>>>> main
   return { ok: true, emailed };
 }
 
