@@ -56,7 +56,7 @@ export async function adminApi(request, env, path) {
     return new Response(await obj.arrayBuffer(), { headers: { 'content-type': 'application/pdf', 'content-disposition': `inline; filename="report-${rep.visit_date}.pdf"`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
   }
 
-  if (path === '/admin/api/config' && method === 'GET') return reply({ ok: true, me: email, readings: READINGS, stripe: !!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET), defaults: { origination: '100', visit: '250' } });
+  if (path === '/admin/api/config' && method === 'GET') return reply({ ok: true, me: email, readings: READINGS, stripe: !!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET), defaults: (env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET) ? { origination: '100', visit: '250' } : { origination: '0', visit: '0' } });
   if (path === '/admin/api/customers' && method === 'GET') {
     const rows = (await env.DB.prepare('SELECT * FROM customers ORDER BY name COLLATE NOCASE').all()).results;
     const cs = (await env.DB.prepare('SELECT customer_id, status, created_at FROM contracts WHERE status != ? ORDER BY created_at').bind('void').all()).results;
