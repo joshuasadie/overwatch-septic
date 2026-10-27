@@ -27,7 +27,7 @@ export function cleanSystem(b) {
 export async function saveSystem(env, who, c, b) {
   const row = await env.DB.prepare('SELECT data FROM systems WHERE customer_id = ?').bind(c.id).first(), cur = row ? jparse(row.data, {}) : {};
   const old = new Map((cur.tanks || []).map(t => [t.id, t]));
-  const merged = { ...cur, design_flow: b.design_flow !== undefined ? b.design_flow : cur.design_flow, sys_desc: b.sys_desc !== undefined ? b.sys_desc : cur.sys_desc, permit: b.permit, addresses: b.addresses, septic_name: b.septic_name, pump_name: b.pump_name, zone_word: b.zone_word, cards: b.cards,
+  const merged = { ...cur, design_flow: b.design_flow !== undefined ? b.design_flow : cur.design_flow, sys_desc: b.sys_desc !== undefined ? b.sys_desc : cur.sys_desc, permit: b.permit, addresses: b.addresses, laterals: b.laterals !== undefined ? b.laterals : cur.laterals, septic_name: b.septic_name, pump_name: b.pump_name, zone_word: b.zone_word, cards: b.cards,
     ...Object.fromEntries(['septic_model', 'pump_model', 'septic_unit', 'pump_unit', 'septic_shape', 'septic_a', 'septic_b', 'septic_gal', 'pump_gal', 'tank_shape', 'tank_a', 'tank_b', 'gpi'].filter(k => b[k] !== undefined).map(k => [k, b[k]])),
     tanks: (Array.isArray(b.tanks) ? b.tanks : []).slice(0, 8).map(t => { const o = old.get(t && t.id); const x = Object.fromEntries(['id', 'kind', 'name', 'model', 'unit', 'gal', 'shape', 'a', 'b', 'gpi'].filter(k => t && t[k] !== undefined).map(k => [k, t[k]])); return o ? { ...o, ...x } : x; }) };
   const sys = cleanSystem(merged), now = new Date().toISOString();

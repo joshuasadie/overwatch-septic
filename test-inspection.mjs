@@ -184,6 +184,10 @@ ok(j.system.septic_unit === 'Polylok PL-68' && j.system.pump_unit === 'Little Gi
 j = await J(await adm('/admin/api/units')); ok(j.ok && j.pump.length === 1 && j.pump[0] === 'Little Giant 509207' && j.filter.includes('Polylok PL-68') && j.filter.includes('Zabel A300'), 'suggestions list each pump and filter name once');
 { const r = await J(await post('2026-12-01', form({ floats: { alarm: 40, on: 25, off: 20, timed: 18 }, amps: 4.1 }))); const jj = await J(await adm('/admin/api/customer/' + cid)); const dd = (jj.reports.find(x => x.id === r.id) || { insp: { data: {} } }).insp.data;
   ok(r.ok && dd.floats && dd.floats.timed === 18 && dd.amps === 4.1, 'the visit keeps the timed float and the pump amps'); }
+// zones saved from setup, and a setup save without them keeps what is there
+j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP, laterals: [{ length: 1200, design: null }, { length: 1200, design: 25 }, { length: 1200 }] } }));
+ok(j.system.laterals.length === 3 && j.system.laterals[1].design === 25 && j.system.laterals[0].length === 1200, 'setup saves the zones with their lengths');
+j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP } })); ok(j.system.laterals.length === 3, 'a setup save that leaves the zones out keeps them');
 { const cc = OWI0.calc({ flow: {}, meters: {}, checks: {} }, { prev: { date: '2026-04-01' }, date: '2026-10-26' });
   ok(OWI0.CHATHAM.length === 7 && cc.last === '2026-04-01' && cc.days === 208, 'Chatham check list is there and the last inspection date is returned'); }
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);

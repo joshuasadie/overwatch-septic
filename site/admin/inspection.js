@@ -273,6 +273,13 @@
     var g = function (k) { return num(P + k); }; t.name = val(P + 'name'); t.model = val(P + 'model'); t.unit = val(P + 'unit'); t.gal = g('gal'); t.shape = val(P + 'shape'); t.a = g('a'); t.b = g('b');
     var q = OWI.gpi(t.shape, t.a, t.b); t.gpi = q !== null ? q : (t.gpi_list || t.gpi || null); $(P + 'gpi').value = t.gpi == null ? '' : t.gpi;
   }
+  // the field lines: how many, how long, and the designed head. The visit form starts from these.
+  function zonesHtml() {
+    var w = SU.zone_word === 'Zone' ? 'Zone' : 'Lateral', n = 0, tot = 0; SU.zones.forEach(function (z) { if (z.length != null) tot += z.length; });
+    return '<div class="fcard" style="padding:12px 14px"><h3>' + w + 's (field lines)</h3><p class="mute sm">How many there are, how long each is, and the designed head from the plans. These fill in on every visit form.</p>' +
+      SU.zones.map(function (z, i) { return '<div class="item" style="display:block"><div class="row" style="justify-content:space-between"><b>' + w + ' ' + (i + 1) + '</b><button type="button" class="b danger" data-rmzone="' + i + '">Remove</button></div><div class="two">' + fld('su_zl' + i, 'Length (ft)', dec + ' value="' + E(z.length == null ? '' : z.length) + '"') + fld('su_zd' + i, 'Design head (optional)', dec + ' value="' + E(z.design == null ? '' : z.design) + '"') + '</div></div>'; }).join('') +
+      '<div class="row" style="margin-top:8px;align-items:center"><button type="button" class="b alt" id="suZone">Add a ' + w.toLowerCase() + '</button><span class="mute sm" id="su_ztot">' + (SU.zones.length ? SU.zones.length + ' ' + w.toLowerCase() + (SU.zones.length === 1 ? '' : 's') + ', ' + tot + ' ft in all' : '') + '</span></div></div>';
+  }
   function setupHtml() {
     var p = SU.permit, pi = OWI.permitInfo(p, today()), f = function (id, label, v, extra) { return fld(id, label, 'value="' + E(v == null ? '' : v) + '" ' + (extra || '')); };
     var h = '<h2>System setup</h2><p class="mute">' + E(D.customer.name) + '. Fill this in once. Every visit form is built from it. Type a tank model number and the size and inside dimensions fill in from the state approved-tank list.</p><div class="msg" id="sm" role="status"></div>';
@@ -286,6 +293,7 @@
       tankBlock('su_s_', SU.sep, 'First septic tank') + tankBlock('su_p_', SU.pmp, 'First pump tank') + SU.tanks.map(function (t, i) { return tankBlock('su_t' + i + '_', t, (t.kind === 'pump' ? 'Pump tank' : 'Septic tank') + ' ' + (i + 2), i); }).join('') +
       '<div class="row" style="margin-top:8px"><button type="button" class="b alt" data-addtank="septic">Add septic tank</button><button type="button" class="b alt" data-addtank="pump">Add pump tank</button></div>' +
       '<div style="margin-top:10px"><label for="su_zone">Field lines are called</label><select id="su_zone"><option' + (SU.zone_word === 'Zone' ? '' : ' selected') + '>Lateral</option><option' + (SU.zone_word === 'Zone' ? ' selected' : '') + '>Zone</option></select></div></div>';
+    h += zonesHtml();
     h += '<div class="fcard" style="padding:12px 14px"><h3>Check cards</h3><p class="mute sm">Each card is a list of yes/no checks on every visit: drip headworks, a treatment unit, permit conditions. One check per line.</p>' +
       SU.cards.map(function (c, i) { return '<div class="item" style="display:block"><div class="row"><input id="su_ct' + i + '" value="' + E(c.title) + '" maxlength="60" aria-label="Card title" style="flex:1 1 220px"><button type="button" class="b danger" data-rmcard="' + i + '">Remove</button></div><textarea id="su_ci' + i + '" aria-label="Checks for ' + E(c.title) + '" style="min-height:90px">' + E(c.items.join('\n')) + '</textarea></div>'; }).join('') +
       '<div class="row" style="margin-top:8px"><button type="button" class="b alt" id="suCard">Add a check card</button><button type="button" class="b alt" id="suCond">Add permit conditions card</button><button type="button" class="b alt" id="suChat">Add Chatham County checks</button></div></div>';
@@ -297,6 +305,7 @@
     var p = SU.permit; p.county = val('su_county'); p.parcel = val('su_parcel'); p.type = val('su_type'); p.issued = val('su_issued'); p.months = num('su_months'); p.ca_no = val('su_ca'); p.ip_no = val('su_ip'); p.other_no = val('su_other'); p.bedrooms = num('su_bed'); p.occupants = num('su_occ'); p.freq = val('su_freq'); p.owners = val('su_owners');
     SU.sys_desc = val('su_desc'); SU.design_flow = num('su_flow'); SU.zone_word = val('su_zone');
     SU.addresses = []; for (var i = 0; $('su_addr' + i); i++) if (val('su_addr' + i)) SU.addresses.push(val('su_addr' + i));
+    SU.zones = []; for (var zi = 0; $('su_zl' + zi); zi++) SU.zones.push({ length: num('su_zl' + zi), design: num('su_zd' + zi) });
     readTank('su_s_', SU.sep); readTank('su_p_', SU.pmp); SU.tanks.forEach(function (t, i) { readTank('su_t' + i + '_', t); });
     SU.cards.forEach(function (c, i) { c.title = val('su_ct' + i); c.items = $('su_ci' + i).value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean); });
   }
@@ -319,7 +328,7 @@
     D = A.S.d; $('panel').classList.add('wide'); $('panel').innerHTML = '<h2>System setup</h2><p class="mute">Loading...</p>'; $('panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
     OW.api('/admin/api/system?customer_id=' + D.customer.id + '&date=' + today()).then(function (j) {
       if (!j.ok) return A.fail(j); var s = j.system || {}, pm = s.permit || {};
-      SU = { sys_desc: s.sys_desc || '', design_flow: s.design_flow == null ? null : s.design_flow, zone_word: s.zone_word || 'Lateral', addresses: (s.addresses || []).slice(),
+      SU = { zones: (s.laterals || []).map(function (l) { return { length: l.length == null ? null : l.length, design: l.design == null ? null : l.design }; }), sys_desc: s.sys_desc || '', design_flow: s.design_flow == null ? null : s.design_flow, zone_word: s.zone_word || 'Lateral', addresses: (s.addresses || []).slice(),
         sep: { name: s.septic_name || '', model: s.septic_model || '', unit: s.septic_unit || '', gal: s.septic_gal, shape: s.septic_shape || 'rect', a: s.septic_a, b: s.septic_b, gpi: null },
         pmp: { name: s.pump_name || '', model: s.pump_model || '', unit: s.pump_unit || '', gal: s.pump_gal, shape: s.tank_shape || 'rect', a: s.tank_a, b: s.tank_b, gpi: s.gpi },
         tanks: (s.tanks || []).map(function (t) { return { id: t.id, kind: t.kind, name: t.name, model: t.model || '', unit: t.unit || '', gal: t.gal, shape: t.shape || 'rect', a: t.a, b: t.b, gpi: t.gpi }; }),
@@ -331,13 +340,15 @@
   };
   function wireSetup() {
     var P = $('panel');
-    P.oninput = function (e) { var id = e.target.id; if (id === 'su_issued' || id === 'su_months') { var pi = OWI.permitInfo({ issued: val('su_issued'), months: num('su_months') }, today()); $('su_exp').value = pi.expires ? OW.date(pi.expires) : ''; $('su_warn').hidden = !pi.expired; } var m = /^(su_(?:s|p|t\d+)_)(shape|a|b)$/.exec(id); if (m) recalcGpi(m[1]); };
+    P.oninput = function (e) { var id = e.target.id; if (id === 'su_issued' || id === 'su_months') { var pi = OWI.permitInfo({ issued: val('su_issued'), months: num('su_months') }, today()); $('su_exp').value = pi.expires ? OW.date(pi.expires) : ''; $('su_warn').hidden = !pi.expired; } var m = /^(su_(?:s|p|t\d+)_)(shape|a|b)$/.exec(id); if (m) recalcGpi(m[1]); if (/^su_zl\d+$/.test(id)) { var tt = 0, nn = 0; for (var q = 0; $('su_zl' + q); q++) { nn++; tt += num('su_zl' + q) || 0; } var zw = (val('su_zone') === 'Zone' ? 'zone' : 'lateral'); $('su_ztot').textContent = nn + ' ' + zw + (nn === 1 ? '' : 's') + ', ' + tt + ' ft in all'; } };
     P.onchange = function (e) { var m = /^(su_(?:s|p|t\d+)_)model$/.exec(e.target.id); if (m) lookupModel(m[1]); };
     P.onclick = function (e) {
       var t = e.target, g = function (a) { var b = t.closest('[' + a + ']'); return b ? b.getAttribute(a) : null; };
       if (!$('suSave')) return;
       if (t.id === 'suCancel') { A.refresh(); return; }
       if (g('data-tpl')) { readSetup(); var tp = OWI.TEMPLATES.filter(function (x) { return x.k === g('data-tpl'); })[0]; SU.zone_word = tp.zone; tp.cards.forEach(function (c) { if (!SU.cards.some(function (x) { return x.title === c.title; })) SU.cards.push({ id: rid(), title: c.title, items: c.items.slice() }); }); showSetup(); return; }
+      if (t.id === 'suZone') { readSetup(); if (SU.zones.length < 12) SU.zones.push({ length: null, design: null }); showSetup(); return; }
+      if (g('data-rmzone') !== null) { readSetup(); SU.zones.splice(Number(g('data-rmzone')), 1); showSetup(); return; }
       if (t.id === 'suAddr') { readSetup(); if (SU.addresses.length < 4) SU.addresses.push(''); showSetup(); return; }
       if (g('data-addtank')) { readSetup(); if (SU.tanks.length < 8) { var k = g('data-addtank'), n = SU.tanks.filter(function (x) { return x.kind === k; }).length + 2; SU.tanks.push({ id: rid(), kind: k, name: (k === 'pump' ? 'Pump tank ' : 'Septic tank ') + n, model: '', unit: '', gal: null, shape: 'rect', a: null, b: null, gpi: null }); } showSetup(); return; }
       if (g('data-rmtank') !== null) { readSetup(); SU.tanks.splice(Number(g('data-rmtank')), 1); showSetup(); return; }
@@ -347,7 +358,7 @@
       if (g('data-rmcard') !== null) { readSetup(); SU.cards.splice(Number(g('data-rmcard')), 1); showSetup(); return; }
       if (t.id === 'suSave') {
         readSetup(); var m = $('sm'); m.className = 'msg'; m.textContent = 'Saving...';
-        var S = SU, body = { permit: S.permit, addresses: S.addresses, sys_desc: S.sys_desc, design_flow: S.design_flow, zone_word: S.zone_word, cards: S.cards, tanks: S.tanks.map(function (x) { return { id: x.id, kind: x.kind, name: x.name, model: x.model, unit: x.unit, gal: x.gal, shape: x.shape, a: x.a, b: x.b, gpi: x.gpi }; }),
+        var S = SU, body = { laterals: S.zones.filter(function (z) { return z.length != null || z.design != null; }).slice(0, 12), permit: S.permit, addresses: S.addresses, sys_desc: S.sys_desc, design_flow: S.design_flow, zone_word: S.zone_word, cards: S.cards, tanks: S.tanks.map(function (x) { return { id: x.id, kind: x.kind, name: x.name, model: x.model, unit: x.unit, gal: x.gal, shape: x.shape, a: x.a, b: x.b, gpi: x.gpi }; }),
           septic_name: S.sep.name, septic_unit: S.sep.unit, pump_unit: S.pmp.unit, septic_model: S.sep.model, septic_gal: S.sep.gal, septic_shape: S.sep.shape, septic_a: S.sep.a, septic_b: S.sep.b, pump_name: S.pmp.name, pump_model: S.pmp.model, pump_gal: S.pmp.gal, tank_shape: S.pmp.shape, tank_a: S.pmp.a, tank_b: S.pmp.b, gpi: S.pmp.gpi };
         OW.api('/admin/api/system', { customer_id: D.customer.id, system: body }).then(function (j) { if (!j.ok) { m.className = 'msg err'; m.textContent = j.error || 'Could not save.'; return; } OW.toast('System setup saved.'); m.className = 'msg'; m.textContent = 'Saved.'; });
       }
