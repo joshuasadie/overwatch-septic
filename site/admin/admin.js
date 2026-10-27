@@ -76,6 +76,11 @@
   }
 
   function field(id, label, val, extra) { return '<div><label for="' + id + '">' + label + '</label><input id="' + id + '" value="' + E(val || '') + '" ' + (extra || '') + '></div>'; }
+  function maintDefault(c) {
+    var l = ['Inspect the septic tank, including the baffles, effluent filter, and sludge and scum levels', 'Inspect the pump tank, pump, floats and alarm', 'Check the control panel and alarm', 'Check the drain field for ponding, wet spots and surfacing effluent', 'Clean the effluent filter', 'Review the permit conditions', 'Give the owner a written report of findings'];
+    if (/^v/i.test(String(c.sys_type || '').trim())) l.splice(4, 0, 'Check zone pressures and flow against the design', 'Clean the headworks filter and flush the field');
+    return E(l.join('\n'));
+  }
   function contractForm() {
     var c = S.d.customer, today = new Date().toISOString().slice(0, 10);
     $('panel').innerHTML = '<h2>New contract</h2><p class="mute" style="margin:0 0 4px">The text is the state sample, unchanged. These fields fill its blanks.</p><form id="kf" novalidate><div class="two">' +
@@ -83,7 +88,7 @@
       field('k_caddr', 'Contractor address', LS.get('ow_ca')) + field('k_health', 'Local health department', LS.get('ow_hd_' + (c.county || '')) || (c.county ? c.county + ' County Environmental Health' : '')) +
       field('k_date', 'Agreement date', today, 'type="date"') + field('k_resp', 'Response time (hours)', '48') + '</div>' +
       '<label for="k_cite">Rule citation (check the current rule number)</label><input id="k_cite" value="15A N.C. Administrative Code 18A.1961"><label for="k_rules">Rules reference</label><input id="k_rules" value="15A N.C. Administrative Code 18A.1900 et seq.">' +
-      '<label for="k_maint">Routine maintenance (one per line)</label><textarea id="k_maint" style="min-height:80px">Check the pump and float switches\nCheck the alarm and control panel\nCheck the drain field</textarea>' +
+      '<label for="k_maint">Routine maintenance (one per line)</label><textarea id="k_maint" style="min-height:120px">' + maintDefault(c) + '</textarea>' +
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Email signing link to ' + E(c.name.split(' ')[0]) + '</button></div><div class="msg" id="km" role="status"></div></form>';
     $('kf').addEventListener('submit', function (e) {
       e.preventDefault(); var v = function (i) { return $(i).value.trim(); };
