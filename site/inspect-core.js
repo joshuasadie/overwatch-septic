@@ -51,7 +51,7 @@
     o.pump_now = o.sludge_pct !== null && o.sludge_pct >= OWI.PUMP_AT;
     var prev = ctx.prev || {}, days = null;
     if (prev.date && ctx.date) days = Math.round((Date.parse(ctx.date + 'T12:00:00Z') - Date.parse(prev.date + 'T12:00:00Z')) / 86400000);
-    o.days = days > 0 ? days : null;
+    o.days = days > 0 ? days : null; o.last = o.days ? prev.date : '';
     var et = n(m.et), ev = n(m.events);
     o.et_used = et !== null && n(prev.et) !== null ? r2(et - n(prev.et)) : null;
     o.ev_used = ev !== null && n(prev.events) !== null ? ev - n(prev.events) : null;
@@ -133,6 +133,7 @@
     { k: 'treat', t: 'Treatment unit (AdvanTex, E-Z Treat)', zone: 'Lateral', cards: [{ title: 'Treatment unit', items: ['Unit running normally', 'Blower or pump working', 'Alarm working', 'Filter or media checked', 'Discharge clear'] }] },
     { k: 'blank', t: 'Blank', zone: 'Lateral', cards: [] }
   ];
+  OWI.CHATHAM = ['Type, size and flow match the permit', 'No water softener', 'No septic tank additive used', 'Effluent appears clear', 'No ponding in the trenches', 'Distribution devices accessible and working', 'No effluent standing in the lower laterals'];
   OWI.CONDITIONS = ['Contract on file with county', 'Annual monitoring fee paid', 'Grass cover and trench lines settled', 'Repair area kept clear', 'Water supply and well distance checked'];
   OWI.FREQ = [['', 'Not set'], ['q1s', 'Quarterly the first year, then twice a year'], ['q', 'Quarterly'], ['s', 'Twice a year'], ['a', 'Once a year']];
   var DAY = 86400000, isoDay = /^\d{4}-\d{2}-\d{2}$/;

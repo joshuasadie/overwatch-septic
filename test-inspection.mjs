@@ -179,3 +179,8 @@ ok(j.system.gpi === 21.6 && j.system.tanks[1].gpi === 21.6 && j.system.tanks[1].
 j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP, tanks: [{ id: 'ts2', kind: 'septic', name: 'Renamed' }, { id: 'tp2', kind: 'pump', name: 'Pump 2' }] } })); ok(j.system.tanks[0].a === 100 && j.system.tanks[0].model === 'STB-760' && j.system.pump_model === 'PT-308', 'a setup save that leaves the sizes out does not wipe them');
 
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);
+// Chatham extras: last inspection date and the Chatham check list
+{ const o = globalThis.OWI; const ok2 = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 1; } else console.log('PASS', m); };
+  ok2(o.CHATHAM.length === 7 && o.CHATHAM.every(x => typeof x === 'string'), 'Chatham check list has 7 lines');
+  const cc = o.calc ? o.calc({ flow: {}, meters: {}, checks: {} }, { prev: { date: '2026-04-01' }, date: '2026-10-26' }) : null;
+  ok2(!cc || (cc.last === '2026-04-01' && cc.days === 208), 'calc returns the last inspection date'); }

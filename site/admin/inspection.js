@@ -288,7 +288,7 @@
       '<div style="margin-top:10px"><label for="su_zone">Field lines are called</label><select id="su_zone"><option' + (SU.zone_word === 'Zone' ? '' : ' selected') + '>Lateral</option><option' + (SU.zone_word === 'Zone' ? ' selected' : '') + '>Zone</option></select></div></div>';
     h += '<div class="fcard" style="padding:12px 14px"><h3>Check cards</h3><p class="mute sm">Each card is a list of yes/no checks on every visit: drip headworks, a treatment unit, permit conditions. One check per line.</p>' +
       SU.cards.map(function (c, i) { return '<div class="item" style="display:block"><div class="row"><input id="su_ct' + i + '" value="' + E(c.title) + '" maxlength="60" aria-label="Card title" style="flex:1 1 220px"><button type="button" class="b danger" data-rmcard="' + i + '">Remove</button></div><textarea id="su_ci' + i + '" aria-label="Checks for ' + E(c.title) + '" style="min-height:90px">' + E(c.items.join('\n')) + '</textarea></div>'; }).join('') +
-      '<div class="row" style="margin-top:8px"><button type="button" class="b alt" id="suCard">Add a check card</button><button type="button" class="b alt" id="suCond">Add permit conditions card</button></div></div>';
+      '<div class="row" style="margin-top:8px"><button type="button" class="b alt" id="suCard">Add a check card</button><button type="button" class="b alt" id="suCond">Add permit conditions card</button><button type="button" class="b alt" id="suChat">Add Chatham County checks</button></div></div>';
     return h + '<div class="row" style="margin-top:12px"><button type="button" class="b" id="suSave">Save setup</button><button type="button" class="b alt" id="suCancel">Close</button></div>';
   }
   function tankFor(P) { if (P === 'su_s_') return SU.sep; if (P === 'su_p_') return SU.pmp; var m = /^su_t(\d+)_$/.exec(P); return m ? SU.tanks[Number(m[1])] : null; }
@@ -342,6 +342,7 @@
       if (g('data-addtank')) { readSetup(); if (SU.tanks.length < 8) { var k = g('data-addtank'), n = SU.tanks.filter(function (x) { return x.kind === k; }).length + 2; SU.tanks.push({ id: rid(), kind: k, name: (k === 'pump' ? 'Pump tank ' : 'Septic tank ') + n, model: '', gal: null, shape: 'rect', a: null, b: null, gpi: null }); } showSetup(); return; }
       if (g('data-rmtank') !== null) { readSetup(); SU.tanks.splice(Number(g('data-rmtank')), 1); showSetup(); return; }
       if (t.id === 'suCard') { readSetup(); if (SU.cards.length < 8) SU.cards.push({ id: rid(), title: 'Other checks', items: [] }); showSetup(); return; }
+      if (t.id === 'suChat') { readSetup(); if (SU.cards.length < 8) SU.cards.push({ id: rid(), title: 'Chatham County checks', items: OWI.CHATHAM.slice() }); showSetup(); return; }
       if (t.id === 'suCond') { readSetup(); if (SU.cards.length < 8) SU.cards.push({ id: rid(), title: 'Permit conditions', items: OWI.CONDITIONS.slice() }); showSetup(); return; }
       if (g('data-rmcard') !== null) { readSetup(); SU.cards.splice(Number(g('data-rmcard')), 1); showSetup(); return; }
       if (t.id === 'suSave') {

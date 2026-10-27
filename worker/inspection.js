@@ -5,7 +5,7 @@ import '../site/inspect-view.js';
 const OWI = globalThis.OWI;
 export { OWI };
 
-export const operatorOf = env => ({ name: env.OPERATOR_NAME || 'Joshua Klein', cert: env.OPERATOR_CERT || '' });
+export const operatorOf = env => ({ name: env.OPERATOR_NAME || 'Joshua Klein', cert: env.OPERATOR_CERT || '', phone: env.OPERATOR_PHONE || '919-525-1455' });
 const jparse = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
 const num = v => { const n = OWI.n(v); return n !== null && n >= 0 && n < 1e6 ? n : null; };
 
@@ -134,6 +134,6 @@ export async function countyInspectionHtml(env, r, c) {
   const rows = [{ id: r.id, kind: r.kind }]; await attachInspections(env, rows, false);
   const x = rows[0].insp; if (!x) return null;
   const sysRow = await env.DB.prepare('SELECT data FROM systems WHERE customer_id = ?').bind(c.id).first(), sys = sysRow ? jparse(sysRow.data, {}) : {};
-  const body = OWI.countyHtml({ visit_date: r.visit_date, insp: x }, { name: c.name, address: c.address, county: c.county, permit: c.permit, sys_type: c.sys_type, sys_desc: sys.sys_desc, design_flow: sys.design_flow }, x.data.operator || operatorOf(env));
+  const body = OWI.countyHtml({ visit_date: r.visit_date, insp: x }, { name: c.name, phone: c.phone, address: c.address, county: c.county, permit: c.permit, sys_type: c.sys_type, sys_desc: sys.sys_desc, design_flow: sys.design_flow }, x.data.operator || operatorOf(env));
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Septic inspection report</title><style>body{margin:0;padding:18px;background:#f3f3f3}${OWI.CSS}</style></head><body>${body}</body></html>`;
 }
