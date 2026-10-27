@@ -31,7 +31,7 @@
     h += '<h4>Tank details (saved for next time)</h4><div class="two">' + f('gal', 'Tank size (gal)', t.gal) + '<div><label for="x_' + id + '_shape">Shape</label><select id="x_' + id + '_shape"><option value="rect"' + (t.shape === 'round' ? '' : ' selected') + '>Rectangular</option><option value="round"' + (t.shape === 'round' ? ' selected' : '') + '>Round</option></select></div>' + f('a', 'Inside length or diameter (in)', t.a) + '<div id="x_' + id + '_bw">' + f('b', 'Inside width (in)', t.b) + '</div></div>';
     if (t.kind === 'septic') return h + '<div class="two">' + f('ld', 'Liquid depth (in)', t.liquid_depth) + '</div><div class="three">' + fld('x_' + id + '_sc', 'Scum (in)', dec) + fld('x_' + id + '_sl', 'Sludge (in)', dec) + auto('x_' + id + '_slp', 'Sludge, % of liquid depth') + '</div><div class="two">' + fld('x_' + id + '_pd', 'Date of last pumpout', 'type="date"') + '<div><label for="x_' + id + '_pn">Pumping needed?</label><select id="x_' + id + '_pn"><option>No</option><option>Yes</option></select></div></div>';
     return h + '<div class="two"><div><label for="x_' + id + '_gpi">Gallons per inch</label><input id="x_' + id + '_gpi" ' + dec + ' value="' + E(t.gpi == null ? '' : t.gpi) + '">' + fm('x_' + id + '_gpi') + '</div>' + f('dpdr', 'Design PDR, pump delivery rate (gpm)', t.design_pdr) + '</div>' +
-      '<h4>Float settings (inches above tank bottom)</h4><div class="three">' + f('fa', 'Alarm', fl.alarm) + f('fon', 'Pump on', fl.on) + f('foff', 'Pump off', fl.off) + '</div><div class="two">' + auto('x_' + id + '_draw', 'Drawdown (in)') + auto('x_' + id + '_dose', 'Dose volume (gal)') + '</div>' +
+      '<h4>Float settings (inches above tank bottom)</h4><div class="three">' + f('fa', 'Alarm', fl.alarm) + f('fon', 'Pump on', fl.on) + f('foff', 'Pump off', fl.off) + '</div><div class="two">' + f('ft', 'Timed float (if there is one)', fl.timed) + fld('x_' + id + '_amps', 'Pump running amps (A)', dec) + '</div><div class="two">' + auto('x_' + id + '_draw', 'Drawdown (in)') + auto('x_' + id + '_dose', 'Dose volume (gal)') + '</div>' +
       '<h4>Pump rate test</h4><div class="calc">' + calcRow('x_' + id + '_off', 'Water level, pump off (start)', 'in', false) + calcRow('x_' + id + '_on', 'Water level, pump on (after run)', 'in', false) + calcRow('x_' + id + '_dp', 'Depth pumped', 'in', true) + calcRow('x_' + id + '_vol', 'Volume pumped', 'gal', true) + calcRow('x_' + id + '_min', 'Divided by minutes', 'min', false) + calcRow('x_' + id + '_pdr', 'Measured PDR (pump delivery rate)', 'gpm', true) + calcRow('x_' + id + '_eff', 'PDR efficiency', '%', true) + '</div><p class="note" id="x_' + id + '_warn" hidden></p>';
   }
   function cardRow(l, i, extra) { return '<div class="item" data-row="' + i + '"' + (extra ? ' data-new="1"' : '') + '><span class="rl">' + E(l) + '</span>' + tri('k_' + cardRow.cid, i) + '</div>'; }
@@ -52,12 +52,12 @@
       '<h4>Malfunction</h4><label class="ck"><input type="checkbox" id="mf_on"> Malfunction found at this visit</label><div id="mf_box" hidden>' + fld('mf_note', 'County notified (date and how)', 'maxlength="200" placeholder="e.g. called the health department on the visit day"') + '<p class="mute sm" id="mf_due"></p></div>', true, 'c1');
     h += det(E(sys.septic_name || 'Septic tank'), checklist(OWI.SECTIONS[0]) + '<div class="three">' + fld('i_sc', 'Scum (in)', dec) + fld('i_sl', 'Sludge (in)', dec) + auto('i_slp', 'Sludge, % of liquid depth') + '</div><p id="slw" class="mute sm"></p><div class="two">' + fld('i_spd', 'Date of last pumpout', 'type="date"') + '<div><label for="i_spn">Pumping needed?</label><select id="i_spn"><option>No</option><option>Yes</option></select></div></div>', false, 'c2');
     h += det(E(sys.pump_name || 'Pump tank'), checklist(OWI.SECTIONS[1]) + '<div class="two">' + fld('i_psc', 'Scum (in)', dec) + fld('i_psl', 'Sludge (in)', dec) + fld('i_ppd', 'Date of last pumpout', 'type="date"') + '<div><label for="i_ppn">Pumping needed?</label><select id="i_ppn"><option>No</option><option>Yes</option></select></div></div>', false, 'c3');
-    h += det('Pump, piping and controls', checklist(OWI.SECTIONS[2]) + '<h4>Float settings (inches above tank bottom)</h4><div class="three">' + fld('i_fa', 'Alarm', dec + ' value="' + E((sys.floats || {}).alarm == null ? '' : sys.floats.alarm) + '"') + fld('i_fon', 'Pump on', dec + ' value="' + E((sys.floats || {}).on == null ? '' : sys.floats.on) + '"') + fld('i_foff', 'Pump off', dec + ' value="' + E((sys.floats || {}).off == null ? '' : sys.floats.off) + '"') + '</div>', false, 'c4');
+    h += det('Pump, piping and controls', checklist(OWI.SECTIONS[2]) + '<h4>Float settings (inches above tank bottom)</h4><div class="three">' + fld('i_fa', 'Alarm', dec + ' value="' + E((sys.floats || {}).alarm == null ? '' : sys.floats.alarm) + '"') + fld('i_fon', 'Pump on', dec + ' value="' + E((sys.floats || {}).on == null ? '' : sys.floats.on) + '"') + fld('i_foff', 'Pump off', dec + ' value="' + E((sys.floats || {}).off == null ? '' : sys.floats.off) + '"') + '</div><div class="two">' + fld('i_ft', 'Timed float (if there is one)', dec + ' value="' + E((sys.floats || {}).timed == null ? '' : sys.floats.timed) + '"') + '</div>', false, 'c4');
     var lats = (sys.laterals && sys.laterals.length ? sys.laterals : [{}, {}, {}, {}]).map(function (l, i) { var t = prev && prev.turnups && prev.turnups[i]; return latRow(i, { length: l.length, design: l.design, last: t == null ? '' : t }); }).join('');
     h += det('Lateral field', checklist(OWI.SECTIONS[3]) + '<h4>Lateral head readings</h4><div class="tw"><table class="lat"><thead><tr><th>Lateral</th><th>Length</th><th>Design head</th><th>Turnup height</th><th>Head last time</th><th>Baseline head</th><th>Valves left at</th><th>Adjusted to</th><th>Off design</th></tr></thead><tbody id="latb">' + lats + '</tbody></table></div><button type="button" class="b alt" id="addLat" style="margin-top:6px">Add lateral</button>', false, 'c5');
     (sys.tanks || []).forEach(function (t) { h += det(E(t.name || (t.kind === 'pump' ? 'Pump tank' : 'Septic tank')), tankBody(t), false, 'cx_' + t.id); });
     (sys.cards || []).forEach(function (cd) { h += det(E(cd.title), cardBody(cd), false, 'ck_' + cd.id); });
-    h += det('Flow test and meters', '<div class="two">' + auto('f_draw', 'Drawdown (in)') + auto('f_dose', 'Dose volume (gal)') + '</div><h4>Pump rate test</h4><div class="calc">' +
+    h += det('Flow test and meters', '<div class="two">' + fld('f_amps', 'Pump running amps (A)' + (sys.pump_unit ? ', ' + E(sys.pump_unit) : ''), dec) + '</div><div class="two">' + auto('f_draw', 'Drawdown (in)') + auto('f_dose', 'Dose volume (gal)') + '</div><h4>Pump rate test</h4><div class="calc">' +
       calcRow('f_off', 'Water level, pump off (start)', 'in', false) + calcRow('f_on', 'Water level, pump on (after run)', 'in', false) + calcRow('f_dp', 'Depth pumped', 'in', true) + calcRow('f_gpi', 'Times gallons per inch', 'gal/in', true) + calcRow('f_vol', 'Volume pumped', 'gal', true) + calcRow('f_min', 'Divided by minutes', 'min', false) + calcRow('f_pdr', 'Measured PDR (pump delivery rate)', 'gpm', true) + calcRow('f_dpdr', 'Design PDR', 'gpm', true) + calcRow('f_eff', 'PDR efficiency', '%', true) + '</div>' +
       '<p class="note" id="pdrwarn" hidden></p><p class="mute sm">A warning shows when PDR efficiency is more than 10% above or below design.</p><h4>Meter readings</h4><div class="tw"><table><thead><tr><th></th><th>Today</th><th>Last time</th><th>Used</th><th>Per day</th><th>Design per day</th></tr></thead><tbody>' +
       '<tr><td>ET (elapsed time) hours</td><td><input id="m_et" ' + dec + ' aria-label="ET hours today"></td><td><input id="m_etl" class="auto" readonly tabindex="-1"></td><td><input id="m_etu" class="auto" readonly tabindex="-1"></td><td><input id="m_etd" class="auto" readonly tabindex="-1"></td><td><input id="m_etg" class="auto" readonly tabindex="-1"></td></tr>' +
@@ -82,7 +82,7 @@
     var d = { inspect_type: val('i_type'), septic_gal: num('s_sgal'), liquid_depth: num('s_ld'), pump_gal: num('s_pgal'), gpi: num('s_gpi'), tank_shape: val('s_shape'), tank_a: num('s_a'), tank_b: num('s_b'), checks: {}, words: {}, laterals: [] };
     OWI.SECTIONS.forEach(function (sec) { d.checks[sec.k] = {}; sec.items.forEach(function (it) { var b = document.querySelector('.tri[data-s="' + sec.k + '"][data-i="' + it[0] + '"] button[aria-pressed="true"]'); if (b) d.checks[sec.k][it[0]] = b.getAttribute('data-v'); }); });
     d.septic = { scum: num('i_sc'), sludge: num('i_sl'), pumped: val('i_spd'), pump_needed: val('i_spn') }; d.pump = { scum: num('i_psc'), sludge: num('i_psl'), pumped: val('i_ppd'), pump_needed: val('i_ppn') };
-    d.floats = { alarm: num('i_fa'), on: num('i_fon'), off: num('i_foff') };
+    d.floats = { alarm: num('i_fa'), on: num('i_fon'), off: num('i_foff'), timed: num('i_ft') }; d.amps = num('f_amps');
     document.querySelectorAll('#latb tr').forEach(function (tr) { var i = tr.getAttribute('data-lat'), g = function (k) { return num('lat_' + k + '_' + i); }; d.laterals.push({ length: g('len'), design: g('des'), turnup: g('tu'), last: g('last'), baseline: g('base'), left: g('left'), adjusted: g('adj') }); });
     d.flow = { dose: num('f_dose'), drawdown: num('f_draw'), off: num('f_off'), on: num('f_on'), gpi: num('f_gpi'), min: num('f_min'), design_pdr: num('s_dpdr') };
     d.meters = { et: num('m_et'), events: num('m_ev') };
@@ -100,7 +100,7 @@
     OWI.TANK_ITEMS[t.kind].forEach(function (it) { var b = document.querySelector('.tri[data-s="t_' + id + '"][data-i="' + it[0] + '"] button[aria-pressed="true"]'); if (b) o.checks[it[0]] = b.getAttribute('data-v'); });
     o.gal = g('gal'); o.shape = val('x_' + id + '_shape'); o.a = g('a'); o.b = g('b'); o.gpi = g('gpi');
     if (t.kind === 'septic') { o.liquid_depth = g('ld'); o.scum = g('sc'); o.sludge = g('sl'); o.pumped = val('x_' + id + '_pd'); o.pump_needed = val('x_' + id + '_pn'); }
-    else { o.design_pdr = g('dpdr'); o.floats = { alarm: g('fa'), on: g('fon'), off: g('foff') }; o.flow = { off: g('off'), on: g('on'), min: g('min') }; }
+    else { o.design_pdr = g('dpdr'); o.floats = { alarm: g('fa'), on: g('fon'), off: g('foff'), timed: g('ft') }; o.amps = g('amps'); o.flow = { off: g('off'), on: g('on'), min: g('min') }; }
     return o;
   }
   function cardRows(id) {
@@ -113,8 +113,8 @@
   function system() {
     var lat = []; document.querySelectorAll('#latb tr').forEach(function (tr) { var i = tr.getAttribute('data-lat'); lat.push({ length: num('lat_len_' + i), design: num('lat_des_' + i) }); });
     var b = JSON.parse(JSON.stringify(ctx.sys || {}));
-    Object.assign(b, { sys_desc: val('s_desc'), design_flow: num('s_flow'), septic_gal: num('s_sgal'), liquid_depth: num('s_ld'), pump_gal: num('s_pgal'), gpi: num('s_gpi'), tank_shape: val('s_shape'), tank_a: num('s_a'), tank_b: num('s_b'), floats: { alarm: num('i_fa'), on: num('i_fon'), off: num('i_foff') }, dose: num('f_dose'), design_pdr: num('s_dpdr'), laterals: lat });
-    b.tanks = (ctx.sys.tanks || []).map(function (t) { var x = tankData(t); return { id: t.id, kind: t.kind, name: t.name, model: t.model, gal: x.gal, shape: x.shape, a: x.a, b: x.b, gpi: x.gpi, liquid_depth: x.liquid_depth, design_pdr: x.design_pdr, floats: x.floats }; });
+    Object.assign(b, { sys_desc: val('s_desc'), design_flow: num('s_flow'), septic_gal: num('s_sgal'), liquid_depth: num('s_ld'), pump_gal: num('s_pgal'), gpi: num('s_gpi'), tank_shape: val('s_shape'), tank_a: num('s_a'), tank_b: num('s_b'), floats: { alarm: num('i_fa'), on: num('i_fon'), off: num('i_foff'), timed: num('i_ft') }, dose: num('f_dose'), design_pdr: num('s_dpdr'), laterals: lat });
+    b.tanks = (ctx.sys.tanks || []).map(function (t) { var x = tankData(t); return { id: t.id, kind: t.kind, name: t.name, model: t.model, unit: t.unit, gal: x.gal, shape: x.shape, a: x.a, b: x.b, gpi: x.gpi, liquid_depth: x.liquid_depth, design_pdr: x.design_pdr, floats: x.floats }; });
     b.cards = (ctx.sys.cards || []).map(function (cd) { return { id: cd.id, title: cd.title, items: cardRows(cd.id).map(function (r) { return r.l; }) }; });
     return b;
   }
@@ -258,7 +258,7 @@
   }
 
   // ---- System setup: permit, addresses, names, tanks and check cards (tank sizes and readings are entered during visits)
-  var SU = null, TANKS = null;
+  var SU = null, TANKS = null, UNITS = { pump: [], filter: [] };
   var rid = function () { return Math.random().toString(36).slice(2, 8); };
   // the state's approved-tank list, loaded the first time a model number is typed
   function tankList() { if (TANKS) return Promise.resolve(TANKS); return fetch('/admin/tank-list.json', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; }).then(function (l) { TANKS = l; return l; }); }
@@ -266,11 +266,11 @@
   function tankBlock(P, t, label, rm) {
     var f = function (k, l, v, x) { return fld(P + k, l, 'value="' + E(v == null ? '' : v) + '" ' + (x || '')); };
     return '<div class="item" style="display:block" data-tb="' + P + '"><div class="row" style="justify-content:space-between"><b>' + E(label) + '</b>' + (rm === undefined ? '' : '<button type="button" class="b danger" data-rmtank="' + rm + '">Remove</button>') + '</div>' +
-      '<div class="two">' + f('name', 'Name', t.name, 'maxlength="60"') + f('model', 'Tank model number (e.g. STB-760 or PT-308)', t.model, 'maxlength="60" autocomplete="off"') + '</div><div class="msg" id="' + P + 'pick" hidden></div><p class="mute sm" id="' + P + 'note"></p>' +
+      '<div class="two">' + f('name', 'Name', t.name, 'maxlength="60"') + f('model', 'Tank model number (e.g. STB-760 or PT-308)', t.model, 'maxlength="60" autocomplete="off"') + (P === 'su_p_' || (P !== 'su_s_' && t.kind === 'pump') ? f('unit', 'Pump (make and model)', t.unit, 'maxlength="60" list="dl_pump" autocomplete="off"') : f('unit', 'Effluent filter (make and model)', t.unit, 'maxlength="60" list="dl_filter" autocomplete="off"')) + '</div><div class="msg" id="' + P + 'pick" hidden></div><p class="mute sm" id="' + P + 'note"></p>' +
       '<div class="three">' + f('gal', 'Size (gal)', t.gal, dec) + '<div><label for="' + P + 'shape">Shape</label><select id="' + P + 'shape"><option value="rect"' + (t.shape === 'round' ? '' : ' selected') + '>Rectangular</option><option value="round"' + (t.shape === 'round' ? ' selected' : '') + '>Round</option></select></div><div></div>' + f('a', 'Inside length or diameter (in)', t.a, dec) + f('b', 'Inside width (in)', t.b, dec) + '<div><label for="' + P + 'gpi">Gallons per inch</label><input id="' + P + 'gpi" class="auto" readonly tabindex="-1" value="' + E(t.gpi == null ? '' : t.gpi) + '"></div></div></div>';
   }
   function readTank(P, t) {
-    var g = function (k) { return num(P + k); }; t.name = val(P + 'name'); t.model = val(P + 'model'); t.gal = g('gal'); t.shape = val(P + 'shape'); t.a = g('a'); t.b = g('b');
+    var g = function (k) { return num(P + k); }; t.name = val(P + 'name'); t.model = val(P + 'model'); t.unit = val(P + 'unit'); t.gal = g('gal'); t.shape = val(P + 'shape'); t.a = g('a'); t.b = g('b');
     var q = OWI.gpi(t.shape, t.a, t.b); t.gpi = q !== null ? q : (t.gpi_list || t.gpi || null); $(P + 'gpi').value = t.gpi == null ? '' : t.gpi;
   }
   function setupHtml() {
@@ -289,7 +289,7 @@
     h += '<div class="fcard" style="padding:12px 14px"><h3>Check cards</h3><p class="mute sm">Each card is a list of yes/no checks on every visit: drip headworks, a treatment unit, permit conditions. One check per line.</p>' +
       SU.cards.map(function (c, i) { return '<div class="item" style="display:block"><div class="row"><input id="su_ct' + i + '" value="' + E(c.title) + '" maxlength="60" aria-label="Card title" style="flex:1 1 220px"><button type="button" class="b danger" data-rmcard="' + i + '">Remove</button></div><textarea id="su_ci' + i + '" aria-label="Checks for ' + E(c.title) + '" style="min-height:90px">' + E(c.items.join('\n')) + '</textarea></div>'; }).join('') +
       '<div class="row" style="margin-top:8px"><button type="button" class="b alt" id="suCard">Add a check card</button><button type="button" class="b alt" id="suCond">Add permit conditions card</button><button type="button" class="b alt" id="suChat">Add Chatham County checks</button></div></div>';
-    return h + '<div class="row" style="margin-top:12px"><button type="button" class="b" id="suSave">Save setup</button><button type="button" class="b alt" id="suCancel">Close</button></div>';
+    return h + '<datalist id="dl_pump">' + (UNITS.pump || []).map(function (u) { return '<option value="' + E(u) + '">'; }).join('') + '</datalist><datalist id="dl_filter">' + (UNITS.filter || []).map(function (u) { return '<option value="' + E(u) + '">'; }).join('') + '</datalist><div class="row" style="margin-top:12px"><button type="button" class="b" id="suSave">Save setup</button><button type="button" class="b alt" id="suCancel">Close</button></div>';
   }
   function tankFor(P) { if (P === 'su_s_') return SU.sep; if (P === 'su_p_') return SU.pmp; var m = /^su_t(\d+)_$/.exec(P); return m ? SU.tanks[Number(m[1])] : null; }
   function readSetup() {
@@ -320,13 +320,13 @@
     OW.api('/admin/api/system?customer_id=' + D.customer.id + '&date=' + today()).then(function (j) {
       if (!j.ok) return A.fail(j); var s = j.system || {}, pm = s.permit || {};
       SU = { sys_desc: s.sys_desc || '', design_flow: s.design_flow == null ? null : s.design_flow, zone_word: s.zone_word || 'Lateral', addresses: (s.addresses || []).slice(),
-        sep: { name: s.septic_name || '', model: s.septic_model || '', gal: s.septic_gal, shape: s.septic_shape || 'rect', a: s.septic_a, b: s.septic_b, gpi: null },
-        pmp: { name: s.pump_name || '', model: s.pump_model || '', gal: s.pump_gal, shape: s.tank_shape || 'rect', a: s.tank_a, b: s.tank_b, gpi: s.gpi },
-        tanks: (s.tanks || []).map(function (t) { return { id: t.id, kind: t.kind, name: t.name, model: t.model || '', gal: t.gal, shape: t.shape || 'rect', a: t.a, b: t.b, gpi: t.gpi }; }),
+        sep: { name: s.septic_name || '', model: s.septic_model || '', unit: s.septic_unit || '', gal: s.septic_gal, shape: s.septic_shape || 'rect', a: s.septic_a, b: s.septic_b, gpi: null },
+        pmp: { name: s.pump_name || '', model: s.pump_model || '', unit: s.pump_unit || '', gal: s.pump_gal, shape: s.tank_shape || 'rect', a: s.tank_a, b: s.tank_b, gpi: s.gpi },
+        tanks: (s.tanks || []).map(function (t) { return { id: t.id, kind: t.kind, name: t.name, model: t.model || '', unit: t.unit || '', gal: t.gal, shape: t.shape || 'rect', a: t.a, b: t.b, gpi: t.gpi }; }),
         cards: (s.cards || []).map(function (c) { return { id: c.id, title: c.title, items: (c.items || []).slice() }; }),
         permit: { county: pm.county || D.customer.county || '', parcel: pm.parcel || '', type: pm.type || (D.customer.sys_type ? 'Type ' + D.customer.sys_type : ''), issued: pm.issued || '', months: pm.months == null ? null : pm.months, ca_no: pm.ca_no || '', ip_no: pm.ip_no || '', other_no: pm.other_no || '', bedrooms: pm.bedrooms == null ? null : pm.bedrooms, occupants: pm.occupants == null ? null : pm.occupants, freq: pm.freq || '', owners: pm.owners || D.customer.name || '' } };
       if (!SU.addresses.length && D.customer.address) SU.addresses = [D.customer.address];
-      showSetup(); wireSetup();
+      return OW.api('/admin/api/units').catch(function () { return {}; }).then(function (u) { if (u && u.ok) UNITS = { pump: u.pump || [], filter: u.filter || [] }; showSetup(); wireSetup(); });
     });
   };
   function wireSetup() {
@@ -339,7 +339,7 @@
       if (t.id === 'suCancel') { A.refresh(); return; }
       if (g('data-tpl')) { readSetup(); var tp = OWI.TEMPLATES.filter(function (x) { return x.k === g('data-tpl'); })[0]; SU.zone_word = tp.zone; tp.cards.forEach(function (c) { if (!SU.cards.some(function (x) { return x.title === c.title; })) SU.cards.push({ id: rid(), title: c.title, items: c.items.slice() }); }); showSetup(); return; }
       if (t.id === 'suAddr') { readSetup(); if (SU.addresses.length < 4) SU.addresses.push(''); showSetup(); return; }
-      if (g('data-addtank')) { readSetup(); if (SU.tanks.length < 8) { var k = g('data-addtank'), n = SU.tanks.filter(function (x) { return x.kind === k; }).length + 2; SU.tanks.push({ id: rid(), kind: k, name: (k === 'pump' ? 'Pump tank ' : 'Septic tank ') + n, model: '', gal: null, shape: 'rect', a: null, b: null, gpi: null }); } showSetup(); return; }
+      if (g('data-addtank')) { readSetup(); if (SU.tanks.length < 8) { var k = g('data-addtank'), n = SU.tanks.filter(function (x) { return x.kind === k; }).length + 2; SU.tanks.push({ id: rid(), kind: k, name: (k === 'pump' ? 'Pump tank ' : 'Septic tank ') + n, model: '', unit: '', gal: null, shape: 'rect', a: null, b: null, gpi: null }); } showSetup(); return; }
       if (g('data-rmtank') !== null) { readSetup(); SU.tanks.splice(Number(g('data-rmtank')), 1); showSetup(); return; }
       if (t.id === 'suCard') { readSetup(); if (SU.cards.length < 8) SU.cards.push({ id: rid(), title: 'Other checks', items: [] }); showSetup(); return; }
       if (t.id === 'suChat') { readSetup(); if (SU.cards.length < 8) SU.cards.push({ id: rid(), title: 'Chatham County checks', items: OWI.CHATHAM.slice() }); showSetup(); return; }
@@ -347,8 +347,8 @@
       if (g('data-rmcard') !== null) { readSetup(); SU.cards.splice(Number(g('data-rmcard')), 1); showSetup(); return; }
       if (t.id === 'suSave') {
         readSetup(); var m = $('sm'); m.className = 'msg'; m.textContent = 'Saving...';
-        var S = SU, body = { permit: S.permit, addresses: S.addresses, sys_desc: S.sys_desc, design_flow: S.design_flow, zone_word: S.zone_word, cards: S.cards, tanks: S.tanks.map(function (x) { return { id: x.id, kind: x.kind, name: x.name, model: x.model, gal: x.gal, shape: x.shape, a: x.a, b: x.b, gpi: x.gpi }; }),
-          septic_name: S.sep.name, septic_model: S.sep.model, septic_gal: S.sep.gal, septic_shape: S.sep.shape, septic_a: S.sep.a, septic_b: S.sep.b, pump_name: S.pmp.name, pump_model: S.pmp.model, pump_gal: S.pmp.gal, tank_shape: S.pmp.shape, tank_a: S.pmp.a, tank_b: S.pmp.b, gpi: S.pmp.gpi };
+        var S = SU, body = { permit: S.permit, addresses: S.addresses, sys_desc: S.sys_desc, design_flow: S.design_flow, zone_word: S.zone_word, cards: S.cards, tanks: S.tanks.map(function (x) { return { id: x.id, kind: x.kind, name: x.name, model: x.model, unit: x.unit, gal: x.gal, shape: x.shape, a: x.a, b: x.b, gpi: x.gpi }; }),
+          septic_name: S.sep.name, septic_unit: S.sep.unit, pump_unit: S.pmp.unit, septic_model: S.sep.model, septic_gal: S.sep.gal, septic_shape: S.sep.shape, septic_a: S.sep.a, septic_b: S.sep.b, pump_name: S.pmp.name, pump_model: S.pmp.model, pump_gal: S.pmp.gal, tank_shape: S.pmp.shape, tank_a: S.pmp.a, tank_b: S.pmp.b, gpi: S.pmp.gpi };
         OW.api('/admin/api/system', { customer_id: D.customer.id, system: body }).then(function (j) { if (!j.ok) { m.className = 'msg err'; m.textContent = j.error || 'Could not save.'; return; } OW.toast('System setup saved.'); m.className = 'msg'; m.textContent = 'Saved.'; });
       }
     };

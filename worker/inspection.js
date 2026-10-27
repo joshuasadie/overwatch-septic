@@ -11,11 +11,11 @@ const num = v => { const n = OWI.n(v); return n !== null && n >= 0 && n < 1e6 ? 
 
 const day = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : '';
 const rid = v => /^[a-z0-9]{2,8}$/.test(v || '') ? v : Math.random().toString(36).slice(2, 8);
-const cleanTank = t => { t = t || {}; const fl = t.floats || {}; return { id: rid(t.id), kind: t.kind === 'pump' ? 'pump' : 'septic', name: clean(t.name, 60), model: clean(t.model, 60), gal: num(t.gal), shape: t.shape === 'round' ? 'round' : 'rect', a: num(t.a), b: num(t.b), gpi: num(t.gpi), liquid_depth: num(t.liquid_depth), design_pdr: num(t.design_pdr), floats: { alarm: num(fl.alarm), on: num(fl.on), off: num(fl.off) } }; };
+const cleanTank = t => { t = t || {}; const fl = t.floats || {}; return { id: rid(t.id), kind: t.kind === 'pump' ? 'pump' : 'septic', name: clean(t.name, 60), model: clean(t.model, 60), gal: num(t.gal), shape: t.shape === 'round' ? 'round' : 'rect', a: num(t.a), b: num(t.b), gpi: num(t.gpi), liquid_depth: num(t.liquid_depth), design_pdr: num(t.design_pdr), unit: clean(t.unit, 60), floats: { alarm: num(fl.alarm), on: num(fl.on), off: num(fl.off), timed: num(fl.timed) } }; };
 export function cleanSystem(b) {
   b = b || {}; const p = b.permit || {};
   return { sys_desc: clean(b.sys_desc, 80), tank_shape: b.tank_shape === 'round' ? 'round' : 'rect', tank_a: num(b.tank_a), tank_b: num(b.tank_b), design_flow: num(b.design_flow), septic_gal: num(b.septic_gal), liquid_depth: num(b.liquid_depth), pump_gal: num(b.pump_gal), gpi: num(b.gpi), dose: num(b.dose), design_pdr: num(b.design_pdr),
-    floats: { alarm: num(b.floats && b.floats.alarm), on: num(b.floats && b.floats.on), off: num(b.floats && b.floats.off) }, laterals: (Array.isArray(b.laterals) ? b.laterals : []).slice(0, 12).map(l => ({ length: num(l && l.length), design: num(l && l.design) })),
+    floats: { alarm: num(b.floats && b.floats.alarm), on: num(b.floats && b.floats.on), off: num(b.floats && b.floats.off), timed: num(b.floats && b.floats.timed) }, septic_unit: clean(b.septic_unit, 60), pump_unit: clean(b.pump_unit, 60), laterals: (Array.isArray(b.laterals) ? b.laterals : []).slice(0, 12).map(l => ({ length: num(l && l.length), design: num(l && l.design) })),
     septic_name: clean(b.septic_name, 60), pump_name: clean(b.pump_name, 60), septic_model: clean(b.septic_model, 60), pump_model: clean(b.pump_model, 60), septic_shape: b.septic_shape === 'round' ? 'round' : 'rect', septic_a: num(b.septic_a), septic_b: num(b.septic_b), zone_word: b.zone_word === 'Zone' ? 'Zone' : 'Lateral',
     permit: { county: clean(p.county, 40), parcel: clean(p.parcel, 40), type: clean(p.type, 60), issued: day(p.issued), months: num(p.months), ca_no: clean(p.ca_no, 40), ip_no: clean(p.ip_no, 40), other_no: clean(p.other_no, 60), bedrooms: num(p.bedrooms), occupants: num(p.occupants), freq: OWI.FREQ.some(f => f[0] === p.freq) ? p.freq : '', owners: clean(p.owners, 120) },
     addresses: (Array.isArray(b.addresses) ? b.addresses : []).slice(0, 4).map(a => clean(a, 120)).filter(Boolean),
@@ -28,8 +28,8 @@ export async function saveSystem(env, who, c, b) {
   const row = await env.DB.prepare('SELECT data FROM systems WHERE customer_id = ?').bind(c.id).first(), cur = row ? jparse(row.data, {}) : {};
   const old = new Map((cur.tanks || []).map(t => [t.id, t]));
   const merged = { ...cur, design_flow: b.design_flow !== undefined ? b.design_flow : cur.design_flow, sys_desc: b.sys_desc !== undefined ? b.sys_desc : cur.sys_desc, permit: b.permit, addresses: b.addresses, septic_name: b.septic_name, pump_name: b.pump_name, zone_word: b.zone_word, cards: b.cards,
-    ...Object.fromEntries(['septic_model', 'pump_model', 'septic_shape', 'septic_a', 'septic_b', 'septic_gal', 'pump_gal', 'tank_shape', 'tank_a', 'tank_b', 'gpi'].filter(k => b[k] !== undefined).map(k => [k, b[k]])),
-    tanks: (Array.isArray(b.tanks) ? b.tanks : []).slice(0, 8).map(t => { const o = old.get(t && t.id); const x = Object.fromEntries(['id', 'kind', 'name', 'model', 'gal', 'shape', 'a', 'b', 'gpi'].filter(k => t && t[k] !== undefined).map(k => [k, t[k]])); return o ? { ...o, ...x } : x; }) };
+    ...Object.fromEntries(['septic_model', 'pump_model', 'septic_unit', 'pump_unit', 'septic_shape', 'septic_a', 'septic_b', 'septic_gal', 'pump_gal', 'tank_shape', 'tank_a', 'tank_b', 'gpi'].filter(k => b[k] !== undefined).map(k => [k, b[k]])),
+    tanks: (Array.isArray(b.tanks) ? b.tanks : []).slice(0, 8).map(t => { const o = old.get(t && t.id); const x = Object.fromEntries(['id', 'kind', 'name', 'model', 'unit', 'gal', 'shape', 'a', 'b', 'gpi'].filter(k => t && t[k] !== undefined).map(k => [k, t[k]])); return o ? { ...o, ...x } : x; }) };
   const sys = cleanSystem(merged), now = new Date().toISOString();
   { const g = OWI.gpi(sys.tank_shape, sys.tank_a, sys.tank_b); if (g !== null) sys.gpi = g; for (const t of sys.tanks) { const q = OWI.gpi(t.shape, t.a, t.b); if (q !== null) t.gpi = q; } }
   await env.DB.batch([
@@ -71,9 +71,10 @@ export async function createInspection(env, who, c, b) {
     const x = d.tanks[t.id]; if (!x) continue;
     const k = OWI.calcTank(x, x.kind); calc.tanks[t.id] = k; if (x.kind === 'pump' && k.gpi != null) x.gpi = k.gpi;
     if (x.kind === 'pump' && k.drawdown != null) x.drawdown = k.drawdown, x.dose = k.dose;
+    x.unit = t.unit || '';
     Object.assign(t, { gal: x.gal, shape: x.shape, a: x.a, b: x.b, gpi: x.gpi, liquid_depth: x.liquid_depth, design_pdr: x.design_pdr, floats: x.floats });
   }
-  d.sysinfo = { permit: sys.permit, addresses: sys.addresses, names: { septic: sys.septic_name, pump: sys.pump_name }, zone_word: sys.zone_word };
+  d.sysinfo = { permit: sys.permit, addresses: sys.addresses, names: { septic: sys.septic_name, pump: sys.pump_name }, zone_word: sys.zone_word, units: { septic: sys.septic_unit || '', pump: sys.pump_unit || '' } };
   if (calc.drawdown !== null) d.flow.drawdown = calc.drawdown;
   if (calc.dose !== null) d.flow.dose = calc.dose;
   d.operator = op; sys.tank_shape = d.tank_shape; sys.tank_a = d.tank_a; sys.tank_b = d.tank_b;

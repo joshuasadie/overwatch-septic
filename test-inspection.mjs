@@ -178,6 +178,12 @@ ok(j.system.septic_model === 'STB-760' && j.system.pump_model === 'PT-308' && j.
 ok(j.system.gpi === 21.6 && j.system.tanks[1].gpi === 21.6 && j.system.tanks[1].model === 'PT-308' && j.system.tanks[0].a === 100, 'gallons per inch is worked out on the server from the saved dimensions, not trusted from the browser');
 j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP, tanks: [{ id: 'ts2', kind: 'septic', name: 'Renamed' }, { id: 'tp2', kind: 'pump', name: 'Pump 2' }] } })); ok(j.system.tanks[0].a === 100 && j.system.tanks[0].model === 'STB-760' && j.system.pump_model === 'PT-308', 'a setup save that leaves the sizes out does not wipe them');
 
+// pump and filter makes, timed float and pump amps
+j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP, septic_unit: 'Polylok PL-68', pump_unit: 'Little Giant 509207', tanks: [{ id: 'ts2', kind: 'septic', unit: 'Zabel A300' }, { id: 'tp2', kind: 'pump', unit: 'Little Giant 509207' }] } }));
+ok(j.system.septic_unit === 'Polylok PL-68' && j.system.pump_unit === 'Little Giant 509207' && j.system.tanks[0].unit === 'Zabel A300' && j.system.tanks[1].unit === 'Little Giant 509207', 'setup saves the pump and filter makes');
+j = await J(await adm('/admin/api/units')); ok(j.ok && j.pump.length === 1 && j.pump[0] === 'Little Giant 509207' && j.filter.includes('Polylok PL-68') && j.filter.includes('Zabel A300'), 'suggestions list each pump and filter name once');
+{ const r = await J(await post('2026-12-01', form({ floats: { alarm: 40, on: 25, off: 20, timed: 18 }, amps: 4.1 }))); const jj = await J(await adm('/admin/api/customer/' + cid)); const dd = (jj.reports.find(x => x.id === r.id) || { insp: { data: {} } }).insp.data;
+  ok(r.ok && dd.floats && dd.floats.timed === 18 && dd.amps === 4.1, 'the visit keeps the timed float and the pump amps'); }
 { const cc = OWI0.calc({ flow: {}, meters: {}, checks: {} }, { prev: { date: '2026-04-01' }, date: '2026-10-26' });
   ok(OWI0.CHATHAM.length === 7 && cc.last === '2026-04-01' && cc.days === 208, 'Chatham check list is there and the last inspection date is returned'); }
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);

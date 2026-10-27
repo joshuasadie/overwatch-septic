@@ -126,6 +126,16 @@ export async function adminApi(request, env, path) {
     const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.get('date') || '') ? sp.get('date') : etDate();
     return reply({ ok: true, ...(await systemInfo(env, cid, date)) });
   }
+  if (path === '/admin/api/units' && method === 'GET') {
+    // pump and filter names already used at any site, offered as suggestions so spellings stay the same
+    const pump = new Set(), filter = new Set();
+    for (const r of (await env.DB.prepare('SELECT data FROM systems').all()).results) {
+      let s = {}; try { s = JSON.parse(r.data); } catch {}
+      for (const u of [s.pump_unit, ...(s.tanks || []).filter(t => t.kind === 'pump').map(t => t.unit)]) if (u) pump.add(u);
+      for (const u of [s.septic_unit, ...(s.tanks || []).filter(t => t.kind !== 'pump').map(t => t.unit)]) if (u) filter.add(u);
+    }
+    return reply({ ok: true, pump: [...pump].sort(), filter: [...filter].sort() });
+  }
   if (path === '/admin/api/system' && method === 'POST') {
     const j = await readJson(request, 65536); if (j.res) return j.res;
     const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(String(j.body.customer_id || '')).first();

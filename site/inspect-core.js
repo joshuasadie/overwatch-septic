@@ -225,7 +225,7 @@
     d.tank_shape = s.tank_shape === 'round' ? 'round' : 'rect'; d.tank_a = N(s.tank_a); d.tank_b = N(s.tank_b);
     OWI.SECTIONS.forEach(function (sec) { d.checks[sec.k] = {}; sec.items.forEach(function (it) { var a = s.checks && s.checks[sec.k] && s.checks[sec.k][it[0]]; if (YN.indexOf(a) >= 0) d.checks[sec.k][it[0]] = a; }); });
     ['septic', 'pump'].forEach(function (k) { var x = s[k] || {}; d[k] = { scum: N(x.scum), sludge: N(x.sludge), pumped: /^\d{4}-\d{2}-\d{2}$/.test(x.pumped || '') ? x.pumped : '', pump_needed: x.pump_needed === 'Yes' ? 'Yes' : 'No' }; });
-    var fl = s.floats || {}; d.floats = { alarm: N(fl.alarm), on: N(fl.on), off: N(fl.off) };
+    var fl = s.floats || {}; d.floats = { alarm: N(fl.alarm), on: N(fl.on), off: N(fl.off), timed: N(fl.timed) }; d.amps = N(s.amps);
     (Array.isArray(s.laterals) ? s.laterals : []).slice(0, 12).forEach(function (l, i) { l = l || {}; d.laterals.push({ n: i + 1, length: N(l.length), design: N(l.design), turnup: N(l.turnup), last: N(l.last), baseline: N(l.baseline), left: N(l.left), adjusted: N(l.adjusted) }); });
     var f = s.flow || {}; d.flow = { dose: N(f.dose), drawdown: N(f.drawdown), off: N(f.off), on: N(f.on), gpi: N(f.gpi), min: N(f.min), design_pdr: N(f.design_pdr) };
     var m = s.meters || {}; d.meters = { et: N(m.et), events: N(m.events) };
@@ -241,7 +241,7 @@
       OWI.TANK_ITEMS[k].forEach(function (it) { var a = x.checks && x.checks[it[0]]; if (YN.indexOf(a) >= 0) o.checks[it[0]] = a; });
       o.scum = N(x.scum); o.sludge = N(x.sludge); o.pumped = D(x.pumped); o.pump_needed = x.pump_needed === 'Yes' ? 'Yes' : 'No';
       o.liquid_depth = N(x.liquid_depth); o.gal = N(x.gal); o.shape = x.shape === 'round' ? 'round' : 'rect'; o.a = N(x.a); o.b = N(x.b); o.gpi = N(x.gpi); o.design_pdr = N(x.design_pdr);
-      var fl = x.floats || {}; o.floats = { alarm: N(fl.alarm), on: N(fl.on), off: N(fl.off) }; var fw = x.flow || {}; o.flow = { off: N(fw.off), on: N(fw.on), min: N(fw.min) };
+      var fl = x.floats || {}; o.floats = { alarm: N(fl.alarm), on: N(fl.on), off: N(fl.off), timed: N(fl.timed) }; o.amps = k === 'pump' ? N(x.amps) : null; var fw = x.flow || {}; o.flow = { off: N(fw.off), on: N(fw.on), min: N(fw.min) };
       d.tanks[t.id] = o;
     });
     d.cards = {}; (sys.cards || []).forEach(function (cd) {
