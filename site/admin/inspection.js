@@ -263,14 +263,15 @@
   // the state's approved-tank list, loaded the first time a model number is typed
   function tankList() { if (TANKS) return Promise.resolve(TANKS); return fetch('/admin/tank-list.json', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; }).then(function (l) { TANKS = l; return l; }); }
   // one tank's fields: name, model number from the permit or the tank, size, and inside dimensions
+  function isPumpTank(P, t) { return P === 'su_p_' || (P !== 'su_s_' && t.kind === 'pump'); }
   function tankBlock(P, t, label, rm) {
     var f = function (k, l, v, x) { return fld(P + k, l, 'value="' + E(v == null ? '' : v) + '" ' + (x || '')); };
     return '<div class="item" style="display:block" data-tb="' + P + '"><div class="row" style="justify-content:space-between"><b>' + E(label) + '</b>' + (rm === undefined ? '' : '<button type="button" class="b danger" data-rmtank="' + rm + '">Remove</button>') + '</div>' +
       '<div class="two">' + f('name', 'Name', t.name, 'maxlength="60"') + f('model', 'Tank model number (e.g. STB-760 or PT-308)', t.model, 'maxlength="60" autocomplete="off"') + (P === 'su_p_' || (P !== 'su_s_' && t.kind === 'pump') ? f('unit', 'Pump (make and model)', t.unit, 'maxlength="60" list="dl_pump" autocomplete="off"') : f('unit', 'Effluent filter (make and model)', t.unit, 'maxlength="60" list="dl_filter" autocomplete="off"')) + '</div><div class="msg" id="' + P + 'pick" hidden></div><p class="mute sm" id="' + P + 'note"></p>' +
-      '<div class="three">' + f('gal', 'Size (gal)', t.gal, dec) + '<div><label for="' + P + 'shape">Shape</label><select id="' + P + 'shape"><option value="rect"' + (t.shape === 'round' ? '' : ' selected') + '>Rectangular</option><option value="round"' + (t.shape === 'round' ? ' selected' : '') + '>Round</option></select></div><div></div>' + f('a', 'Inside length or diameter (in)', t.a, dec) + f('b', 'Inside width (in)', t.b, dec) + '<div><label for="' + P + 'gpi">Gallons per inch</label><input id="' + P + 'gpi" class="auto" readonly tabindex="-1" value="' + E(t.gpi == null ? '' : t.gpi) + '"></div></div></div>';
+      '<div class="three">' + f('gal', 'Size (gal)', t.gal, dec) + '<div><label for="' + P + 'shape">Shape</label><select id="' + P + 'shape"><option value="rect"' + (t.shape === 'round' ? '' : ' selected') + '>Rectangular</option><option value="round"' + (t.shape === 'round' ? ' selected' : '') + '>Round</option></select></div><div></div>' + f('a', 'Inside length or diameter (in)', t.a, dec) + f('b', 'Inside width (in)', t.b, dec) + f('h', 'Tank height, inside (in)', t.h, dec) + '<div><label for="' + P + 'gpi">Gallons per inch</label><input id="' + P + 'gpi" class="auto" readonly tabindex="-1" value="' + E(t.gpi == null ? '' : t.gpi) + '"></div>' + (isPumpTank(P, t) ? '' : f('ld', 'Liquid depth (in). Calculated; type over it if you measured', t.ld, dec)) + '</div></div>';
   }
   function readTank(P, t) {
-    var g = function (k) { return num(P + k); }; t.name = val(P + 'name'); t.model = val(P + 'model'); t.unit = val(P + 'unit'); t.gal = g('gal'); t.shape = val(P + 'shape'); t.a = g('a'); t.b = g('b');
+    var g = function (k) { return num(P + k); }; t.name = val(P + 'name'); t.model = val(P + 'model'); t.unit = val(P + 'unit'); t.gal = g('gal'); t.shape = val(P + 'shape'); t.a = g('a'); t.b = g('b'); t.h = g('h'); if ($(P + 'ld')) t.ld = g('ld');
     var q = OWI.gpi(t.shape, t.a, t.b); t.gpi = q !== null ? q : (t.gpi_list || t.gpi || null); $(P + 'gpi').value = t.gpi == null ? '' : t.gpi;
   }
   // the field lines: how many, how long, and the designed head. The visit form starts from these.
@@ -317,21 +318,25 @@
     tankList().then(function (list) {
       if (val(P + 'model') !== q) return; var hits = OWI.findTanks(list, q);
       if (!hits.length) { note.textContent = list.length ? 'Not found in the state approved-tank list. Enter the size and inside dimensions yourself.' : 'The tank list could not be loaded. Enter the size and inside dimensions yourself.'; return; }
-      var apply = function (r) { var o = OWI.tankFill(r); $(P + 'gal').value = o.gal; $(P + 'shape').value = o.shape; $(P + 'a').value = o.a == null ? '' : o.a; $(P + 'b').value = o.b == null ? '' : o.b; t.gpi_list = o.gpi; $(P + 'gpi').value = o.gpi == null ? '' : o.gpi; note.textContent = o.note; recalcGpi(P); };
+      var apply = function (r) { var o = OWI.tankFill(r); $(P + 'gal').value = o.gal; $(P + 'shape').value = o.shape; $(P + 'a').value = o.a == null ? '' : o.a; $(P + 'b').value = o.b == null ? '' : o.b; $(P + 'h').value = o.h == null ? '' : o.h; t.gpi_list = o.gpi; if ($(P + 'ld')) { delete $(P + 'ld').dataset.hand; } $(P + 'gpi').value = o.gpi == null ? '' : o.gpi; note.textContent = o.note; recalcGpi(P); };
       if (hits.length === 1) return apply(hits[0]);
       pick.hidden = false; pick.innerHTML = '<label for="' + P + 'sel">More than one manufacturer uses ' + E(q.toUpperCase()) + '. Which one?</label><select id="' + P + 'sel"><option value="">Choose...</option>' + hits.map(function (r, i) { return '<option value="' + i + '">' + E(r[2] + ' (' + r[3] + '), ' + r[4] + ' gal') + '</option>'; }).join('') + '</select>';
       $(P + 'sel').onchange = function () { if (this.value !== '') apply(hits[Number(this.value)]); };
     });
   }
-  function recalcGpi(P) { var t = tankFor(P); if (!t) return; var g = OWI.gpi(val(P + 'shape'), val(P + 'a'), val(P + 'b')); $(P + 'gpi').value = g !== null ? g : (t.gpi_list || ''); }
+  function recalcGpi(P) {
+    var t = tankFor(P); if (!t) return; var g = OWI.gpi(val(P + 'shape'), val(P + 'a'), val(P + 'b')); $(P + 'gpi').value = g !== null ? g : (t.gpi_list || '');
+    var gi = num(P + 'gpi'), gal = num(P + 'gal'), ld = $(P + 'ld');
+    if (ld && !ld.dataset.hand && gi && gal) { var calc = Math.round(gal / gi * 10) / 10; ld.value = calc; ld.classList.add('auto'); }
+  }
   A.setup = function () {
     D = A.S.d; $('panel').classList.add('wide'); $('panel').innerHTML = '<h2>System setup</h2><p class="mute">Loading...</p>'; $('panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
     OW.api('/admin/api/system?customer_id=' + D.customer.id + '&date=' + today()).then(function (j) {
       if (!j.ok) return A.fail(j); var s = j.system || {}, pm = s.permit || {};
       SU = { zones: (s.laterals || []).map(function (l) { return { length: l.length == null ? null : l.length, design: l.design == null ? null : l.design }; }), sys_desc: s.sys_desc || '', design_flow: s.design_flow == null ? null : s.design_flow, zone_word: s.zone_word || 'Lateral', addresses: (s.addresses || []).slice(),
-        sep: { name: s.septic_name || '', model: s.septic_model || '', unit: s.septic_unit || '', gal: s.septic_gal, shape: s.septic_shape || 'rect', a: s.septic_a, b: s.septic_b, gpi: null },
-        pmp: { name: s.pump_name || '', model: s.pump_model || '', unit: s.pump_unit || '', gal: s.pump_gal, shape: s.tank_shape || 'rect', a: s.tank_a, b: s.tank_b, gpi: s.gpi },
-        tanks: (s.tanks || []).map(function (t) { return { id: t.id, kind: t.kind, name: t.name, model: t.model || '', unit: t.unit || '', gal: t.gal, shape: t.shape || 'rect', a: t.a, b: t.b, gpi: t.gpi }; }),
+        sep: { name: s.septic_name || '', model: s.septic_model || '', unit: s.septic_unit || '', gal: s.septic_gal, shape: s.septic_shape || 'rect', a: s.septic_a, b: s.septic_b, h: s.septic_h, ld: s.liquid_depth, gpi: null },
+        pmp: { name: s.pump_name || '', model: s.pump_model || '', unit: s.pump_unit || '', gal: s.pump_gal, shape: s.tank_shape || 'rect', a: s.tank_a, b: s.tank_b, h: s.pump_h, gpi: s.gpi },
+        tanks: (s.tanks || []).map(function (t) { return { id: t.id, kind: t.kind, name: t.name, model: t.model || '', unit: t.unit || '', gal: t.gal, shape: t.shape || 'rect', a: t.a, b: t.b, h: t.h, ld: t.liquid_depth, gpi: t.gpi }; }),
         cards: (s.cards || []).map(function (c) { return { id: c.id, title: c.title, items: (c.items || []).slice() }; }),
         permit: { county: pm.county || D.customer.county || '', parcel: pm.parcel || '', type: pm.type || (D.customer.sys_type ? 'Type ' + D.customer.sys_type : ''), issued: pm.issued || '', months: pm.months == null ? null : pm.months, ca_no: pm.ca_no || '', ip_no: pm.ip_no || '', other_no: pm.other_no || '', bedrooms: pm.bedrooms == null ? null : pm.bedrooms, occupants: pm.occupants == null ? null : pm.occupants, freq: pm.freq || '', owners: pm.owners || D.customer.name || '' } };
       if (!SU.addresses.length && D.customer.address) SU.addresses = [D.customer.address];
@@ -340,7 +345,7 @@
   };
   function wireSetup() {
     var P = $('panel');
-    P.oninput = function (e) { var id = e.target.id; if (id === 'su_issued' || id === 'su_months') { var pi = OWI.permitInfo({ issued: val('su_issued'), months: num('su_months') }, today()); $('su_exp').value = pi.expires ? OW.date(pi.expires) : ''; $('su_warn').hidden = !pi.expired; } var m = /^(su_(?:s|p|t\d+)_)(shape|a|b)$/.exec(id); if (m) recalcGpi(m[1]); if (/^su_zl\d+$/.test(id)) { var tt = 0, nn = 0; for (var q = 0; $('su_zl' + q); q++) { nn++; tt += num('su_zl' + q) || 0; } var zw = (val('su_zone') === 'Zone' ? 'zone' : 'lateral'); $('su_ztot').textContent = nn + ' ' + zw + (nn === 1 ? '' : 's') + ', ' + tt + ' ft in all'; } };
+    P.oninput = function (e) { var id = e.target.id; if (id === 'su_issued' || id === 'su_months') { var pi = OWI.permitInfo({ issued: val('su_issued'), months: num('su_months') }, today()); $('su_exp').value = pi.expires ? OW.date(pi.expires) : ''; $('su_warn').hidden = !pi.expired; } var m = /^(su_(?:s|p|t\d+)_)(shape|a|b|gal)$/.exec(id); if (m) recalcGpi(m[1]); var ml = /^(su_(?:s|t\d+)_)ld$/.exec(id); if (ml) { e.target.dataset.hand = '1'; e.target.classList.remove('auto'); } if (/^su_zl\d+$/.test(id)) { var tt = 0, nn = 0; for (var q = 0; $('su_zl' + q); q++) { nn++; tt += num('su_zl' + q) || 0; } var zw = (val('su_zone') === 'Zone' ? 'zone' : 'lateral'); $('su_ztot').textContent = nn + ' ' + zw + (nn === 1 ? '' : 's') + ', ' + tt + ' ft in all'; } };
     P.onchange = function (e) { var m = /^(su_(?:s|p|t\d+)_)model$/.exec(e.target.id); if (m) lookupModel(m[1]); };
     P.onclick = function (e) {
       var t = e.target, g = function (a) { var b = t.closest('[' + a + ']'); return b ? b.getAttribute(a) : null; };
@@ -358,8 +363,8 @@
       if (g('data-rmcard') !== null) { readSetup(); SU.cards.splice(Number(g('data-rmcard')), 1); showSetup(); return; }
       if (t.id === 'suSave') {
         readSetup(); var m = $('sm'); m.className = 'msg'; m.textContent = 'Saving...';
-        var S = SU, body = { laterals: S.zones.filter(function (z) { return z.length != null || z.design != null; }).slice(0, 12), permit: S.permit, addresses: S.addresses, sys_desc: S.sys_desc, design_flow: S.design_flow, zone_word: S.zone_word, cards: S.cards, tanks: S.tanks.map(function (x) { return { id: x.id, kind: x.kind, name: x.name, model: x.model, unit: x.unit, gal: x.gal, shape: x.shape, a: x.a, b: x.b, gpi: x.gpi }; }),
-          septic_name: S.sep.name, septic_unit: S.sep.unit, pump_unit: S.pmp.unit, septic_model: S.sep.model, septic_gal: S.sep.gal, septic_shape: S.sep.shape, septic_a: S.sep.a, septic_b: S.sep.b, pump_name: S.pmp.name, pump_model: S.pmp.model, pump_gal: S.pmp.gal, tank_shape: S.pmp.shape, tank_a: S.pmp.a, tank_b: S.pmp.b, gpi: S.pmp.gpi };
+        var S = SU, body = { laterals: S.zones.filter(function (z) { return z.length != null || z.design != null; }).slice(0, 12), permit: S.permit, addresses: S.addresses, sys_desc: S.sys_desc, design_flow: S.design_flow, zone_word: S.zone_word, cards: S.cards, tanks: S.tanks.map(function (x) { return { id: x.id, kind: x.kind, name: x.name, model: x.model, unit: x.unit, gal: x.gal, shape: x.shape, a: x.a, b: x.b, h: x.h, liquid_depth: x.kind === 'pump' ? undefined : x.ld, gpi: x.gpi }; }),
+          septic_name: S.sep.name, septic_unit: S.sep.unit, pump_unit: S.pmp.unit, septic_model: S.sep.model, septic_gal: S.sep.gal, septic_shape: S.sep.shape, septic_a: S.sep.a, septic_b: S.sep.b, septic_h: S.sep.h, pump_h: S.pmp.h, liquid_depth: S.sep.ld, pump_name: S.pmp.name, pump_model: S.pmp.model, pump_gal: S.pmp.gal, tank_shape: S.pmp.shape, tank_a: S.pmp.a, tank_b: S.pmp.b, gpi: S.pmp.gpi };
         OW.api('/admin/api/system', { customer_id: D.customer.id, system: body }).then(function (j) { if (!j.ok) { m.className = 'msg err'; m.textContent = j.error || 'Could not save.'; return; } OW.toast('System setup saved.'); m.className = 'msg'; m.textContent = 'Saved.'; });
       }
     };

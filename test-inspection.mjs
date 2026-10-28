@@ -190,4 +190,10 @@ ok(j.system.laterals.length === 3 && j.system.laterals[1].design === 25 && j.sys
 j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP } })); ok(j.system.laterals.length === 3, 'a setup save that leaves the zones out keeps them');
 { const cc = OWI0.calc({ flow: {}, meters: {}, checks: {} }, { prev: { date: '2026-04-01' }, date: '2026-10-26' });
   ok(OWI0.CHATHAM.length === 7 && cc.last === '2026-04-01' && cc.days === 208, 'Chatham check list is there and the last inspection date is returned'); }
+// tank height and liquid depth from setup
+j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP, septic_h: 60, pump_h: 48, liquid_depth: 50, tanks: SETUP.tanks.map((t, i) => i === 0 ? { ...t, h: 60, liquid_depth: 50 } : { ...t, h: 48 }) } }));
+ok(j.system.septic_h === 60 && j.system.pump_h === 48 && j.system.liquid_depth === 50, 'setup saves tank heights and the septic liquid depth');
+ok(j.system.tanks[0].h === 60 && j.system.tanks[0].liquid_depth === 50 && j.system.tanks[1].h === 48, 'extra tanks keep their height and liquid depth');
+j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP } }));
+ok(j.system.septic_h === 60 && j.system.liquid_depth === 50, 'a setup save that leaves them out keeps them');
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);
