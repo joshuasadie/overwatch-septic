@@ -65,7 +65,7 @@
     OW.api('/portal/api/me').then(function (j) {
       if (j.status === 401) { location.href = '/login/'; return; }
       if (!j.ok) { $('hello').innerHTML = '<p class="bad">' + OW.esc(j.error) + '</p>'; return; }
-      D = j; render(); if (reopen) openContract(reopen); else $('viewer').hidden = true;
+      D = j; if (j.operator && j.operator.phone) OW.CONTACT.phone = j.operator.phone; render(); if (reopen) openContract(reopen); else $('viewer').hidden = true;
     });
   }
   load();

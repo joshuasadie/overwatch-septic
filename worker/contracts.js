@@ -2,6 +2,7 @@
 import { contractText, REQUIRED, DEFAULT_TERMS, VISITS, annualFrom, R18E } from '../site/contract-text.js';
 import { reply, clean, sha, rand, id, isoIn, siteOrigin, sendMail, EMAIL } from './lib.js';
 import { createInvoice, contractLocked, toCents, money } from './billing.js';
+import { fmtPhone } from './inspection.js';
 
 const TOKEN = /^[A-Za-z0-9_-]{20,60}$/;
 export const LINK_DAYS = 14;
@@ -94,7 +95,7 @@ export async function tokenApi(request, env, path) {
   if (!c) return reply({ ok: false, error: 'This link is not valid. Please ask us to send a new one.' }, 404);
   if (!m[2]) {
     if (request.method !== 'GET') return reply({ ok: false, error: 'Method not allowed.' }, 405);
-    return reply({ ok: true, expired: c.status === 'sent' && c.expires_at < new Date().toISOString(), contract: publicView(c, null, await contractLocked(env, c.id)) });
+    return reply({ ok: true, phone: fmtPhone(env.PHONE_NUMBER || env.OPERATOR_PHONE), expired: c.status === 'sent' && c.expires_at < new Date().toISOString(), contract: publicView(c, null, await contractLocked(env, c.id)) });
   }
   if (request.method !== 'POST') return reply({ ok: false, error: 'Method not allowed.' }, 405);
   return { contract: c, sign: (name, agree) => ownerSign(env, request, c, name, agree) };

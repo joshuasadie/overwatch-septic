@@ -233,5 +233,5 @@
     OW.api('/admin/api/customer', body).then(function (j) { if (!j.ok) { $('cm').className = 'msg err'; $('cm').textContent = j.error; return; } $('editor').hidden = true; OW.toast('Saved.'); S.sel = j.id; select(j.id); });
   });
   $('cyf').addEventListener('submit', function (e) { e.preventDefault(); OW.api('/admin/api/county', { name: $('cy_n').value, email: $('cy_e').value }).then(function (j) { if (!j.ok) { $('cym').className = 'msg err'; $('cym').textContent = j.error; return; } $('cym').textContent = ''; $('cy_n').value = ''; $('cy_e').value = ''; OW.toast('County saved.'); loadCounties(); }); });
-  OW.api('/admin/api/config').then(function (j) { if (j.ok) { S.cfg = j; $('who').textContent = 'Admin portal · ' + j.me; } }).then(function () { loadList(); loadInvoices(); loadCounties(); });
+  OW.api('/admin/api/config').then(function (j) { if (j.ok) { S.cfg = j; if (j.operator && j.operator.phone) OW.CONTACT.phone = j.operator.phone; $('who').textContent = 'Admin portal · ' + j.me; } }).then(function () { loadList(); loadInvoices(); loadCounties(); });
 })();

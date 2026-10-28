@@ -55,7 +55,22 @@ import { adminApi } from './admin.js';
 import { loginRequest, loginVerify, portalApi } from './portal.js';
 import { tokenApi } from './contracts.js';
 import { payRedirect, stripeWebhook, countyReportPage, runDaily } from './billing.js';
-import { ensureSchema, originOk, readJson } from './lib.js';
+import { ensureSchema, originOk, readJson, turnstileOk } from './lib.js';
+
+// POST /api/phone: the phone number is never in the page. It is returned only after a fresh Turnstile check
+// (tokens are single use, so every reveal needs its own check). The number lives in the PHONE_NUMBER secret.
+export async function phone(req, env) {
+  if (req.method !== 'POST') return reply({ ok: false, error: 'Method not allowed.' }, 405, { allow: 'POST' });
+  const origin = req.headers.get('origin');
+  if (!origin || !list(env.ALLOWED_ORIGINS).includes(origin)) return reply({ ok: false, error: 'Request not allowed.' }, 403);
+  const digits = String(env.PHONE_NUMBER || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+  if (digits.length !== 10 || !env.TURNSTILE_SECRET) return reply({ ok: false, error: 'Calling is not available right now. Please use the request form below.' }, 503);
+  const raw = await req.text();
+  if (raw.length > 4096) return reply({ ok: false, error: 'Invalid request.' }, 413);
+  let d; try { d = JSON.parse(raw); } catch { return reply({ ok: false, error: 'Invalid request.' }, 400); }
+  if (!(await turnstileOk(env, clean(d && d.token, 2048)))) return reply({ ok: false, error: 'The security check did not pass. Please try again.' }, 400);
+  return reply({ ok: true, phone: `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`, tel: '+1' + digits });
+}
 
 const NO_STORE = r => { const h = new Headers(r.headers); h.set('cache-control', 'no-store'); h.set('x-robots-tag', 'noindex, nofollow'); return new Response(r.body, { status: r.status, headers: h }); };
 
@@ -63,6 +78,7 @@ export default {
   async fetch(req, env) {
     const { pathname } = new URL(req.url);
     if (pathname === '/api/request') return request(req, env);
+    if (pathname === '/api/phone') return phone(req, env);
     if (pathname.startsWith('/admin/api/')) return adminApi(req, env, pathname);
     if (pathname === '/stripe/webhook') { try { await ensureSchema(env); } catch { return reply({ ok: false }, 503); } return stripeWebhook(req, env); }
     let pm = /^\/pay\/([a-f0-9]{20})$/.exec(pathname);

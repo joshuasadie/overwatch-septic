@@ -19,6 +19,6 @@
         if (x[0].ok && x[1].ok) { f.reset(); say('Thank you. We got your request and sent you a confirmation email.', 'done'); }
         else say(x[1].error || 'Something went wrong. Please try again.', 'err');
       }, function () { say('We could not reach the server. Please try again.', 'err'); })
-      .then(function () { btn.disabled = false; if (window.turnstile) try { turnstile.reset(); } catch (_) {} });
+      .then(function () { btn.disabled = false; if (window.turnstile) try { turnstile.reset(f.querySelector('.cf-turnstile')); } catch (_) {} });
   });
 })();

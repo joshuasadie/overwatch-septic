@@ -5,7 +5,9 @@ import '../site/inspect-view.js';
 const OWI = globalThis.OWI;
 export { OWI };
 
-export const operatorOf = env => ({ name: env.OPERATOR_NAME || 'Joshua Klein', cert: env.OPERATOR_CERT || '', phone: env.OPERATOR_PHONE || '919-525-1455' });
+export const operatorOf = env => ({ name: env.OPERATOR_NAME || 'Joshua Klein', cert: env.OPERATOR_CERT || '', phone: fmtPhone(env.PHONE_NUMBER || env.OPERATOR_PHONE) });
+// The business phone, from the PHONE_NUMBER secret (never written in the code). 919-555-0100 style, or '' if not set.
+export function fmtPhone(v) { const d = String(v || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : ''; }
 const jparse = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
 const num = v => { const n = OWI.n(v); return n !== null && n >= 0 && n < 1e6 ? n : null; };
 

@@ -21,6 +21,7 @@
   OW.api('/api/contract/' + encodeURIComponent(token)).then(function (j) {
     if (!j.ok) { $('state').innerHTML = '<h2>This link did not work</h2><p>' + OW.esc(j.error || 'Please ask us to send a new one.') + '</p><p><a href="/#request">Contact Overwatch Septic</a></p>'; return; }
     if (j.expired) { $('state').innerHTML = '<h2>This link has expired</h2><p>Please ask us to send a new one. If you already have a customer portal account you can <a href="/login/">sign in</a>.</p>'; return; }
+    if (j.phone) OW.CONTACT.phone = j.phone;
     c = j.contract; show(c);
   });
   $('f').addEventListener('submit', function (e) {

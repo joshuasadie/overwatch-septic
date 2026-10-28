@@ -4,6 +4,8 @@
   "compatibility_date": "2025-09-01",
   "assets": { "directory": "./site", "binding": "ASSETS" },
   "observability": { "enabled": false },
+  // Keep variables set in the Cloudflare dashboard (like PHONE_NUMBER) when deploying from main.
+  "keep_vars": true,
   // Runs the unpaid-invoice reminders and releases cleared payments, every day at 12:00 UTC (8 am Eastern).
   "triggers": { "crons": ["0 12 * * *"] },
   // Create these two in the Cloudflare dashboard (Storage & databases), then paste the D1 id below.

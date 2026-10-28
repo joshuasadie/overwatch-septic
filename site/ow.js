@@ -16,7 +16,7 @@
   OW.STATUS = { terminated: ['Cancelled for nonpayment', 'bad'], sent: ['Waiting on customer', 'warn'], owner_signed: ['Needs your signature', 'warn'], complete: ['Signed', 'good'], void: ['Cancelled', 'mute'], none: ['Not sent', 'bad'] };
   OW.pill = function (s, forCustomer) { var x = OW.STATUS[s] || OW.STATUS.none; var label = x[0]; if (forCustomer) label = { sent: 'Needs your signature', owner_signed: 'Signed by you, waiting on us', complete: 'Signed', terminated: 'Cancelled for nonpayment', void: 'Cancelled' }[s] || label; return '<span class="pill ' + x[1] + '">' + OW.esc(label) + '</span>'; };
   OW.LOGO = '<svg width="40" height="40" viewBox="0 0 100 100" fill="none" stroke="var(--brz)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="50" cy="50" r="47" fill="var(--slate)"/><g stroke="var(--onslate)"><path d="M30 23 50 11 70 23Z"/><path d="M38 23V34M62 23V34"/><path d="M38 34 31 62M62 34 69 62M36 54 64 40M64 54 36 40" stroke-width="2.2"/></g><path d="M40 29Q50 21 60 29Q50 37 40 29Z" stroke-width="2"/><circle cx="50" cy="29" r="2.4" fill="var(--brz)" stroke="none"/><rect x="26" y="62" width="48" height="12" rx="6"/><path d="M42 62v-3M58 62v-3M16 68h10M74 68h10M30 81h40M36 87h28M41 93h18" stroke-width="2.2"/></svg>';
-  OW.CONTACT = { phone: '919-525-1455', email: 'Joshua@overwatchseptic.com', site: 'overwatchseptic.com' };
+  OW.CONTACT = { phone: '', email: 'Joshua@overwatchseptic.com', site: 'overwatchseptic.com' };
   OW.brand = function (href) { return '<a class="brand" href="' + (href || '/') + '">' + OW.LOGO + '<span><b>OVERWATCH</b><i>SEPTIC SYSTEMS</i></span></a>'; };
 
   // ---- contract text as HTML
@@ -93,7 +93,7 @@
           if (L.logo) page.drawImage(L.logo, { x: M, y: y - h, width: h, height: h });
           page.drawText('OVERWATCH', { x: tx, y: y - 22, size: 18, font: fb, color: PDFLib.rgb(0.12, 0.1, 0.08) });
           page.drawText('SEPTIC, LLC', { x: tx, y: y - 36, size: 9, font: fb, color: PDFLib.rgb(0.66, 0.45, 0.12) });
-          (lines || []).forEach(function (t, i) { var tt = L.safe(t), w = f.widthOfTextAtSize(tt, 9); page.drawText(tt, { x: W - M - w, y: y - 11 - i * 11, size: 9, font: f, color: PDFLib.rgb(0.25, 0.22, 0.18) }); });
+          (lines || []).filter(Boolean).forEach(function (t, i) { var tt = L.safe(t), w = f.widthOfTextAtSize(tt, 9); page.drawText(tt, { x: W - M - w, y: y - 11 - i * 11, size: 9, font: f, color: PDFLib.rgb(0.25, 0.22, 0.18) }); });
           y -= h + 8; L.rule(); y -= 2;
         },
         rule: function () { L.need(10); page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.6, color: PDFLib.rgb(0.7, 0.65, 0.55) }); y -= 10; },
