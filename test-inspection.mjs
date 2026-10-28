@@ -56,6 +56,10 @@ j = await J(await adm('/admin/api/customer/' + cid)); const rep2 = j.reports.fin
 const c2 = rep2.insp.calc;
 ok(c2.depth === 5 && c2.vol === 105 && c2.pdr === 21 && c2.eff === 118 && c2.eff_ok === false, 'flow test: 5 in x 21 gal/in = 105 gal, 21.0 gpm, 118% of design');
 ok(c2.sludge_pct === 17.3 && c2.pump_now === false, 'sludge is 17% of the tank, not time to pump');
+{ const C = globalThis.OWI, dd = { ...rep2.insp.data, meters: { et: 1480, events: 9010, flow: 487202.5, flow7: 2450, flow30: 10380 } };
+  const cc = C.calc(dd, { prev: { date: '2025-08-23', et: 1460, events: 8770, flow: 337205.6 }, date: '2026-10-31' }), ff = C.formulas(dd, cc, { prev: { date: '2025-08-23', flow: 337205.6 }, date: '2026-10-31' });
+  ok(cc.flow_used === 149997 && cc.days === 434 && cc.flow_day === 346 && cc.flow7_day === 350 && cc.flow30_day === 346, 'flow meter: 149,997 gal over 434 days = 346 gpd (matches the county\'s 345.6); 7-day and 30-day averages');
+  ok(/Flow meter 487202.5 - 337205.6 = 149997 gal \/ 434 days = 346 gpd/.test(ff.flow), 'flow meter formula is shown'); }
 ok(c2.gpd_gal === 25200 && c2.gpd_avg === 136 && c2.formulas.gpd === '20 hours x 60 x 21 gpm = 25200 gal / 185 days = 136 gpd', 'average daily flow: 20 h x 60 x 21 gpm / 185 days = 136 gpd');
 ok(c2.days === 185 && c2.et_day === 0.11 && c2.events_day === 1.3 && c2.events_design === 1.1, 'per-day meters use the days since the last visit; design events = 120 / 105');
 ok(rep1.insp.calc.et_day === undefined || rep1.insp.calc.et_day === null, 'first visit has no per-day meters');

@@ -46,7 +46,7 @@ async function previous(env, cid, date) {
   const r = await env.DB.prepare("SELECT r.visit_date, i.data FROM reports r JOIN inspections i ON i.report_id = r.id WHERE r.customer_id = ? AND r.visit_date < ? ORDER BY r.visit_date DESC, r.created_at DESC LIMIT 1").bind(cid, date).first();
   if (!r) return null;
   const d = jparse(r.data, {});
-  return { date: r.visit_date, et: d.meters && d.meters.et, events: d.meters && d.meters.events, turnups: (d.laterals || []).map(l => l.turnup), septic_pumped: d.septic && d.septic.pumped };
+  return { date: r.visit_date, et: d.meters && d.meters.et, events: d.meters && d.meters.events, flow: d.meters && d.meters.flow, turnups: (d.laterals || []).map(l => l.turnup), septic_pumped: d.septic && d.septic.pumped };
 }
 
 export async function systemInfo(env, cid, date) {

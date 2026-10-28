@@ -60,6 +60,12 @@
     o.ev_used = ev !== null && n(prev.events) !== null ? ev - n(prev.events) : null;
     o.et_day = o.et_used !== null && o.days ? r2(o.et_used / o.days) : null;
     o.events_day = o.ev_used !== null && o.days ? r1(o.ev_used / o.days) : null;
+    // flow meter: gallons since the last visit, and the 7-day and 30-day totals the permit asks for
+    var fm = n(m.flow);
+    o.flow_used = fm !== null && n(prev.flow) !== null && fm >= n(prev.flow) ? Math.round(fm - n(prev.flow)) : null;
+    o.flow_day = o.flow_used !== null && o.days ? Math.round(o.flow_used / o.days) : null;
+    o.flow7_day = n(m.flow7) !== null ? Math.round(n(m.flow7) / 7) : null;
+    o.flow30_day = n(m.flow30) !== null ? Math.round(n(m.flow30) / 30) : null;
     // average daily flow, as on the county forms: run hours x 60 x pump rate / days
     var rate = o.pdr !== null ? o.pdr : dpdr;
     o.gpd_gal = o.et_used !== null && rate ? Math.round(o.et_used * 60 * rate) : null;
@@ -86,6 +92,9 @@
     if (c.days !== null) F.days = ctx.date + ' minus ' + p.date + ' = ' + c.days + ' days';
     if (c.et_day !== null) F.et = m.et + ' - ' + p.et + ' = ' + c.et_used + ' hours; ' + c.et_used + ' / ' + c.days + ' days = ' + c.et_day + ' per day';
     if (c.events_day !== null) F.events = m.events + ' - ' + p.events + ' = ' + c.ev_used + ' events; ' + c.ev_used + ' / ' + c.days + ' days = ' + c.events_day + ' per day';
+    if (c.flow_day != null) F.flow = 'Flow meter ' + m.flow + ' - ' + p.flow + ' = ' + c.flow_used + ' gal / ' + c.days + ' days = ' + c.flow_day + ' gpd';
+    if (c.flow7_day != null) F.flow7 = '7-day flow ' + m.flow7 + ' gal / 7 = ' + c.flow7_day + ' gpd';
+    if (c.flow30_day != null) F.flow30 = '30-day flow ' + m.flow30 + ' gal / 30 = ' + c.flow30_day + ' gpd';
     if (c.gpd_avg !== null) F.gpd = c.et_used + ' hours x 60 x ' + (c.pdr !== null ? c.pdr : dpdr) + ' gpm = ' + c.gpd_gal + ' gal / ' + c.days + ' days = ' + c.gpd_avg + ' gpd';
     var dose = c.dose || n(f.dose) || n(ctx.dose);
     if (c.events_design !== null) F.events_design = ctx.design_flow + ' gpd / ' + dose + ' gal = ' + c.events_design + ' per day';
@@ -97,7 +106,7 @@
   // the numbers that get graphed, one value per visit
   OWI.readings = function (d, c) {
     var o = {}, lat = (d.laterals || [])[0], h = lat ? n(lat.turnup) : null;
-    [['pdr', c.pdr], ['pdr_eff', c.eff], ['sludge_pct', c.sludge_pct], ['et_day', c.et_day], ['events_day', c.events_day], ['events_design', c.events_design], ['gpd_avg', c.gpd_avg], ['lat1_head', h]].forEach(function (p) { if (p[1] !== null && p[1] !== undefined) o[p[0]] = p[1]; });
+    [['pdr', c.pdr], ['pdr_eff', c.eff], ['sludge_pct', c.sludge_pct], ['et_day', c.et_day], ['events_day', c.events_day], ['events_design', c.events_design], ['gpd_avg', c.gpd_avg], ['flow_day', c.flow_day], ['lat1_head', h]].forEach(function (p) { if (p[1] !== null && p[1] !== undefined) o[p[0]] = p[1]; });
     return o;
   };
   OWI.problems = function (d) {
@@ -236,7 +245,7 @@
     var fl = s.floats || {}; d.floats = { alarm: N(fl.alarm), on: N(fl.on), off: N(fl.off), timed: N(fl.timed) }; d.amps = N(s.amps);
     (Array.isArray(s.laterals) ? s.laterals : []).slice(0, 12).forEach(function (l, i) { l = l || {}; d.laterals.push({ n: i + 1, length: N(l.length), design: N(l.design), turnup: N(l.turnup), last: N(l.last), baseline: N(l.baseline), left: N(l.left), adjusted: N(l.adjusted) }); });
     var f = s.flow || {}; d.flow = { dose: N(f.dose), drawdown: N(f.drawdown), off: N(f.off), on: N(f.on), gpi: N(f.gpi), min: N(f.min), design_pdr: N(f.design_pdr), design_head: N(f.design_head) };
-    var m = s.meters || {}; d.meters = { et: N(m.et), events: N(m.events) };
+    var m = s.meters || {}; d.meters = { et: N(m.et), events: N(m.events), flow: N(m.flow), flow7: N(m.flow7), flow30: N(m.flow30) };
     OWI.WORDS.forEach(function (w) { var x = s.words && s.words[w.k]; var i = x && Number.isInteger(x.i) && x.i >= 0 && x.i < w.o.length ? x.i : w.d; d.words[w.k] = { i: i, t: S(x && x.t, 600) }; });
     var t = s.todo || {}; d.todo = { jobs: (Array.isArray(t.jobs) ? t.jobs : []).slice(0, 6).filter(function (j) { return OWI.JOBS.indexOf(j) >= 0; }), ticks: (Array.isArray(t.ticks) ? t.ticks : []).filter(function (i) { return Number.isInteger(i) && i >= 0 && i < OWI.TICKS.length; }), extra: S(t.extra, 400) };
     d.recs = S(s.recs, 1500); d.comments = S(s.comments, 1500);

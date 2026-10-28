@@ -83,7 +83,10 @@
     h += '<tr><td>Volume pumped (depth x ' + v(d.flow.gpi || d.gpi) + ' gal/in)</td><td>' + v(c.vol, 'gal') + '</td><td>Measured PDR (pump delivery rate)</td><td>' + v(c.pdr, 'gpm') + '</td></tr>';
     h += '<tr><td>Design PDR</td><td>' + v(d.flow.design_pdr, 'gpm') + (d.flow.design_head != null ? ' @ ' + v(d.flow.design_head, 'ft head') : '') + '</td><td>PDR efficiency</td><td>' + (c.eff === null ? '-' : (c.eff_ok ? c.eff + '%' : '<b>' + c.eff + '% (outside 10% of design)</b>')) + '</td></tr>';
     h += '<tr><td>ET (elapsed time) hours</td><td>' + v(d.meters.et) + (c.et_used !== null ? ' (used ' + c.et_used + ', ' + v(c.et_day) + ' per day)' : '') + '</td><td>Events</td><td>' + v(d.meters.events) + (c.ev_used !== null ? ' (used ' + c.ev_used + ', ' + v(c.events_day) + ' per day, design ' + v(c.events_design) + ')' : '') + '</td></tr>';
-    h += '<tr><td>Average daily flow</td><td>' + (c.gpd_avg != null ? c.gpd_avg + ' gpd' : '-') + '</td><td>Design flow</td><td>' + v(cust.design_flow, 'gpd') + '</td></tr>';
+    if (d.meters.flow != null || d.meters.flow7 != null || d.meters.flow30 != null) {
+      h += '<tr><td>Flow meter (gallons)</td><td>' + v(d.meters.flow) + (c.flow_used != null ? ' (used ' + c.flow_used + ', ' + c.flow_day + ' gpd)' : '') + '</td><td>7-day / 30-day flow</td><td>' + (d.meters.flow7 != null ? d.meters.flow7 + ' gal (' + c.flow7_day + ' gpd)' : '-') + ' / ' + (d.meters.flow30 != null ? d.meters.flow30 + ' gal (' + c.flow30_day + ' gpd)' : '-') + '</td></tr>';
+    }
+    h += '<tr><td>Average daily flow' + (c.flow_day != null ? ' (meter)' : '') + '</td><td>' + (c.flow_day != null ? c.flow_day + ' gpd' : c.gpd_avg != null ? c.gpd_avg + ' gpd' : '-') + '</td><td>Design flow</td><td>' + v(cust.design_flow, 'gpd') + '</td></tr>';
     h += '</tbody></table></div>';
     var X = OWI.extras(d, c);
     X.tanks.forEach(function (x) {
@@ -97,7 +100,7 @@
       var fx = Object.keys(k.formulas || {}).map(function (q) { return k.formulas[q]; }); if (fx.length) h += '<p class="sm">' + fx.map(esc).join('; ') + '</p>';
     });
     X.cards.forEach(function (x) { h += '<h3>' + esc(x.title) + '</h3>' + pairs(x.rows); });
-    var fm = c.formulas || {}, fl = [['Depth pumped', fm.depth], ['Volume pumped', fm.vol], ['Measured PDR', fm.pdr], ['PDR efficiency', fm.eff], ['Sludge, % of liquid depth', fm.sludge], ['Days since last inspection', fm.days], ['ET (elapsed time)', fm.et], ['Average daily flow', fm.gpd], ['Events', fm.events], ['Design events per day', fm.events_design], ['Dose volume', fm.dose], ['Gallons per inch', fm.gpi]].filter(function (x) { return x[1]; });
+    var fm = c.formulas || {}, fl = [['Depth pumped', fm.depth], ['Volume pumped', fm.vol], ['Measured PDR', fm.pdr], ['PDR efficiency', fm.eff], ['Sludge, % of liquid depth', fm.sludge], ['Days since last inspection', fm.days], ['ET (elapsed time)', fm.et], ['Flow meter', fm.flow], ['7-day flow', fm.flow7], ['30-day flow', fm.flow30], ['Average daily flow from run time', fm.gpd], ['Events', fm.events], ['Design events per day', fm.events_design], ['Dose volume', fm.dose], ['Gallons per inch', fm.gpi]].filter(function (x) { return x[1]; });
     if (fl.length) h += '<p class="sm"><b>How the numbers were calculated</b></p><ul class="sm" style="margin:2px 0;padding-left:20px">' + fl.map(function (x) { return '<li>' + esc(x[0]) + ': ' + esc(x[1]) + '</li>'; }).join('') + '</ul>';
     if (X.malfunction) h += '<p><b>Malfunction found at this visit.</b> County notified: ' + esc(X.malfunction.notified || 'not yet recorded') + '.</p>';
     h += '<p><b>Status of system:</b> ' + esc(d.status) + '. <b>Next inspection due:</b> ' + esc(dt(d.next_due) || '-') + '.</p>';
