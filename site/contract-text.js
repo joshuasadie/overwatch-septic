@@ -7,6 +7,10 @@ export const DEFAULT_TERMS = {
   response_hours: '48', annual_fee: '', increase_pct: '10', interest_pct: '1.5', repair_days: '30',
   maintenance: ['Check the pump and float switches', 'Check the alarm and control panel', 'Check the drain field'],
 };
+// Which rules govern the agreement. Permits issued on or after January 1, 2024 fall under 15A NCAC 18E; older permits keep 18A .1900.
+export const R18E = { rules: '15A N.C. Administrative Code 18E', contract: '15A N.C. Administrative Code 18E .1303(b)', table: '15A N.C. Administrative Code 18E .1301(b)', report: '15A N.C. Administrative Code 18E .1304(c)' };
+export const E_START = '2024-01-01';
+export const ruleSetFor = issued => /^\d{4}-\d{2}-\d{2}$/.test(issued || '') ? (issued >= E_START ? '18E' : '18A') : '';
 // Inspections per year, as set by the Operation Permit. 'q1s' = quarterly the first year, then twice a year.
 export const VISITS = [['2', '2 (twice a year)'], ['4', '4 (quarterly)'], ['q1s', '4 the first year, then 2 a year'], ['1', '1 (once a year)']];
 const WORDS = { 1: 'one (1)', 2: 'two (2)', 4: 'four (4)' };
@@ -27,7 +31,7 @@ export function dateParts(iso) {
   return { day: n + suffix, month: d.toLocaleString('en-US', { month: 'long' }), year: d.getFullYear() };
 }
 export function contractText(t) {
-  const x = { ...DEFAULT_TERMS, ...t }, dp = dateParts(x.date || new Date().toISOString().slice(0, 10)), ty = T(x.sys_type), cite = T(x.cite);
+  const x = { ...DEFAULT_TERMS, ...t }, dp = dateParts(x.date || new Date().toISOString().slice(0, 10)), ty = T(x.sys_type), E18 = x.rule_set === '18E', cite = E18 ? R18E.contract : T(x.cite), citeT = E18 ? R18E.table : cite, rules = E18 ? R18E.rules : T(x.rules);
   const maint = (x.maintenance || []).filter(Boolean).map((m, i) => `${i + 1}) ${T(m)}`);
   return {
     title: 'INSPECTION AND MAINTENANCE AGREEMENT',
@@ -36,22 +40,22 @@ export function contractText(t) {
       `COUNTY OF ${T(x.county)}`,
       `This agreement is made and entered into this ${dp.day} day of ${dp.month}, ${dp.year}, by and between ${T(x.owner_name)} (hereinafter referred to as the "Owner") and ${T(x.contractor_name)} (hereinafter referred to as the "Contractor").`,
       'WITNESSETH',
-      `WHEREAS, the Owner owns or controls the property upon which a ground absorption sewage treatment system (hereinafter "system") is installed, such system being designated a Type ${ty} system under the Rules for Sanitary Sewage Collection, Treatment and Disposal found at ${T(x.rules)}; and`,
+      `WHEREAS, the Owner owns or controls the property upon which a ground absorption sewage treatment system (hereinafter "system") is installed, such system being designated a Type ${ty} system under the Rules for Sanitary Sewage Collection, Treatment and Disposal found at ${rules}; and`,
       `WHEREAS, ${cite} requires a contract to be executed between the system owner and a management entity prior to the issuance of an Operation Permit for said system; and`,
       `WHEREAS, ${cite} requires that a condition of the Operation Permit for said system be that a properly executed contract between the system owner and a management entity, shall be in effect for as long as the system is in use; and`,
-      `WHEREAS, the Contractor is a management entity, of a type authorized by ${cite} to manage a Type ${ty} system.`,
+      `WHEREAS, the Contractor is a management entity, of a type authorized by ${citeT} to manage a Type ${ty} system.`,
       'NOW THEREFORE, in consideration of the premises and of the mutual covenants and promises contained in this Agreement, it is hereby agreed by and between the Owner and the Contractor as stipulated below.',
     ],
     sections: [
       { h: "1. The Contractor's Obligations.", p: [
         `The Contractor shall perform the following services on the Owner's system located at ${T(x.system_address)}${x.permit ? ' (Permit ' + T(x.permit) + ')' : ''}:`,
-        `a) The contractor shall inspect the system at least at the frequency required in Table V(b) of ${cite}(b) for a Type ${ty} System.`,
+        E18 ? `a) The contractor shall inspect the system at least at the frequency required in Table XXXII of ${citeT}, or in the system's approval if it sets a different frequency, for a Type ${ty} System.` : `a) The contractor shall inspect the system at least at the frequency required in Table V(b) of ${cite}(b) for a Type ${ty} System.`,
         'b) The Contractor shall perform the following routine maintenance procedures in accordance with the conditions of the Operation Permit:',
         ...maint,
-        `c) The Contractor shall report the results of its inspections to the local health department at the frequency specified in Table V (b) of ${cite}(b) for a Type ${ty} System.`,
+        E18 ? `c) The Contractor shall report the results of each inspection to the Owner, the local health department and, as applicable, the system manufacturer within thirty (30) days of the inspection, as required by ${R18E.report}.` : `c) The Contractor shall report the results of its inspections to the local health department at the frequency specified in Table V (b) of ${cite}(b) for a Type ${ty} System.`,
         'd) If an inspection indicates the need for system repairs, the Contractor shall notify the local health department within 48 hours of the inspection.',
         'e) The Contractor shall notify the Owner of needed repairs, which are outside of the scope of routine maintenance described in subparagraph (b) above. The Contractors shall perform necessary repairs to the system at the request of the Owner and shall be entitled to payment therefor at the Contractor\'s normal charge for services and materials.',
-        `f) The Contractors shall employ or shall contract with a certified operator(s) if required by Table V (b) of ${cite}(b) for a Type ${ty} System.`,
+        `f) The Contractors shall employ or shall contract with a certified operator(s) if required by ${E18 ? 'Table XXXII of ' + citeT : 'Table V (b) of ' + cite + '(b)'} for a Type ${ty} System.`,
         `g) The Contractor shall respond to a request for a nonscheduled service or maintenance call within ${T(x.response_hours)} hours after receipt of such request.`,
       ] },
       { h: "2. The Owner's Obligations.", p: [
@@ -70,7 +74,7 @@ export function contractText(t) {
       ] },
       { h: '4. Assignment.', p: [
         'a) Assignment by the Owner. The Owner shall notify the Contractor of the name and address of any purchaser of the property on which the system is located. The Owner shall also notify any purchaser of the property on which the system is located of the existence of this Agreement and shall assign all rights and duties under this Agreement to said purchaser.',
-        `b) Assignment by the Contractor. The Contractor may assign its rights and duties under this Agreement to another management entity, which is qualified pursuant to ${cite} to manage a Type ${ty} system upon thirty (30) days written notice to the Owner and to the local health department.`,
+        `b) Assignment by the Contractor. The Contractor may assign its rights and duties under this Agreement to another management entity, which is qualified pursuant to ${citeT} to manage a Type ${ty} system upon thirty (30) days written notice to the Owner and to the local health department.`,
       ] },
       { h: '5. Use of Subcontractors.', p: ["The Contractor may subcontract with such manufacturers, suppliers and contractors as it deems desirable to perform any of the Contractor's duties under this Agreement. The Contractor shall at all times remain responsible for the performance of and payment for all work performed by all subcontractors."] },
       { h: '6. Representations.', p: ['The Parties represent to each other that each has the power, authority and legal right to enter into and perform its obligations as set forth in this Agreement.'] },

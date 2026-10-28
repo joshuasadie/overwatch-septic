@@ -44,15 +44,20 @@ ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, annu
 ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, annual_fee: 'abc' } })).status === 400, 'fee must be numeric');
 ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, annual_fee: '', inspection_fee: 'abc', visits: '2' } })).status === 400, 'per-inspection fee must be numeric');
 ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, annual_fee: '', inspection_fee: '250', visits: '3' } })).status === 400, 'inspections per year must be a permit choice');
+ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, rule_set: '18X' } })).status === 400, 'rule set must be 18A or 18E');
 { const ct = await import('./site/contract-text.js'), base = { ...terms, owner_name: 'Ann', county: 'Chatham', sys_type: 'IIIb', date: '2026-10-01' };
   const p2 = v => ct.contractText({ ...base, annual_fee: String(ct.annualFrom(250, v)), inspection_fee: '250', visits: v }).sections[1].p[0];
   ok(/\$250\.00 per inspection for the two \(2\) inspections per year required by the Operation Permit, for a total of \$500\.00 per year/.test(p2('2')), 'twice a year: $250 each, $500 a year');
   ok(/four \(4\) in the first year and two \(2\) per year thereafter, for a total of \$1,000\.00 in the first year and \$500\.00 per year thereafter/.test(p2('q1s')), 'quarterly first year: $1,000 then $500');
   ok(/beyond those required by the Operation Permit will be billed/.test(p2('2')), 'extra visits billed separately');
+  ok(ct.ruleSetFor('2024-01-01') === '18E' && ct.ruleSetFor('2023-12-31') === '18A' && ct.ruleSetFor('') === '', 'rules follow the permit date');
+  { const e = JSON.stringify(ct.contractText({ ...base, rule_set: '18E' })); ok(/within thirty \(30\) days of the inspection, as required by 15A N\.C\. Administrative Code 18E \.1304\(c\)/.test(e) && !/18A/.test(e), '18E agreement: 30-day reports, no 18A citations'); }
+  ok(JSON.stringify(ct.contractText({ ...base, rule_set: '18A' })) === JSON.stringify(ct.contractText({ ...base })), '18A agreement matches the original wording');
   ok(ct.annualFrom(250, 'q1s') === 500 && ct.annualFrom(250, '4') === 1000, 'annual fee is the steady yearly total');
   ok(ct.contractText({ ...base }).sections[1].p[0].startsWith('a) The Owner shall pay to the Contractor the sum of $500 per year for periodic'), 'older agreements keep their exact wording'); }
-sent.length = 0; j = await J(await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, annual_fee: '', inspection_fee: '250', visits: 'q1s' } })); ok(j.ok && j.emailed, 'contract sent (priced per inspection)');
-{ const k = (await J(await adm('/admin/api/customer/' + cid))).contracts[0]; ok(k.terms.annual_fee === '500' && k.terms.inspection_fee === '250' && k.terms.visits === 'q1s', 'stored: $250 per inspection, annual fee $500'); }
+sent.length = 0; j = await J(await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, annual_fee: '', inspection_fee: '250', visits: 'q1s', rule_set: '18E' } })); ok(j.ok && j.emailed, 'contract sent (priced per inspection, 18E)');
+{ const k = (await J(await adm('/admin/api/customer/' + cid))).contracts[0]; ok(k.terms.annual_fee === '500' && k.terms.inspection_fee === '250' && k.terms.visits === 'q1s', 'stored: $250 per inspection, annual fee $500');
+  ok(k.terms.rule_set === '18E' && /18E \.1303\(b\)/.test(k.terms.cite) && /Table XXXII/.test(JSON.stringify(k.text)) && !/Table V/.test(JSON.stringify(k.text)), 'stored 18E agreement cites 18E and Table XXXII'); }
 const link = sent[0].text.match(/https:\/\/overwatchseptic\.com\/c\/([A-Za-z0-9_-]+)/); ok(!!link && sent[0].to[0] === 'ann@home.com', 'email has unique link');
 const t1 = link[1];
 ok((await call('/c/' + t1)).status === 200 && (await (await call('/c/' + t1)).text()) === 'A:/c/', 'signing page served for token path (no redirect that would drop the token)');
