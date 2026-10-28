@@ -91,6 +91,13 @@ export const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS report_state (report_id TEXT PRIMARY KEY, released_at TEXT NOT NULL DEFAULT '', county_sent_at TEXT NOT NULL DEFAULT '', county_to TEXT NOT NULL DEFAULT '', token_hash TEXT NOT NULL DEFAULT '', token_exp TEXT NOT NULL DEFAULT '')",
   'CREATE INDEX IF NOT EXISTS report_state_token ON report_state (token_hash)',
   'CREATE TABLE IF NOT EXISTS counties (name TEXT PRIMARY KEY, email TEXT NOT NULL)',
+  // County addresses for operator reports, from each county's reply (Oct 2026). Added once; edits and removals in the admin portal stick.
+  'CREATE TABLE IF NOT EXISTS seeds (k TEXT PRIMARY KEY)',
+  "INSERT OR IGNORE INTO counties (name, email) SELECT 'chatham', 'brad.jones@chathamcountync.gov' WHERE NOT EXISTS (SELECT 1 FROM seeds WHERE k = 'counties-2026-10')",
+  "INSERT OR IGNORE INTO counties (name, email) SELECT 'harnett', 'khinson@harnett.org' WHERE NOT EXISTS (SELECT 1 FROM seeds WHERE k = 'counties-2026-10')",
+  "INSERT OR IGNORE INTO counties (name, email) SELECT 'randolph', 'eh-info@randolphcountync.gov' WHERE NOT EXISTS (SELECT 1 FROM seeds WHERE k = 'counties-2026-10')",
+  "INSERT OR IGNORE INTO counties (name, email) SELECT 'wake', 'ominspect@wake.gov' WHERE NOT EXISTS (SELECT 1 FROM seeds WHERE k = 'counties-2026-10')",
+  "INSERT OR IGNORE INTO seeds (k) VALUES ('counties-2026-10')",
   'CREATE TABLE IF NOT EXISTS test_customers (customer_id TEXT PRIMARY KEY)',
   "CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, who TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '')",
 ];

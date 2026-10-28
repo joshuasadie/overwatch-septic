@@ -100,6 +100,9 @@ ok(!(await invs()).find(x => x.id === rA.fin.invoice).released, 'refunded paymen
 ok((await adm('/admin/api/invoice-release', { id: rA.fin.invoice })).status === 200, 'you can release it yourself');
 
 // county copy
+{ const cs = (await J(await adm('/admin/api/counties'))).counties.map(c => c.name + ' ' + c.email).join(';');
+  ok(cs.includes('harnett khinson@harnett.org') && cs.includes('randolph eh-info@randolphcountync.gov') && cs.includes('wake ominspect@wake.gov') && cs.includes('chatham brad.jones@chathamcountync.gov'), 'county report addresses are filled in'); }
+await adm('/admin/api/county', { name: 'chatham', remove: true });
 const rB = await rep('2026-10-21', '250'); sent.length = 0;
 await adm('/admin/api/invoice-paid', { id: rB.fin.invoice });
 await runDaily(env, new Date(`${addBusinessDays(etDate(), 3)}T16:00:00Z`));
