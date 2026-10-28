@@ -3,7 +3,6 @@
   $('brand').innerHTML = OW.brand('/');
   var LS = { get: function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }, set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
   window.OWA = { S: S, LS: LS, fail: fail, get cfg() { return S.cfg; }, refresh: function () { return refresh(); } };
-  var CHECKS = ['Pump and float switches', 'Alarm and control panel', 'Drain field', 'Tank condition'];
   function fail(j) { OW.toast(j.error || 'Something went wrong.'); }
 
   function loadList() {
@@ -57,7 +56,7 @@
   function renderDetail() {
     var d = S.d, c = d.customer, open = d.contracts.filter(function (x) { return x.status === 'sent' || x.status === 'owner_signed'; }).length;
     var h = '<div class="grid2"><section class="card"><h2>' + E(c.name) + (c.test ? ' <span class="pill mute">Test</span>' : '') + '</h2><p class="mute" style="margin:0 0 10px">' + [c.email, c.phone, c.county && c.county + ' County', c.permit && 'Permit ' + c.permit].filter(Boolean).map(E).join(' &middot; ') + '<br>' + E(c.address) + '</p>' + (c.notes ? '<p class="mute" style="font-size:14px">' + E(c.notes) + '</p>' : '') +
-      '<div class="row"><button class="b" id="bSend"' + (open ? ' title="An agreement is already open"' : '') + '>Send contract</button><button class="b" id="bInsp">New inspection</button><button class="b alt" id="bSetup">System setup</button><button class="b alt" id="bRep">Add visit report</button><button class="b alt" id="bEdit">Edit</button></div>' +
+      '<div class="row"><button class="b" id="bSend"' + (open ? ' title="An agreement is already open"' : '') + '>Send contract</button><button class="b" id="bInsp">New inspection</button><button class="b alt" id="bSetup">System setup</button><button class="b alt" id="bRep">Upload a report PDF</button><button class="b alt" id="bEdit">Edit</button></div>' +
       '<h3 style="margin:16px 0 4px">Contracts</h3><ul class="list">' + (d.contracts.map(function (x) {
         var btns = '<button class="b alt" data-act="view" data-id="' + x.id + '">View</button>';
         if (x.status === 'sent') btns += '<button class="b alt" data-act="resend" data-id="' + x.id + '">Resend link</button>';
@@ -103,18 +102,17 @@
   }
   function reportForm() {
     var today = new Date().toISOString().slice(0, 10);
-    $('panel').innerHTML = '<h2>Add visit report</h2><form id="rf" novalidate><label for="r_date">Visit date</label><input id="r_date" type="date" value="' + today + '">' +
-      '<h3 style="margin:12px 0 0;font-size:18px">Readings (graphed)</h3><div class="two">' + OW.READINGS.map(function (d) { return '<div><label for="r_' + d.k + '">' + d.t + ' (' + d.u + ')</label><input id="r_' + d.k + '" inputmode="decimal"></div>'; }).join('') + '</div>' +
-      '<h3 style="margin:12px 0 0;font-size:18px">Checks</h3>' + CHECKS.map(function (k, i) { return '<div class="row" style="justify-content:space-between;padding:4px 0"><span>' + E(k) + '</span><select id="r_c' + i + '" style="width:auto"><option value="pass">Pass</option><option value="repair">Needs repair</option><option value="na">N/A</option></select></div>'; }).join('') +
+    $('panel').innerHTML = '<h2>Upload a report PDF</h2><p class="mute" style="margin:0 0 4px">For an older report or one made in another tool. It is stored with the customer, not graphed. For a new visit, use New inspection.</p><form id="rf" novalidate><label for="r_date">Visit date</label><input id="r_date" type="date" value="' + today + '">' +
       '<label for="r_notes">Notes for the customer</label><textarea id="r_notes" maxlength="1000"></textarea>' +
-      '<label for="r_pdf">Or attach a PDF report (stored, not graphed)</label><input id="r_pdf" type="file" accept="application/pdf">' +
+      '<label for="r_pdf">PDF report</label><input id="r_pdf" type="file" accept="application/pdf">' +
       '<label for="r_amt">Invoice amount ($). Use 0 to waive it</label><input id="r_amt" inputmode="decimal" value="' + E(LS.get('ow_visit') || (S.cfg && S.cfg.defaults.visit) || '250') + '"><p class="mute" style="margin:4px 0 0;font-size:14px">With an invoice, the customer and the county get nothing until it is paid and 3 business days have passed. With 0, both get the report right away.</p>' +
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Save report</button></div><div class="msg" id="rm" role="status"></div></form>';
     $('rf').addEventListener('submit', function (e) {
       e.preventDefault(); var m = $('rm'); m.className = 'msg'; m.textContent = 'Saving...';
-      var file = $('r_pdf').files[0], readings = {}; OW.READINGS.forEach(function (d) { readings[d.k] = $('r_' + d.k).value.trim(); });
+      var file = $('r_pdf').files[0];
+      if (!file) { m.className = 'msg err'; m.textContent = 'Choose the PDF to upload.'; return; }
       if (file && file.size > 6 * 1024 * 1024) { m.className = 'msg err'; m.textContent = 'That PDF is over 6 MB.'; return; }
-      OW.api('/admin/api/report', { customer_id: S.sel, visit_date: $('r_date').value, kind: file ? 'upload' : 'form', readings: readings, notes: $('r_notes').value, checks: file ? [] : CHECKS.map(function (k, i) { return { label: k, status: $('r_c' + i).value }; }) }).then(function (j) {
+      OW.api('/admin/api/report', { customer_id: S.sel, visit_date: $('r_date').value, kind: 'upload', readings: {}, notes: $('r_notes').value, checks: [] }).then(function (j) {
         if (!j.ok) { m.className = 'msg err'; m.textContent = j.error; return; }
         var up = file ? file.arrayBuffer().then(function (b) { return OW.api('/admin/api/reports/' + j.id + '/pdf', b, { raw: true, type: 'application/pdf' }); }) : Promise.resolve({ ok: true });
         return up.then(function (u) {
