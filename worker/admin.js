@@ -93,7 +93,7 @@ export async function adminApi(request, env, path) {
     const contracts = (await env.DB.prepare('SELECT * FROM contracts WHERE customer_id = ? ORDER BY created_at DESC').bind(c.id).all()).results.map(x => ({ ...publicView(x, c), terms: JSON.parse(x.terms) }));
     const reports = (await env.DB.prepare('SELECT id, visit_date, kind, readings, checks, notes, pdf_key, created_at FROM reports WHERE customer_id = ? ORDER BY visit_date DESC').bind(c.id).all()).results.map(r => ({ ...r, readings: JSON.parse(r.readings), checks: JSON.parse(r.checks), has_pdf: !!r.pdf_key, pdf_key: undefined }));
     const states = new Map((await env.DB.prepare('SELECT report_id, released_at, county_sent_at, county_to FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(c.id).all()).results.map(x => [x.report_id, x]));
-    for (const r of reports) { const st = states.get(r.id); r.state = st ? (st.released_at ? 'released' : 'held') : 'released'; r.county_sent_at = st ? st.county_sent_at : ''; r.county_to = st ? st.county_to : ''; }
+    for (const r of reports) { const st = states.get(r.id); r.state = st ? (st.released_at ? 'released' : 'held') : 'released'; r.county_sent_at = st ? st.county_sent_at : ''; r.sent_owner = st && st.released_at ? st.released_at : ''; r.county_to = st ? st.county_to : ''; }
     await attachInspections(env, reports, false);
     return reply({ ok: true, customer: c, contracts, reports, invoices: await invoiceRows(env, 'i.customer_id = ?', [c.id]) });
   }

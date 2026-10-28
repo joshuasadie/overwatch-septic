@@ -20,7 +20,7 @@
   var permitRows = function (d, cust) {
     var p = info(d).permit || {}, pi = OWI.permitInfo(p, '0000-00-00'), r = [];
     var nos = [p.ca_no && 'Construction auth. ' + p.ca_no, p.ip_no && 'Improvement permit ' + p.ip_no, p.other_no].filter(Boolean).join('; ');
-    if (p.parcel) r.push(['Parcel', p.parcel]); if (nos) r.push(['Permit numbers', nos]);
+    if (p.parcel) r.push(['Parcel', p.parcel]); if (p.lot) r.push(['Subdivision and lot', p.lot]); if (p.mail) r.push(['Owner mailing address', p.mail]); if (nos) r.push(['Permit numbers', nos]);
     if (p.issued) r.push(['Operation permit', 'Issued ' + dt(p.issued) + (pi.expires ? ', valid until ' + dt(pi.expires) : '')]);
     if (p.bedrooms || p.occupants) r.push(['Design capacity', [p.bedrooms && p.bedrooms + ' bedrooms', p.occupants && 'up to ' + p.occupants + ' occupants'].filter(Boolean).join(', ')]);
     var fr = OWI.FREQ.filter(function (f) { return f[0] === p.freq; })[0]; if (fr && fr[0]) r.push(['Inspection frequency', fr[1]]);
@@ -65,10 +65,10 @@
     h += '<div class="rp"><h2 style="text-align:center">CERTIFIED OPERATOR MAINTENANCE/MONITORING REPORT</h2><div class="grid">';
     [['Owner', cust.name], ['Permit #', cust.permit], ['Location', cust.address + (cust.county ? '. ' + cust.county + ' County' : '')], ['Date of inspection', dt(rep.visit_date)], ['System', (cust.sys_desc || (cust.sys_type ? 'Type ' + cust.sys_type : '')) + (cust.design_flow ? '. Design flow ' + cust.design_flow + ' gpd' : '')], ['Last inspection', c.last ? dt(c.last) + ' (' + c.days + ' days earlier)' : '-'], ['Owner phone', cust.phone], ['Operator (ORC)', op.name + ', ' + op.cert + ', Overwatch Septic, LLC' + (op.phone ? ', ' + op.phone : '')], ['Type of inspection', d.inspect_type]].concat(permitRows(d, cust)).forEach(function (p) { h += '<span><b>' + esc(p[0]) + ':</b> ' + esc(p[1] || '-') + '</span>'; });
     h += '</div>';
-    OWI.SECTIONS.forEach(function (sec) {
+    OWI.REPORT_SECTIONS().forEach(function (sec) {
       h += '<h3>' + esc(sec.k === 'septic' ? nm(d, 'septic', sec.t) : sec.k === 'pump' ? nm(d, 'pump', sec.t) : sec.t) + '</h3><div class="tw"><table><tbody>';
       var cs = d.checks[sec.k] || [], items = sec.items, half = Math.ceil(items.length / 2);
-      for (var i = 0; i < half; i++) { var a = items[i], b = items[i + half]; h += '<tr><td>' + esc(a[1]) + '</td><td>' + (cs[a[0]] === 'no' && a[2] !== 'i' ? '<b>' + yn(cs[a[0]]) + '</b>' : yn(cs[a[0]])) + '</td>' + (b ? '<td>' + esc(b[1]) + '</td><td>' + (cs[b[0]] === 'no' && b[2] !== 'i' ? '<b>No</b>' : yn(cs[b[0]])) + '</td>' : '<td></td><td></td>') + '</tr>'; }
+      for (var i = 0; i < half; i++) { var a = items[i], b = items[i + half]; h += '<tr><td>' + esc(a[1]) + '</td><td>' + (cs[a[0]] === 'no' && !a[2] ? '<b>' + yn(cs[a[0]]) + '</b>' : cs[a[0]] === 'yes' && a[2] === 'x' ? '<b>Yes</b>' : yn(cs[a[0]])) + '</td>' + (b ? '<td>' + esc(b[1]) + '</td><td>' + (cs[b[0]] === 'no' && !b[2] ? '<b>No</b>' : cs[b[0]] === 'yes' && b[2] === 'x' ? '<b>Yes</b>' : yn(cs[b[0]])) + '</td>' : '<td></td><td></td>') + '</tr>'; }
       h += '</tbody></table></div>';
       if (sec.k === 'septic' || sec.k === 'pump') { var x = d[sec.k]; h += '<p>Tank ' + v(sec.k === 'septic' ? d.septic_gal : d.pump_gal, 'gal') + (sec.k === 'septic' ? ', liquid depth ' + v(d.liquid_depth, 'in') : ', ' + v(d.gpi, 'gal/in')) + '. Scum ' + v(x.scum, 'in') + ', sludge ' + v(x.sludge, 'in') + (sec.k === 'septic' && c.sludge_pct !== null ? ' (' + c.sludge_pct + '% of liquid depth)' : '') + '. Last pumpout ' + esc(dt(x.pumped) || '-') + '. Pumping needed: ' + esc(x.pump_needed) + '.' + (sec.k === 'septic' && info(d).units && info(d).units.septic ? ' Effluent filter: ' + esc(info(d).units.septic) + '.' : '') + '</p>'; }
       if (sec.k === 'controls') h += '<p>Float settings, inches above tank bottom (lowest to highest): pump off ' + v(d.floats.off) + (d.floats.timed != null ? ', timed float ' + v(d.floats.timed) : '') + ', pump on ' + v(d.floats.on) + ', alarm ' + v(d.floats.alarm) + '.' + (info(d).units && info(d).units.pump ? ' Pump: ' + esc(info(d).units.pump) + '.' : '') + (d.amps != null ? ' Pump running amps: ' + v(d.amps) + '.' : '') + '</p>';
@@ -81,8 +81,9 @@
     h += '<tr><td>Water level, pump on (after run)</td><td>' + v(d.flow.on, 'in') + '</td><td>Drawdown</td><td>' + v(d.flow.drawdown, 'in') + '</td></tr>';
     h += '<tr><td>Depth pumped</td><td>' + v(c.depth, 'in') + '</td><td>Run time of test</td><td>' + v(d.flow.min, 'min') + '</td></tr>';
     h += '<tr><td>Volume pumped (depth x ' + v(d.flow.gpi || d.gpi) + ' gal/in)</td><td>' + v(c.vol, 'gal') + '</td><td>Measured PDR (pump delivery rate)</td><td>' + v(c.pdr, 'gpm') + '</td></tr>';
-    h += '<tr><td>Design PDR</td><td>' + v(d.flow.design_pdr, 'gpm') + '</td><td>PDR efficiency</td><td>' + (c.eff === null ? '-' : (c.eff_ok ? c.eff + '%' : '<b>' + c.eff + '% (outside 10% of design)</b>')) + '</td></tr>';
+    h += '<tr><td>Design PDR</td><td>' + v(d.flow.design_pdr, 'gpm') + (d.flow.design_head != null ? ' @ ' + v(d.flow.design_head, 'ft head') : '') + '</td><td>PDR efficiency</td><td>' + (c.eff === null ? '-' : (c.eff_ok ? c.eff + '%' : '<b>' + c.eff + '% (outside 10% of design)</b>')) + '</td></tr>';
     h += '<tr><td>ET (elapsed time) hours</td><td>' + v(d.meters.et) + (c.et_used !== null ? ' (used ' + c.et_used + ', ' + v(c.et_day) + ' per day)' : '') + '</td><td>Events</td><td>' + v(d.meters.events) + (c.ev_used !== null ? ' (used ' + c.ev_used + ', ' + v(c.events_day) + ' per day, design ' + v(c.events_design) + ')' : '') + '</td></tr>';
+    h += '<tr><td>Average daily flow</td><td>' + (c.gpd_avg != null ? c.gpd_avg + ' gpd' : '-') + '</td><td>Design flow</td><td>' + v(cust.design_flow, 'gpd') + '</td></tr>';
     h += '</tbody></table></div>';
     var X = OWI.extras(d, c);
     X.tanks.forEach(function (x) {
@@ -96,12 +97,12 @@
       var fx = Object.keys(k.formulas || {}).map(function (q) { return k.formulas[q]; }); if (fx.length) h += '<p class="sm">' + fx.map(esc).join('; ') + '</p>';
     });
     X.cards.forEach(function (x) { h += '<h3>' + esc(x.title) + '</h3>' + pairs(x.rows); });
-    var fm = c.formulas || {}, fl = [['Depth pumped', fm.depth], ['Volume pumped', fm.vol], ['Measured PDR', fm.pdr], ['PDR efficiency', fm.eff], ['Sludge, % of liquid depth', fm.sludge], ['Days since last inspection', fm.days], ['ET (elapsed time)', fm.et], ['Events', fm.events], ['Design events per day', fm.events_design], ['Dose volume', fm.dose], ['Gallons per inch', fm.gpi]].filter(function (x) { return x[1]; });
+    var fm = c.formulas || {}, fl = [['Depth pumped', fm.depth], ['Volume pumped', fm.vol], ['Measured PDR', fm.pdr], ['PDR efficiency', fm.eff], ['Sludge, % of liquid depth', fm.sludge], ['Days since last inspection', fm.days], ['ET (elapsed time)', fm.et], ['Average daily flow', fm.gpd], ['Events', fm.events], ['Design events per day', fm.events_design], ['Dose volume', fm.dose], ['Gallons per inch', fm.gpi]].filter(function (x) { return x[1]; });
     if (fl.length) h += '<p class="sm"><b>How the numbers were calculated</b></p><ul class="sm" style="margin:2px 0;padding-left:20px">' + fl.map(function (x) { return '<li>' + esc(x[0]) + ': ' + esc(x[1]) + '</li>'; }).join('') + '</ul>';
     if (X.malfunction) h += '<p><b>Malfunction found at this visit.</b> County notified: ' + esc(X.malfunction.notified || 'not yet recorded') + '.</p>';
     h += '<p><b>Status of system:</b> ' + esc(d.status) + '. <b>Next inspection due:</b> ' + esc(dt(d.next_due) || '-') + '.</p>';
     if (d.recs) h += '<p><b>Recommendations for owner:</b> ' + esc(d.recs) + '</p>';
-    h += '<p class="sm"><i>Certified operator: ' + esc(op.name) + ', ' + esc(op.cert) + ', ' + esc(dt(rep.visit_date)) + '. Repairs and pumping are performed by licensed contractors.</i></p></div>';
+    h += '<p class="sm"><i>Certified operator: ' + esc(op.name) + ', ' + esc(op.cert) + ', ' + esc(dt(rep.visit_date)) + '. Repairs and pumping are performed by licensed contractors.' + (rep.sent_owner ? ' Copy sent to owner ' + esc(dt(rep.sent_owner.slice(0, 10))) + '.' : '') + '</i></p></div>';
     return h;
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -56,6 +56,7 @@ j = await J(await adm('/admin/api/customer/' + cid)); const rep2 = j.reports.fin
 const c2 = rep2.insp.calc;
 ok(c2.depth === 5 && c2.vol === 105 && c2.pdr === 21 && c2.eff === 118 && c2.eff_ok === false, 'flow test: 5 in x 21 gal/in = 105 gal, 21.0 gpm, 118% of design');
 ok(c2.sludge_pct === 17.3 && c2.pump_now === false, 'sludge is 17% of the tank, not time to pump');
+ok(c2.gpd_gal === 25200 && c2.gpd_avg === 136 && c2.formulas.gpd === '20 hours x 60 x 21 gpm = 25200 gal / 185 days = 136 gpd', 'average daily flow: 20 h x 60 x 21 gpm / 185 days = 136 gpd');
 ok(c2.days === 185 && c2.et_day === 0.11 && c2.events_day === 1.3 && c2.events_design === 1.1, 'per-day meters use the days since the last visit; design events = 120 / 105');
 ok(rep1.insp.calc.et_day === undefined || rep1.insp.calc.et_day === null, 'first visit has no per-day meters');
 ok(rep2.kind === 'inspection' && rep2.readings.pdr_eff === 118 && rep2.readings.sludge_pct === 17.3 && rep2.readings.lat1_head === 3.1 && rep2.readings.events_design === 1.1, 'graphed numbers stored on the report');
@@ -110,6 +111,12 @@ await adm('/admin/api/report-delete', { id: r4.id }); ok(![...files.keys()].some
 ok(OWI0.gpi('rect', 93, 52) === 20.9 && OWI0.gpi('round', 78) === 20.7 && OWI0.gpi('rect', 93) === null && OWI0.gpi('round', 0) === null && OWI0.gpi('round', 5000) === null, 'gallons per inch: 93 x 52 rect = 20.9, 78 in round = 20.7, bad input = nothing');
 // the view code
 const OWI = globalThis.OWI; const insp = { data: rep2.insp.data, calc: rep2.insp.calc, photos: 1 };
+{ const cd = { ...rep2.insp.data, flow: { ...rep2.insp.data.flow, design_head: 7 }, checks: { ...rep2.insp.data.checks, facility: { permit: 'yes', softener: 'no', additive: 'yes' } }, sysinfo: { ...rep2.insp.data.sysinfo, permit: { lot: 'Oak Hills lot 4', mail: 'PO Box 9, Pittsboro' } } };
+  const ch = OWI.countyHtml({ visit_date: '2026-10-26', sent_owner: '2026-10-30T14:00:00Z', insp: { data: cd, calc: rep2.insp.calc } }, { name: 'Ann Home', address: '12 Oak St', design_flow: 120 }, rep2.insp.data.operator);
+  ok(ch.indexOf('<h3>Facility</h3>') > 0 && ch.indexOf('<h3>Facility</h3>') < ch.indexOf('Septic tank</h3>'), 'county report lists Facility first');
+  ok(/17\.8 gpm @ 7 ft head/.test(ch) && /Average daily flow<\/td><td>136 gpd<\/td><td>Design flow<\/td><td>120 gpd/.test(ch), 'county report: design rate at head, average daily flow against design');
+  ok(/Subdivision and lot:<\/b> Oak Hills lot 4/.test(ch) && /Owner mailing address:<\/b> PO Box 9, Pittsboro/.test(ch) && /Copy sent to owner Oct 30, 2026/.test(ch), 'county report: lot, mailing address, copy sent to owner');
+  ok(/Septic tank additive in use<\/td><td>Yes<\/td>/.test(ch) && /Water softener in use<\/td><td>No<\/td>/.test(ch), 'softener and additive answers are shown plainly, not flagged'); }
 const home = OWI.homeHtml({ visit_date: '2026-10-26', insp }, { name: 'Ann Home', address: '12 Oak St' }, rep2.insp.data.operator, n => '/p/' + n);
 ok(home.includes('Overall: needs a small repair soon.') && home.includes('Hire a licensed contractor to replace the control panel contactor.') && home.includes('(designed for 17.8)') && home.includes('17%</b> of the tank depth') && home.includes('/p/1'), 'homeowner copy: overall, jobs, numbers vs design, photo');
 ok(home.indexOf('What you need to do') < home.indexOf('Overall:') && home.includes('<li><u>Hire a licensed contractor'), 'homeowner copy: the action items come first and are underlined');

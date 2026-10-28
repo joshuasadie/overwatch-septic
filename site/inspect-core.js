@@ -5,10 +5,13 @@
   // [key, label, flag] flag: i = information only (a "no" is not a problem), x = a "yes" needs a note
   OWI.SECTIONS = [
     { k: 'septic', t: 'Septic tank', items: [['risers', 'Access risers present'], ['lids', 'Risers and lids intact'], ['infil', 'Tank free of infiltration'], ['screen_req', 'Effluent screen required', 'i'], ['screen_ok', 'Effluent screen present and cleaned']] },
-    { k: 'pump', t: 'Pump tank', items: [['risers', 'Access riser present'], ['lids', 'Riser and lid intact'], ['infil', 'Tank free of infiltration']] },
-    { k: 'controls', t: 'Pump, piping and controls', items: [['rope', 'Pump lift rope intact'], ['qd', 'Quick disconnect present'], ['iso', 'Isolation valve present'], ['check', 'Check valve present'], ['siphon', 'Anti-siphon or air release'], ['leaks', 'Discharge assembly free of leaks'], ['mounted', 'Floats securely mounted'], ['floats', 'Floats functioning properly'], ['alarm', 'Audible and visual alarm functioning'], ['panel', 'Control panel watertight'], ['switches', 'Control switches tested'], ['meter', 'Panel meter data recorded']] },
-    { k: 'field', t: 'Lateral field', items: [['surf', 'Free of surfacing effluent'], ['cover', 'Adequate soil cover'], ['water', 'Surface water diverted'], ['prot', 'Turnups, valves, cleanouts protected'], ['veg', 'Vegetation maintained'], ['traffic', 'Protected from traffic'], ['rep_des', 'Repair area designated'], ['rep_prot', 'Repair area protected'], ['flush', 'Laterals flushed'], ['other', 'Other (describe in comments)', 'x']] }
+    { k: 'pump', t: 'Pump tank', items: [['risers', 'Access riser present'], ['lids', 'Riser and lid intact'], ['infil', 'Tank free of infiltration'], ['clear', 'Effluent appears clear']] },
+    { k: 'controls', t: 'Pump, piping and controls', items: [['pumps', 'Required pumps present and cycling properly'], ['rope', 'Pump lift rope intact'], ['qd', 'Quick disconnect present'], ['iso', 'Isolation valve present'], ['check', 'Check valve present'], ['siphon', 'Anti-siphon or air release'], ['leaks', 'Discharge assembly free of leaks'], ['mounted', 'Floats securely mounted'], ['floats', 'Floats functioning properly'], ['alarm', 'Audible and visual alarm functioning'], ['panel', 'Control panel watertight'], ['switches', 'Control switches tested'], ['meter', 'Panel meter data recorded']] },
+    { k: 'field', t: 'Lateral field', items: [['surf', 'Free of surfacing effluent'], ['cover', 'Adequate soil cover'], ['water', 'Surface water diverted'], ['prot', 'Turnups, valves, cleanouts protected'], ['veg', 'Vegetation maintained'], ['traffic', 'Protected from traffic'], ['rep_des', 'Repair area designated'], ['rep_prot', 'Repair area protected'], ['flush', 'Laterals flushed'], ['dist_acc', 'Distribution devices accessible'], ['dist_ok', 'Distribution devices working properly'], ['ponding', 'Minimal ponding in trenches'], ['standing', 'No effluent standing in lower laterals'], ['other', 'Other (describe in comments)', 'x']] },
+    { k: 'facility', t: 'Facility', items: [['permit', 'Type, size and flow per permit'], ['softener', 'Water softener in use', 'i'], ['additive', 'Septic tank additive in use', 'i']] }
   ];
+  // reports list Facility first, as the county forms do
+  OWI.REPORT_SECTIONS = function () { return OWI.SECTIONS.filter(function (s) { return s.k === 'facility'; }).concat(OWI.SECTIONS.filter(function (s) { return s.k !== 'facility'; })); };
   OWI.STATUS = ['Compliant', 'Non-compliant', 'Malfunctioning', 'Needs maintenance', 'Incomplete inspection'];
   OWI.TYPES = ['Regular semi-annual', 'Alarm response', 'Complaint', 'Pre-sale', 'Follow-up'];
   OWI.TONE = { g: 'Good', w: 'Fix soon', b: 'Fix now', c: 'See note' };
@@ -57,6 +60,10 @@
     o.ev_used = ev !== null && n(prev.events) !== null ? ev - n(prev.events) : null;
     o.et_day = o.et_used !== null && o.days ? r2(o.et_used / o.days) : null;
     o.events_day = o.ev_used !== null && o.days ? r1(o.ev_used / o.days) : null;
+    // average daily flow, as on the county forms: run hours x 60 x pump rate / days
+    var rate = o.pdr !== null ? o.pdr : dpdr;
+    o.gpd_gal = o.et_used !== null && rate ? Math.round(o.et_used * 60 * rate) : null;
+    o.gpd_avg = o.gpd_gal !== null && o.days ? Math.round(o.gpd_gal / o.days) : null;
     var dose = o.dose || n(f.dose) || n(ctx.dose), dflow = n(ctx.design_flow);
     o.events_design = dose && dflow ? r1(dflow / dose) : null;
     o.et_design = o.events_design !== null && dpdr ? r2(o.events_design * (dose / dpdr) / 60) : null;
@@ -79,6 +86,7 @@
     if (c.days !== null) F.days = ctx.date + ' minus ' + p.date + ' = ' + c.days + ' days';
     if (c.et_day !== null) F.et = m.et + ' - ' + p.et + ' = ' + c.et_used + ' hours; ' + c.et_used + ' / ' + c.days + ' days = ' + c.et_day + ' per day';
     if (c.events_day !== null) F.events = m.events + ' - ' + p.events + ' = ' + c.ev_used + ' events; ' + c.ev_used + ' / ' + c.days + ' days = ' + c.events_day + ' per day';
+    if (c.gpd_avg !== null) F.gpd = c.et_used + ' hours x 60 x ' + (c.pdr !== null ? c.pdr : dpdr) + ' gpm = ' + c.gpd_gal + ' gal / ' + c.days + ' days = ' + c.gpd_avg + ' gpd';
     var dose = c.dose || n(f.dose) || n(ctx.dose);
     if (c.events_design !== null) F.events_design = ctx.design_flow + ' gpd / ' + dose + ' gal = ' + c.events_design + ' per day';
     if (c.et_design !== null) F.et_design = c.events_design + ' x (' + dose + ' gal / ' + dpdr + ' gpm / 60) = ' + c.et_design + ' hours per day';
@@ -89,7 +97,7 @@
   // the numbers that get graphed, one value per visit
   OWI.readings = function (d, c) {
     var o = {}, lat = (d.laterals || [])[0], h = lat ? n(lat.turnup) : null;
-    [['pdr', c.pdr], ['pdr_eff', c.eff], ['sludge_pct', c.sludge_pct], ['et_day', c.et_day], ['events_day', c.events_day], ['events_design', c.events_design], ['lat1_head', h]].forEach(function (p) { if (p[1] !== null && p[1] !== undefined) o[p[0]] = p[1]; });
+    [['pdr', c.pdr], ['pdr_eff', c.eff], ['sludge_pct', c.sludge_pct], ['et_day', c.et_day], ['events_day', c.events_day], ['events_design', c.events_design], ['gpd_avg', c.gpd_avg], ['lat1_head', h]].forEach(function (p) { if (p[1] !== null && p[1] !== undefined) o[p[0]] = p[1]; });
     return o;
   };
   OWI.problems = function (d) {
@@ -227,7 +235,7 @@
     ['septic', 'pump'].forEach(function (k) { var x = s[k] || {}; d[k] = { scum: N(x.scum), sludge: N(x.sludge), pumped: /^\d{4}-\d{2}-\d{2}$/.test(x.pumped || '') ? x.pumped : '', pump_needed: x.pump_needed === 'Yes' ? 'Yes' : 'No' }; });
     var fl = s.floats || {}; d.floats = { alarm: N(fl.alarm), on: N(fl.on), off: N(fl.off), timed: N(fl.timed) }; d.amps = N(s.amps);
     (Array.isArray(s.laterals) ? s.laterals : []).slice(0, 12).forEach(function (l, i) { l = l || {}; d.laterals.push({ n: i + 1, length: N(l.length), design: N(l.design), turnup: N(l.turnup), last: N(l.last), baseline: N(l.baseline), left: N(l.left), adjusted: N(l.adjusted) }); });
-    var f = s.flow || {}; d.flow = { dose: N(f.dose), drawdown: N(f.drawdown), off: N(f.off), on: N(f.on), gpi: N(f.gpi), min: N(f.min), design_pdr: N(f.design_pdr) };
+    var f = s.flow || {}; d.flow = { dose: N(f.dose), drawdown: N(f.drawdown), off: N(f.off), on: N(f.on), gpi: N(f.gpi), min: N(f.min), design_pdr: N(f.design_pdr), design_head: N(f.design_head) };
     var m = s.meters || {}; d.meters = { et: N(m.et), events: N(m.events) };
     OWI.WORDS.forEach(function (w) { var x = s.words && s.words[w.k]; var i = x && Number.isInteger(x.i) && x.i >= 0 && x.i < w.o.length ? x.i : w.d; d.words[w.k] = { i: i, t: S(x && x.t, 600) }; });
     var t = s.todo || {}; d.todo = { jobs: (Array.isArray(t.jobs) ? t.jobs : []).slice(0, 6).filter(function (j) { return OWI.JOBS.indexOf(j) >= 0; }), ticks: (Array.isArray(t.ticks) ? t.ticks : []).filter(function (i) { return Number.isInteger(i) && i >= 0 && i < OWI.TICKS.length; }), extra: S(t.extra, 400) };
