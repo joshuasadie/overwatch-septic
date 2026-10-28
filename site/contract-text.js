@@ -7,6 +7,20 @@ export const DEFAULT_TERMS = {
   response_hours: '48', annual_fee: '', increase_pct: '10', interest_pct: '1.5', repair_days: '30',
   maintenance: ['Check the pump and float switches', 'Check the alarm and control panel', 'Check the drain field'],
 };
+// Inspections per year, as set by the Operation Permit. 'q1s' = quarterly the first year, then twice a year.
+export const VISITS = [['2', '2 (twice a year)'], ['4', '4 (quarterly)'], ['q1s', '4 the first year, then 2 a year'], ['1', '1 (once a year)']];
+const WORDS = { 1: 'one (1)', 2: 'two (2)', 4: 'four (4)' };
+const usd = n => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Visits per year after the first year (the steady count the annual fee is based on).
+export const steadyVisits = v => v === 'q1s' ? 2 : (Number(v) || 0);
+// Annual fee from a per-inspection fee: what the "annual fee" in the rest of the agreement refers to.
+export const annualFrom = (fee, v) => Math.round(Number(fee) * steadyVisits(v) * 100) / 100;
+function feeClause(x) {
+  if (!T(x.inspection_fee)) return `the sum of $${T(x.annual_fee)} per year`;
+  const f = Number(x.inspection_fee), v = T(x.visits);
+  if (v === 'q1s') return `the sum of $${usd(f)} per inspection for the inspections required by the Operation Permit, four (4) in the first year and two (2) per year thereafter, for a total of $${usd(f * 4)} in the first year and $${usd(f * 2)} per year thereafter,`;
+  return `the sum of $${usd(f)} per inspection for the ${WORDS[v]} inspection${v === '1' ? '' : 's'} per year required by the Operation Permit, for a total of $${usd(f * Number(v))} per year,`;
+}
 export function dateParts(iso) {
   const d = new Date(iso + (iso.length === 10 ? 'T12:00:00' : '')), n = d.getDate();
   const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10 < 4 ? n % 10 : 0];
@@ -41,7 +55,7 @@ export function contractText(t) {
         `g) The Contractor shall respond to a request for a nonscheduled service or maintenance call within ${T(x.response_hours)} hours after receipt of such request.`,
       ] },
       { h: "2. The Owner's Obligations.", p: [
-        `a) The Owner shall pay to the Contractor the sum of $${T(x.annual_fee)} per year for periodic inspections, routine maintenance procedures and periodic reports. The annual fee may be amended upon sixty (60) days advance notice to the Owner but may not be increased more than ${T(x.increase_pct)} percent per year. The Owner shall pay to the Contractor his normal and customary fees for any work performed on the system as a result of nonscheduled service or maintenance calls. All fees are due and payable within thirty (30) days of billing. Payments due to the Contractor and unpaid by the Owner after thirty (30) days shall accrue interest from the due date until paid at a rate of ${T(x.interest_pct)} percent per month.`,
+        `a) The Owner shall pay to the Contractor ${feeClause(x)} for periodic inspections, routine maintenance procedures and periodic reports. ${T(x.inspection_fee) ? "Each inspection is billed when it is performed. Any inspection or visit beyond those required by the Operation Permit will be billed at the Contractor's normal and customary fees. " : ''}The annual fee may be amended upon sixty (60) days advance notice to the Owner but may not be increased more than ${T(x.increase_pct)} percent per year. The Owner shall pay to the Contractor his normal and customary fees for any work performed on the system as a result of nonscheduled service or maintenance calls. All fees are due and payable within thirty (30) days of billing. Payments due to the Contractor and unpaid by the Owner after thirty (30) days shall accrue interest from the due date until paid at a rate of ${T(x.interest_pct)} percent per month.`,
         `b) Within ${T(x.repair_days)} days of receipt of notice of needed repairs pursuant to paragraph 1.e. above, the Owner shall request the Contractor to complete needed repairs or shall provide to the Contractor evidence that the needed repairs were satisfactorily completed by another entity.`,
         'c) The Owner shall provide the Contractor with such access to the system as is reasonably necessary for the Contractor to comply with the terms of this Agreement.',
       ] },

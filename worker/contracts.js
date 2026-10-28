@@ -1,11 +1,11 @@
 // Contracts: the owner signs from an emailed link (or from the customer portal); the contractor countersigns in /admin.
-import { contractText, REQUIRED, DEFAULT_TERMS } from '../site/contract-text.js';
+import { contractText, REQUIRED, DEFAULT_TERMS, VISITS, annualFrom } from '../site/contract-text.js';
 import { reply, clean, sha, rand, id, isoIn, siteOrigin, sendMail, EMAIL } from './lib.js';
 import { createInvoice, contractLocked, toCents, money } from './billing.js';
 
 const TOKEN = /^[A-Za-z0-9_-]{20,60}$/;
 export const LINK_DAYS = 14;
-const TERM_KEYS = ['date', 'owner_name', 'owner_address', 'county', 'system_address', 'permit', 'sys_type', 'rules', 'cite', 'contractor_name', 'contractor_address', 'health_dept', 'response_hours', 'annual_fee', 'increase_pct', 'interest_pct', 'repair_days', 'origination_fee'];
+const TERM_KEYS = ['date', 'owner_name', 'owner_address', 'county', 'system_address', 'permit', 'sys_type', 'rules', 'cite', 'contractor_name', 'contractor_address', 'health_dept', 'response_hours', 'annual_fee', 'increase_pct', 'interest_pct', 'repair_days', 'origination_fee', 'inspection_fee', 'visits'];
 
 export function normalizeTerms(input, customer) {
   const t = { ...DEFAULT_TERMS, owner_name: customer.name, owner_address: customer.address, system_address: customer.address, county: customer.county, sys_type: customer.sys_type, permit: customer.permit, date: new Date().toISOString().slice(0, 10) };
@@ -22,7 +22,15 @@ const publicView = (c, customer, locked = false) => {
 };
 
 export async function createContract(env, who, customer, termsIn) {
-  const terms = normalizeTerms(termsIn, customer), miss = missingTerms(terms);
+  const terms = normalizeTerms(termsIn, customer);
+  // Per-inspection pricing: the annual fee is the fee times the inspections per year the permit requires.
+  const per = String(terms.inspection_fee ?? '').replace(/,/g, '').trim();
+  if (per) {
+    if (!/^\d+(\.\d{1,2})?$/.test(per) || Number(per) <= 0) return { status: 400, error: 'The fee per inspection must be a number, like 250.' };
+    if (!VISITS.some(v => v[0] === terms.visits)) return { status: 400, error: 'Choose how many inspections per year the permit requires.' };
+    terms.inspection_fee = per; terms.annual_fee = String(annualFrom(per, terms.visits));
+  } else { delete terms.inspection_fee; delete terms.visits; }
+  const miss = missingTerms(terms);
   if (miss.length) return { status: 400, error: 'Please fill in: ' + miss.join(', ') + '.' };
   if (!/^\d+(\.\d{1,2})?$/.test(terms.annual_fee.replace(/,/g, ''))) return { status: 400, error: 'The annual fee must be a number, like 500.' };
   terms.annual_fee = terms.annual_fee.replace(/,/g, '');

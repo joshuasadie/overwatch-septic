@@ -71,7 +71,7 @@
       '<div class="two"><div><label for="i_status">Status of system</label><select id="i_status">' + OWI.STATUS.map(function (t) { return '<option>' + t + '</option>'; }).join('') + '</select></div>' + fld('i_next', 'Next inspection due', 'type="date" value="' + OWI.nextDue((sys.permit || {}).freq, today(), ctx && ctx.first) + '"') + '</div><p class="mute sm" id="stw"></p>' +
       '<label for="i_photos">Photos (optional, up to 8)</label><input id="i_photos" type="file" accept="image/*" multiple><div id="pthumbs" class="row" style="margin-top:6px"></div>' +
       '<label for="i_sign">Certified operator signature</label><input id="i_sign" class="auto" readonly tabindex="-1" value="' + E(A.cfg.operator.name + ', ' + A.cfg.operator.cert) + '">' +
-      '<label for="i_amt">Invoice amount ($). Use 0 to waive it</label><input id="i_amt" ' + dec + ' value="' + E(A.LS.get('ow_visit') || (A.cfg && A.cfg.defaults.visit) || '0') + '"><p class="mute sm">With an invoice, the owner and the county get nothing until it is paid and 3 business days have passed. With 0, both get the report right away.</p>' +
+      '<label for="i_amt">Invoice amount ($). Use 0 to waive it</label><input id="i_amt" ' + dec + ' value="' + E((A.visitFee && A.visitFee()) || A.LS.get('ow_visit') || (A.cfg && A.cfg.defaults.visit) || '0') + '"><p class="mute sm">With an invoice, the owner and the county get nothing until it is paid and 3 business days have passed. With 0, both get the report right away.</p>' +
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Save report</button><button class="b alt" type="button" id="clearDraft">Clear form</button></div><div class="msg" id="im" role="status"></div>', true, 'c8');
     return h + '</form>';
   }

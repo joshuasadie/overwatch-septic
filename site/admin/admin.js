@@ -80,22 +80,49 @@
     if (/^v/i.test(String(c.sys_type || '').trim())) l.splice(4, 0, 'Check zone pressures and flow against the design', 'Clean the headworks filter and flush the field');
     return E(l.join('\n'));
   }
+  // Inspections per year, as set by the permit (keep in step with VISITS in site/contract-text.js).
+  var VISITS = [['2', '2 (twice a year)'], ['4', '4 (quarterly)'], ['q1s', '4 the first year, then 2 a year'], ['1', '1 (once a year)']];
+  var FREQ_VISITS = { s: '2', q: '4', q1s: 'q1s', a: '1' };
+  function usd(n) { return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function feeTotal(fee, v) {
+    var f = Number(String(fee).replace(/,/g, ''));
+    if (!(f > 0)) return 'Enter the fee per inspection to see the annual total.';
+    if (v === 'q1s') return 'Agreement total: ' + usd(f * 4) + ' the first year (' + usd(f) + ' × 4), then ' + usd(f * 2) + ' a year (' + usd(f) + ' × 2).';
+    return 'Annual total in the agreement: ' + usd(f * Number(v)) + ' (' + usd(f) + ' × ' + v + ').';
+  }
+  // Default visit invoice: the per-inspection fee in the customer's signed agreement (older agreements: annual fee ÷ 2).
+  function contractVisitFee(d) {
+    var k = d && (d.contracts || []).filter(function (x) { return x.status === 'complete' || x.status === 'owner_signed'; })[0], t = k && k.terms;
+    if (!t) return '';
+    if (t.inspection_fee) return String(t.inspection_fee);
+    var a = Number(t.annual_fee); return a > 0 ? String(Math.round(a / 2 * 100) / 100) : '';
+  }
+  OWA.visitFee = function () { return contractVisitFee(S.d); };
   function contractForm() {
     var c = S.d.customer, today = new Date().toISOString().slice(0, 10);
-    $('panel').innerHTML = '<h2>New contract</h2><p class="mute" style="margin:0 0 4px">The text is the state sample, unchanged. These fields fill its blanks.</p><form id="kf" novalidate><div class="two">' +
-      field('k_contractor', 'Contractor name', LS.get('ow_cn') || 'Overwatch Septic, LLC') + field('k_fee', 'Annual fee written in the agreement ($)', LS.get('ow_fee') || '', 'inputmode="decimal"') + field('k_orig', 'Origination fee, billed when you countersign ($, 0 for none)', LS.get('ow_orig') || (S.cfg && S.cfg.defaults.origination) || '100', 'inputmode="decimal"') +
+    $('panel').innerHTML = '<h2>New contract</h2><p class="mute" style="margin:0 0 4px">The text is the state sample, except that paragraph 2(a) prices it per inspection. These fields fill its blanks.</p><form id="kf" novalidate><div class="two">' +
+      field('k_contractor', 'Contractor name', LS.get('ow_cn') || 'Overwatch Septic, LLC') + field('k_per', 'Fee per inspection ($)', LS.get('ow_per') || (S.cfg && S.cfg.defaults.visit) || '250', 'inputmode="decimal"') +
+      '<div><label for="k_visits">Inspections per year, per the permit</label><select id="k_visits">' + VISITS.map(function (v) { return '<option value="' + v[0] + '">' + v[1] + '</option>'; }).join('') + '</select></div>' + field('k_orig', 'Origination fee, billed when you countersign ($, 0 for none)', LS.get('ow_orig') || (S.cfg && S.cfg.defaults.origination) || '100', 'inputmode="decimal"') +
       field('k_caddr', 'Contractor address', LS.get('ow_ca')) + field('k_health', 'Local health department', LS.get('ow_hd_' + (c.county || '')) || (c.county ? c.county + ' County Environmental Health' : '')) +
       field('k_date', 'Agreement date', today, 'type="date"') + field('k_resp', 'Response time (hours)', '48') + '</div>' +
+      '<p id="k_tot" role="status" style="background:var(--note);color:var(--noteink);border-radius:10px;padding:10px 14px;margin:14px 0 0;font-weight:600"></p><p class="mute" style="margin:4px 0 0;font-size:14px">Each inspection is billed at this fee when you upload its report. Extra visits are billed at your normal fees.</p>' +
       '<label for="k_cite">Rule citation (check the current rule number)</label><input id="k_cite" value="15A N.C. Administrative Code 18A.1961"><label for="k_rules">Rules reference</label><input id="k_rules" value="15A N.C. Administrative Code 18A.1900 et seq.">' +
       '<label for="k_maint">Routine maintenance (one per line)</label><textarea id="k_maint" style="min-height:120px">' + maintDefault(c) + '</textarea>' +
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Email signing link to ' + E(c.name.split(' ')[0]) + '</button></div><div class="msg" id="km" role="status"></div></form>';
+    var showTotal = function () { $('k_tot').textContent = feeTotal($('k_per').value, $('k_visits').value); };
+    $('k_per').addEventListener('input', showTotal); $('k_visits').addEventListener('change', showTotal); showTotal();
+    OW.api('/admin/api/system?customer_id=' + c.id + '&date=' + today).then(function (j) {
+      var f = j && j.ok && j.system && j.system.permit && FREQ_VISITS[j.system.permit.freq];
+      if (f && $('k_visits')) { $('k_visits').value = f; showTotal(); }
+    });
     $('kf').addEventListener('submit', function (e) {
       e.preventDefault(); var v = function (i) { return $(i).value.trim(); };
-      var fee = v('k_fee'); if (!fee) { $('km').className = 'msg err'; $('km').textContent = 'Please enter the annual fee.'; return; }
+      var per = v('k_per').replace(/,/g, '');
+      if (!/^\d+(\.\d{1,2})?$/.test(per) || Number(per) <= 0) { $('km').className = 'msg err'; $('km').textContent = 'Enter the fee per inspection, like 250.'; return; }
       $('km').className = 'msg'; $('km').textContent = 'Sending...';
-      OW.api('/admin/api/contract', { customer_id: c.id, terms: { contractor_name: v('k_contractor'), contractor_address: v('k_caddr'), health_dept: v('k_health'), annual_fee: fee, origination_fee: v('k_orig'), date: v('k_date'), response_hours: v('k_resp'), cite: v('k_cite'), rules: v('k_rules'), maintenance: v('k_maint').split('\n') } }).then(function (j) {
+      OW.api('/admin/api/contract', { customer_id: c.id, terms: { contractor_name: v('k_contractor'), contractor_address: v('k_caddr'), health_dept: v('k_health'), inspection_fee: per, visits: v('k_visits'), origination_fee: v('k_orig'), date: v('k_date'), response_hours: v('k_resp'), cite: v('k_cite'), rules: v('k_rules'), maintenance: v('k_maint').split('\n') } }).then(function (j) {
         if (!j.ok) { $('km').className = 'msg err'; $('km').textContent = j.error; return; }
-        LS.set('ow_cn', v('k_contractor')); LS.set('ow_fee', fee); LS.set('ow_orig', v('k_orig')); LS.set('ow_ca', v('k_caddr')); LS.set('ow_hd_' + (c.county || ''), v('k_health'));
+        LS.set('ow_cn', v('k_contractor')); LS.set('ow_per', per); LS.set('ow_orig', v('k_orig')); LS.set('ow_ca', v('k_caddr')); LS.set('ow_hd_' + (c.county || ''), v('k_health'));
         OW.toast(j.emailed ? 'Signing link emailed.' : 'Saved, but the email did not send. Use Resend link.'); refresh();
       });
     });
@@ -105,7 +132,7 @@
     $('panel').innerHTML = '<h2>Upload a report PDF</h2><p class="mute" style="margin:0 0 4px">For an older report or one made in another tool. It is stored with the customer, not graphed. For a new visit, use New inspection.</p><form id="rf" novalidate><label for="r_date">Visit date</label><input id="r_date" type="date" value="' + today + '">' +
       '<label for="r_notes">Notes for the customer</label><textarea id="r_notes" maxlength="1000"></textarea>' +
       '<label for="r_pdf">PDF report</label><input id="r_pdf" type="file" accept="application/pdf">' +
-      '<label for="r_amt">Invoice amount ($). Use 0 to waive it</label><input id="r_amt" inputmode="decimal" value="' + E(LS.get('ow_visit') || (S.cfg && S.cfg.defaults.visit) || '250') + '"><p class="mute" style="margin:4px 0 0;font-size:14px">With an invoice, the customer and the county get nothing until it is paid and 3 business days have passed. With 0, both get the report right away.</p>' +
+      '<label for="r_amt">Invoice amount ($). Use 0 to waive it</label><input id="r_amt" inputmode="decimal" value="' + E(contractVisitFee(S.d) || LS.get('ow_visit') || (S.cfg && S.cfg.defaults.visit) || '250') + '"><p class="mute" style="margin:4px 0 0;font-size:14px">' + (contractVisitFee(S.d) ? 'The per-inspection fee from the signed agreement. For an extra visit, enter your normal fee. ' : '') + 'With an invoice, the customer and the county get nothing until it is paid and 3 business days have passed. With 0, both get the report right away.</p>' +
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Save report</button></div><div class="msg" id="rm" role="status"></div></form>';
     $('rf').addEventListener('submit', function (e) {
       e.preventDefault(); var m = $('rm'); m.className = 'msg'; m.textContent = 'Saving...';
