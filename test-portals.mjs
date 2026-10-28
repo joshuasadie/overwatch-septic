@@ -121,4 +121,15 @@ ok(r.status === 429, 'sign-in requests rate limited per email');
 ok((await J(await adm('/admin/api/report-delete', { id: rid }))).ok && !store.has('reports/' + rid + '.pdf'), 'report deleted with its PDF');
 // existing form still works
 r = await call('/api/request', { method: 'POST', headers: { origin: O, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Z', address: '1 Oak', need: 'alarm', phone: '919-555-1111', email: 'z@z.com', consent: true, token: 't' }) }); ok(r.status === 200, 'public request form still works');
+// test customers: deletable even when signed, with the name typed
+j = await J(await adm('/admin/api/customer/' + cid)); const cu = j.customer;
+ok(j.customer.test === false, 'customer is not a test customer by default');
+ok((await J(await adm('/admin/api/customer', { id: cid, name: cu.name, email: cu.email, phone: cu.phone, address: cu.address, county: cu.county, sys_type: cu.sys_type, permit: cu.permit, notes: cu.notes, test: true }))).ok, 'mark as test customer');
+ok((await J(await adm('/admin/api/customers'))).customers.find(c => c.id === cid).test === true, 'list shows the test flag');
+ok((await adm('/admin/api/customer-delete', { id: cid })).status === 400, 'test customer with signed contract needs the name typed');
+ok((await adm('/admin/api/customer-delete', { id: cid, confirm: 'Someone Else' })).status === 400, 'wrong name refused');
+ok((await J(await adm('/admin/api/customer-delete', { id: cid, confirm: ' ' + cu.name.toUpperCase() + ' ' }))).ok, 'right name deletes a signed test customer');
+ok(!(await J(await adm('/admin/api/customers'))).customers.some(c => c.id === cid), 'test customer is gone');
+ok(sql.prepare("SELECT COUNT(*) AS n FROM contracts WHERE customer_id = ?").get(cid).n === 0 && sql.prepare("SELECT COUNT(*) AS n FROM test_customers WHERE customer_id = ?").get(cid).n === 0, 'its contracts and flag are removed');
+ok(sql.prepare("SELECT COUNT(*) AS n FROM audit WHERE action = 'test-customer-deleted'").get().n === 1, 'deletion is logged');
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);

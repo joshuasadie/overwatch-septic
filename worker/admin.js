@@ -27,6 +27,7 @@ async function invoiceRows(env, where, bind) {
   return rows.map(i => ({ id: i.id, customer_id: i.customer_id, customer_name: i.customer_name, county: i.customer_county, kind: i.kind, ref_id: i.ref_id, visit_date: i.visit_date || '', amount_cents: i.amount_cents, status: i.status, flag: i.flag, paused: !!i.paused, created_date: i.created_date, age: daysBetween(i.created_date, today), release_date: i.release_date, released: !!i.released_at, notice_state: i.notice_state, term_date: i.term_date, tracking: i.tracking, note: i.note, reminders: i.reminders }));
 }
 
+const setTest = (env, cid, on) => on ? env.DB.prepare('INSERT OR IGNORE INTO test_customers (customer_id) VALUES (?)').bind(cid).run() : env.DB.prepare('DELETE FROM test_customers WHERE customer_id = ?').bind(cid).run();
 export async function adminApi(request, env, path) {
   const who = await verifyAccess(request, env);
   if (who === 'unconfigured') return reply({ ok: false, error: 'The admin area is not set up yet.' }, 503);
@@ -62,8 +63,9 @@ export async function adminApi(request, env, path) {
     const rows = (await env.DB.prepare('SELECT * FROM customers ORDER BY name COLLATE NOCASE').all()).results;
     const cs = (await env.DB.prepare('SELECT customer_id, status, created_at FROM contracts WHERE status != ? ORDER BY created_at').bind('void').all()).results;
     const rs = (await env.DB.prepare('SELECT customer_id, MAX(visit_date) AS last FROM reports GROUP BY customer_id').all()).results;
+    const tests = new Set((await env.DB.prepare('SELECT customer_id FROM test_customers').all()).results.map(r => r.customer_id));
     const lastC = new Map(cs.map(c => [c.customer_id, c.status])), lastR = new Map(rs.map(r => [r.customer_id, r.last]));
-    return reply({ ok: true, customers: rows.map(r => ({ ...r, contract: lastC.get(r.id) || 'none', last_report: lastR.get(r.id) || '' })) });
+    return reply({ ok: true, customers: rows.map(r => ({ ...r, test: tests.has(r.id), contract: lastC.get(r.id) || 'none', last_report: lastR.get(r.id) || '' })) });
   }
   if (path === '/admin/api/customer' && method === 'POST') {
     const j = await readJson(request); if (j.res) return j.res;
@@ -74,17 +76,20 @@ export async function adminApi(request, env, path) {
       if (!cur) return reply({ ok: false, error: 'Not found.' }, 404);
       if (existing && existing.id !== cur.id) return reply({ ok: false, error: 'Another customer already has that email.' }, 409);
       await env.DB.batch([env.DB.prepare('UPDATE customers SET name=?, email=?, phone=?, address=?, county=?, sys_type=?, permit=?, notes=? WHERE id=?').bind(f.name, f.email, f.phone, f.address, f.county, f.sys_type, f.permit, f.notes, cur.id), audit(env, email, 'customer-updated', cur.id, f.name)]);
+      if (j.body.test !== undefined) await setTest(env, cur.id, !!j.body.test);
       return reply({ ok: true, id: cur.id });
     }
     if (existing) return reply({ ok: false, error: 'A customer with that email already exists.' }, 409);
     const cid = id();
     await env.DB.batch([env.DB.prepare('INSERT INTO customers (id, created_at, name, email, phone, address, county, sys_type, permit, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(cid, new Date().toISOString(), f.name, f.email, f.phone, f.address, f.county, f.sys_type, f.permit, f.notes), audit(env, email, 'customer-added', cid, f.name)]);
+    if (j.body.test) await setTest(env, cid, true);
     return reply({ ok: true, id: cid });
   }
   m = /^\/admin\/api\/customer\/([a-f0-9]{20})$/.exec(path);
   if (m && method === 'GET') {
     const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(m[1]).first();
     if (!c) return reply({ ok: false, error: 'Not found.' }, 404);
+    c.test = !!(await env.DB.prepare('SELECT 1 AS x FROM test_customers WHERE customer_id = ?').bind(c.id).first());
     const contracts = (await env.DB.prepare('SELECT * FROM contracts WHERE customer_id = ? ORDER BY created_at DESC').bind(c.id).all()).results.map(x => ({ ...publicView(x, c), terms: JSON.parse(x.terms) }));
     const reports = (await env.DB.prepare('SELECT id, visit_date, kind, readings, checks, notes, pdf_key, created_at FROM reports WHERE customer_id = ? ORDER BY visit_date DESC').bind(c.id).all()).results.map(r => ({ ...r, readings: JSON.parse(r.readings), checks: JSON.parse(r.checks), has_pdf: !!r.pdf_key, pdf_key: undefined }));
     const states = new Map((await env.DB.prepare('SELECT report_id, released_at, county_sent_at, county_to FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(c.id).all()).results.map(x => [x.report_id, x]));
@@ -98,11 +103,13 @@ export async function adminApi(request, env, path) {
     const c = await env.DB.prepare('SELECT name FROM customers WHERE id = ?').bind(cid).first();
     if (!c) return reply({ ok: false, error: 'Not found.' }, 404);
     const signed = await env.DB.prepare("SELECT COUNT(*) AS n FROM contracts WHERE customer_id = ? AND status IN ('owner_signed','complete')").bind(cid).first();
-    if (signed.n) return reply({ ok: false, error: 'This customer has a signed agreement. Signed agreements are kept as records, so the customer cannot be deleted here.' }, 400);
+    const isTest = !!(await env.DB.prepare('SELECT 1 AS x FROM test_customers WHERE customer_id = ?').bind(cid).first());
+    if (signed.n && isTest && String(j.body.confirm || '').trim().toLowerCase() !== c.name.trim().toLowerCase()) return reply({ ok: false, error: 'Type the customer\'s name exactly to delete a test customer with a signed agreement.' }, 400);
+    if (signed.n && !isTest) return reply({ ok: false, error: 'This customer has a signed agreement. Signed agreements are kept as records, so the customer cannot be deleted here. Only customers marked as test customers can be deleted.' }, 400);
     const reps = (await env.DB.prepare('SELECT pdf_key FROM reports WHERE customer_id = ?').bind(cid).all()).results;
     if (env.FILES) for (const r of reps) if (r.pdf_key) await env.FILES.delete(r.pdf_key);
     await deleteInspectionFiles(env, (await env.DB.prepare('SELECT id FROM reports WHERE customer_id = ?').bind(cid).all()).results.map(x => x.id));
-    await env.DB.batch([env.DB.prepare('DELETE FROM inspections WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM systems WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM invoices WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM reports WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM contracts WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM sessions WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM login_tokens WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM customers WHERE id = ?').bind(cid), audit(env, email, 'customer-deleted', cid, c.name)]);
+    await env.DB.batch([env.DB.prepare('DELETE FROM inspections WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM systems WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM invoices WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM reports WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM contracts WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM sessions WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM login_tokens WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM test_customers WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM customers WHERE id = ?').bind(cid), audit(env, email, isTest ? 'test-customer-deleted' : 'customer-deleted', cid, c.name)]);
     return reply({ ok: true });
   }
 

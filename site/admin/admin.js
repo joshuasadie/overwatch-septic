@@ -11,7 +11,7 @@
       if (j.status === 401) { $('ct').innerHTML = '<tr><td colspan="4" class="bad">You are not signed in. Reload this page and sign in through Cloudflare Access.</td></tr>'; return; }
       if (!j.ok) { $('ct').innerHTML = '<tr><td colspan="4" class="bad">' + E(j.error) + '</td></tr>'; return; }
       S.list = j.customers;
-      $('ct').innerHTML = j.customers.map(function (c) { return '<tr class="pick' + (c.id === S.sel ? ' sel' : '') + '" data-id="' + c.id + '" tabindex="0"><td><b>' + E(c.name) + '</b><br><span class="mute">' + E(c.address) + '</span></td><td>' + (c.sys_type ? 'Type ' + E(c.sys_type) : '') + '</td><td>' + OW.pill(c.contract) + '</td><td>' + E(OW.date(c.last_report) || 'None yet') + '</td></tr>'; }).join('') || '<tr><td colspan="4" class="mute">No customers yet. Add the first one.</td></tr>';
+      $('ct').innerHTML = j.customers.map(function (c) { return '<tr class="pick' + (c.id === S.sel ? ' sel' : '') + '" data-id="' + c.id + '" tabindex="0"><td><b>' + E(c.name) + '</b>' + (c.test ? ' <span class="pill mute">Test</span>' : '') + '<br><span class="mute">' + E(c.address) + '</span></td><td>' + (c.sys_type ? 'Type ' + E(c.sys_type) : '') + '</td><td>' + OW.pill(c.contract) + '</td><td>' + E(OW.date(c.last_report) || 'None yet') + '</td></tr>'; }).join('') || '<tr><td colspan="4" class="mute">No customers yet. Add the first one.</td></tr>';
     });
   }
   function stateText(i) {
@@ -56,7 +56,7 @@
 
   function renderDetail() {
     var d = S.d, c = d.customer, open = d.contracts.filter(function (x) { return x.status === 'sent' || x.status === 'owner_signed'; }).length;
-    var h = '<div class="grid2"><section class="card"><h2>' + E(c.name) + '</h2><p class="mute" style="margin:0 0 10px">' + [c.email, c.phone, c.county && c.county + ' County', c.permit && 'Permit ' + c.permit].filter(Boolean).map(E).join(' &middot; ') + '<br>' + E(c.address) + '</p>' + (c.notes ? '<p class="mute" style="font-size:14px">' + E(c.notes) + '</p>' : '') +
+    var h = '<div class="grid2"><section class="card"><h2>' + E(c.name) + (c.test ? ' <span class="pill mute">Test</span>' : '') + '</h2><p class="mute" style="margin:0 0 10px">' + [c.email, c.phone, c.county && c.county + ' County', c.permit && 'Permit ' + c.permit].filter(Boolean).map(E).join(' &middot; ') + '<br>' + E(c.address) + '</p>' + (c.notes ? '<p class="mute" style="font-size:14px">' + E(c.notes) + '</p>' : '') +
       '<div class="row"><button class="b" id="bSend"' + (open ? ' title="An agreement is already open"' : '') + '>Send contract</button><button class="b" id="bInsp">New inspection</button><button class="b alt" id="bSetup">System setup</button><button class="b alt" id="bRep">Add visit report</button><button class="b alt" id="bEdit">Edit</button></div>' +
       '<h3 style="margin:16px 0 4px">Contracts</h3><ul class="list">' + (d.contracts.map(function (x) {
         var btns = '<button class="b alt" data-act="view" data-id="' + x.id + '">View</button>';
@@ -71,7 +71,7 @@
       }).join('') || '<li class="mute">None yet.</li>') + '</ul></section>' +
       '<section class="card" id="panel"><h2>Next step</h2><p class="mute">Choose Send contract or New inspection.</p></section></div>' +
       '<section class="card"><h2>' + E(c.name) + ': readings over time</h2><div class="charts">' + OW.charts(d.reports) + '</div></section>' +
-      '<div class="row"><button class="b danger" id="bDel">Delete customer</button></div>';
+      '<div class="row"><button class="b danger" id="bDel">Delete customer</button></div><div id="delBox"></div>';
     $('detail').innerHTML = h;
   }
 
@@ -144,7 +144,13 @@
     if (t.id === 'bRep') return void reportForm();
     if (t.id === 'bInsp') return void OWA.inspect();
     if (t.id === 'bSetup') return void OWA.setup();
-    if (t.id === 'bDel') { if (confirm('Delete ' + S.d.customer.name + ' and all their reports?')) OW.api('/admin/api/customer-delete', { id: S.sel }).then(function (j) { if (!j.ok) return fail(j); S.sel = null; S.d = null; $('detail').innerHTML = ''; loadList(); OW.toast('Customer deleted.'); }); return; }
+    if (t.id === 'bDel') {
+      var cu = S.d.customer;
+      if (cu.test) { $('delBox').innerHTML = '<div class="card" style="border-color:var(--bad)"><h3 style="margin:0 0 6px">Delete test customer</h3><p class="mute" style="margin:0 0 8px">This removes ' + E(cu.name) + ', including any signed agreement, invoices and reports. It cannot be undone. Stripe payments are not touched. Type the name to confirm.</p><input id="delName" autocomplete="off" aria-label="Type the customer name" placeholder="' + E(cu.name) + '"><div class="row" style="margin-top:8px"><button class="b danger" id="delGo" disabled>Delete for good</button><button class="b alt" id="delNo">Cancel</button></div></div>'; $('delName').focus(); return; }
+      if (confirm('Delete ' + cu.name + ' and all their reports?')) OW.api('/admin/api/customer-delete', { id: S.sel }).then(function (j) { if (!j.ok) return fail(j); S.sel = null; S.d = null; $('detail').innerHTML = ''; loadList(); OW.toast('Customer deleted.'); }); return;
+    }
+    if (t.id === 'delNo') { $('delBox').innerHTML = ''; return; }
+    if (t.id === 'delGo') { OW.api('/admin/api/customer-delete', { id: S.sel, confirm: $('delName').value }).then(function (j) { if (!j.ok) return fail(j); S.sel = null; S.d = null; $('detail').innerHTML = ''; loadList(); OW.toast('Test customer deleted.'); }); return; }
     var rv = t.closest('[data-rv]'); if (rv) return void review(rv.getAttribute('data-rv'), rv.getAttribute('data-kind'));
     var pc = t.closest('.pickc'); if (pc) return void select(pc.getAttribute('data-cid'));
     var cd = t.closest('[data-cdel]'); if (cd) { if (confirm('Remove this county?')) OW.api('/admin/api/county', { name: cd.getAttribute('data-cdel'), remove: true }).then(loadCounties); return; }
@@ -175,17 +181,19 @@
       if (k === 'del' && confirm('Delete this report? The customer will no longer see it.')) OW.api('/admin/api/report-delete', { id: rid }).then(function (j) { j.ok ? OW.toast('Deleted.') : fail(j); refresh(); });
     }
   });
+  document.addEventListener('input', function (e) { if (e.target.id === 'delName') $('delGo').disabled = e.target.value.trim().toLowerCase() !== S.d.customer.name.trim().toLowerCase(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Enter') { var tr = e.target.closest && e.target.closest('tr.pick'); if (tr) select(tr.getAttribute('data-id')); } });
 
   var FIELDS = ['name', 'email', 'phone', 'county', 'address', 'sys', 'permit', 'notes'], KEYS = { sys: 'sys_type' };
   function editCustomer(c) {
     S.editing = c ? c.id : ''; $('editor').hidden = false; $('edT').textContent = c ? 'Edit customer' : 'Add customer'; $('cm').textContent = '';
     FIELDS.forEach(function (f) { $('c_' + f).value = c ? c[KEYS[f] || f] || '' : ''; });
+    $('c_test').checked = !!(c && c.test);
     $('editor').scrollIntoView({ behavior: 'smooth' });
   }
   $('edX').onclick = function () { $('editor').hidden = true; };
   $('cf').addEventListener('submit', function (e) {
-    e.preventDefault(); var body = { id: S.editing || undefined }; FIELDS.forEach(function (f) { body[KEYS[f] || f] = $('c_' + f).value; });
+    e.preventDefault(); var body = { id: S.editing || undefined }; FIELDS.forEach(function (f) { body[KEYS[f] || f] = $('c_' + f).value; }); body.test = $('c_test').checked;
     OW.api('/admin/api/customer', body).then(function (j) { if (!j.ok) { $('cm').className = 'msg err'; $('cm').textContent = j.error; return; } $('editor').hidden = true; OW.toast('Saved.'); S.sel = j.id; select(j.id); });
   });
   $('cyf').addEventListener('submit', function (e) { e.preventDefault(); OW.api('/admin/api/county', { name: $('cy_n').value, email: $('cy_e').value }).then(function (j) { if (!j.ok) { $('cym').className = 'msg err'; $('cym').textContent = j.error; return; } $('cym').textContent = ''; $('cy_n').value = ''; $('cy_e').value = ''; OW.toast('County saved.'); loadCounties(); }); });

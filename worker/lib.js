@@ -91,6 +91,7 @@ export const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS report_state (report_id TEXT PRIMARY KEY, released_at TEXT NOT NULL DEFAULT '', county_sent_at TEXT NOT NULL DEFAULT '', county_to TEXT NOT NULL DEFAULT '', token_hash TEXT NOT NULL DEFAULT '', token_exp TEXT NOT NULL DEFAULT '')",
   'CREATE INDEX IF NOT EXISTS report_state_token ON report_state (token_hash)',
   'CREATE TABLE IF NOT EXISTS counties (name TEXT PRIMARY KEY, email TEXT NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS test_customers (customer_id TEXT PRIMARY KEY)',
   "CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, who TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '')",
 ];
 const ready = new WeakMap();
