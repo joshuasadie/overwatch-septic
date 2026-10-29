@@ -149,8 +149,9 @@ ok(sql.prepare("SELECT COUNT(*) AS n FROM contracts WHERE customer_id = ?").get(
 ok(sql.prepare("SELECT COUNT(*) AS n FROM audit WHERE action = 'test-customer-deleted'").get().n === 1, 'deletion is logged');
 // contacts
 { let k = await J(await adm('/admin/api/contacts'));
+  ok(k.contacts.filter(c => c.id.startsWith('inst') && c.kind === 'Installer' && c.next_date).length === 11 && k.contacts.some(c => c.name === 'Rob Hartsell' && c.county === 'Moore'), '11 more installers added, each with a call date');
   ok(k.ok && k.contacts.filter(c => c.id.startsWith('seed')).length === 11 && k.contacts.some(c => c.name === 'Hunter' && c.kind === 'Installer') && k.contacts.some(c => c.name === 'Solomon Rosenbluth' && c.county === 'Durham'), 'contacts start with the 11 people from this week');
-  ok(k.contacts[0].next_date && k.contacts[1].next_date === '2026-11-04' && !k.contacts[2].next_date && k.contacts.some(c => c.kind === 'Lead'), 'contacts with a follow-up date come first; the earlier website request is a Lead');
+  ok(k.contacts[0].next_date <= k.contacts[1].next_date && k.contacts[1].next_date <= k.contacts[2].next_date && !k.contacts[k.contacts.length - 1].next_date && k.contacts.some(c => c.kind === 'Lead'), 'contacts with a follow-up date come first; the earlier website request is a Lead');
   ok((await adm('/admin/api/contact', { name: '' })).status === 400 && (await adm('/admin/api/contact', { name: 'X', email: 'nope' })).status === 400, 'contact needs a name and a real email');
   const a = await J(await adm('/admin/api/contact', { name: 'Pat Realtor', company: 'Home Realty', kind: 'Realtor', county: 'Wake', next_date: '2026-11-10', next_step: 'Coffee' })); ok(a.ok, 'contact added');
   ok((await J(await adm('/admin/api/contact', { id: a.id, name: 'Pat Realtor', kind: 'Bogus' }))).ok && (await J(await adm('/admin/api/contacts'))).contacts.find(c => c.id === a.id).kind === 'Other', 'unknown type becomes Other');
