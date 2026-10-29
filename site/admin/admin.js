@@ -38,6 +38,56 @@
   function loadCounties() {
     return OW.api('/admin/api/counties').then(function (j) { if (j.ok) $('cty').innerHTML = j.counties.map(function (c) { return '<li><span><b>' + E(c.name.replace(/\b\w/g, function (x) { return x.toUpperCase(); })) + ' County</b><small>' + E(c.email) + '</small></span><button class="b danger" data-cdel="' + E(c.name) + '">Remove</button></li>'; }).join('') || '<li class="mute">No counties yet. Add one so reports and notices can reach it.</li>'; });
   }
+  // ---- contacts
+  var K = { list: [], kinds: [], kind: 'All', q: '', edit: '', toCustomer: '' };
+  function loadContacts() {
+    return OW.api('/admin/api/contacts').then(function (j) {
+      if (!j.ok) return;
+      K.list = j.contacts; K.kinds = j.kinds;
+      if (!$('k_kind').options.length) $('k_kind').innerHTML = K.kinds.map(function (k) { return '<option>' + E(k) + '</option>'; }).join('');
+      drawContacts();
+    });
+  }
+  function drawContacts() {
+    var today = new Date().toISOString().slice(0, 10), soon = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+    var due = K.list.filter(function (c) { return c.next_date && c.next_date <= soon; });
+    $('kdue').innerHTML = due.length ? '<div style="background:var(--note);color:var(--noteink);border-radius:10px;padding:10px 14px;margin:6px 0"><b>Follow up this week (' + due.length + ')</b><br>' + due.map(function (c) { return E(c.name) + (c.company ? ', ' + E(c.company) : '') + ': ' + E(c.next_step || 'follow up') + ', ' + (c.next_date < today ? '<b>overdue ' + E(OW.date(c.next_date)) + '</b>' : E(OW.date(c.next_date))); }).join('<br>') + '</div>' : '';
+    var counts = { All: K.list.length }; K.list.forEach(function (c) { counts[c.kind] = (counts[c.kind] || 0) + 1; });
+    $('kchips').innerHTML = ['All'].concat(K.kinds.filter(function (k) { return counts[k]; })).map(function (k) { return '<button type="button" class="b' + (K.kind === k ? '' : ' alt') + '" data-kkind="' + E(k) + '" style="padding:4px 12px;min-height:0;font-size:14px">' + E(k) + ' ' + counts[k] + '</button>'; }).join('');
+    var q = K.q.toLowerCase(), rows = K.list.filter(function (c) { return (K.kind === 'All' || c.kind === K.kind) && (!q || [c.name, c.company, c.county, c.email, c.notes].join(' ').toLowerCase().indexOf(q) >= 0); });
+    $('kt').innerHTML = rows.map(function (c) {
+      var reach = [c.phone && '<a href="tel:' + E(c.phone.replace(/[^\d+x]/g, '')) + '">' + E(c.phone) + '</a>', c.email && '<a href="mailto:' + E(c.email) + '">' + E(c.email) + '</a>'].filter(Boolean).join('<br>') || '-';
+      return '<tr><td><b>' + E(c.name) + '</b>' + (c.notes ? '<br><small class="mute">' + E(c.notes) + '</small>' : '') + '</td><td>' + E([c.company, c.county && c.county + ' County'].filter(Boolean).join(' · ') || '-') + '</td><td><span class="pill mute">' + E(c.kind) + '</span></td><td>' + reach + '</td><td>' + E(c.next_step || '-') + (c.next_date ? '<br><small class="mute">' + E(OW.date(c.next_date)) + '</small>' : '') + '</td><td><span class="row" style="gap:6px"><button class="b alt" type="button" data-kedit="' + E(c.id) + '">Edit</button>' + (c.kind === 'Lead' && !c.customer_id ? '<button class="b" type="button" data-kcust="' + E(c.id) + '">Make customer</button>' : '') + '<button class="b danger" type="button" data-kdel="' + E(c.id) + '">Remove</button></span></td></tr>';
+    }).join('') || '<tr><td colspan="6" class="mute">No contacts match.</td></tr>';
+  }
+  function contactForm(c) {
+    K.edit = c ? c.id : ''; $('kfT').textContent = c ? 'Edit ' + c.name : 'Add a contact'; $('kX').hidden = !c; $('km2').textContent = '';
+    $('k_name').value = c ? c.name : ''; $('k_company').value = c ? c.company : ''; $('k_kind').value = c ? c.kind : 'Installer'; $('k_county').value = c ? c.county : '';
+    $('k_phone').value = c ? c.phone : ''; $('k_email').value = c ? c.email : ''; $('k_next').value = c ? c.next_step : ''; $('k_date').value = c ? c.next_date : ''; $('k_notes').value = c ? c.notes : '';
+    if (c) $('kf').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  $('kq').addEventListener('input', function () { K.q = this.value; drawContacts(); });
+  $('kX').onclick = function () { contactForm(null); };
+  $('kf').addEventListener('submit', function (e) {
+    e.preventDefault(); var old = K.list.filter(function (x) { return x.id === K.edit; })[0] || {};
+    OW.api('/admin/api/contact', { id: K.edit || undefined, name: $('k_name').value, company: $('k_company').value, kind: $('k_kind').value, county: $('k_county').value, phone: $('k_phone').value, email: $('k_email').value, next_step: $('k_next').value, next_date: $('k_date').value, notes: $('k_notes').value, customer_id: old.customer_id || '' }).then(function (j) {
+      if (!j.ok) { $('km2').className = 'msg err'; $('km2').textContent = j.error; return; }
+      OW.toast('Contact saved.'); contactForm(null); loadContacts();
+    });
+  });
+  $('contacts').addEventListener('click', function (e) {
+    var t = e.target, g = function (a) { var x = t.closest('[' + a + ']'); return x && x.getAttribute(a); }, c, k;
+    if ((k = g('data-kkind'))) { K.kind = k; return void drawContacts(); }
+    if ((k = g('data-kedit'))) return void contactForm(K.list.filter(function (x) { return x.id === k; })[0]);
+    if ((k = g('data-kdel'))) { c = K.list.filter(function (x) { return x.id === k; })[0]; if (c && confirm('Remove ' + c.name + ' from contacts?')) OW.api('/admin/api/contact', { id: k, remove: true }).then(loadContacts); return; }
+    if ((k = g('data-kcust'))) {
+      c = K.list.filter(function (x) { return x.id === k; })[0]; if (!c) return;
+      editCustomer(null); K.toCustomer = c.id;
+      $('c_name').value = c.name; $('c_email').value = c.email; $('c_phone').value = c.phone; $('c_county').value = c.county;
+      var addr = /^Property: (.+)/m.exec(c.notes || ''); if (addr) $('c_address').value = addr[1];
+      $('c_notes').value = c.notes || '';
+    }
+  });
   function review(id, kind) {
     OW.api('/admin/api/invoice-letter?id=' + id + '&kind=' + kind).then(function (j) {
       if (!j.ok) return fail(j); var r = $('review'); r.hidden = false;
@@ -222,7 +272,7 @@
 
   var FIELDS = ['name', 'email', 'phone', 'county', 'address', 'sys', 'permit', 'notes'], KEYS = { sys: 'sys_type' };
   function editCustomer(c) {
-    S.editing = c ? c.id : ''; $('editor').hidden = false; $('edT').textContent = c ? 'Edit customer' : 'Add customer'; $('cm').textContent = '';
+    S.editing = c ? c.id : ''; K.toCustomer = ''; $('editor').hidden = false; $('edT').textContent = c ? 'Edit customer' : 'Add customer'; $('cm').textContent = '';
     FIELDS.forEach(function (f) { $('c_' + f).value = c ? c[KEYS[f] || f] || '' : ''; });
     $('c_test').checked = !!(c && c.test);
     $('editor').scrollIntoView({ behavior: 'smooth' });
@@ -230,8 +280,8 @@
   $('edX').onclick = function () { $('editor').hidden = true; };
   $('cf').addEventListener('submit', function (e) {
     e.preventDefault(); var body = { id: S.editing || undefined }; FIELDS.forEach(function (f) { body[KEYS[f] || f] = $('c_' + f).value; }); body.test = $('c_test').checked;
-    OW.api('/admin/api/customer', body).then(function (j) { if (!j.ok) { $('cm').className = 'msg err'; $('cm').textContent = j.error; return; } $('editor').hidden = true; OW.toast('Saved.'); S.sel = j.id; select(j.id); });
+    OW.api('/admin/api/customer', body).then(function (j) { if (!j.ok) { $('cm').className = 'msg err'; $('cm').textContent = j.error; return; } $('editor').hidden = true; OW.toast('Saved.'); S.sel = j.id; select(j.id); if (K.toCustomer && !S.editing) { var lc = K.list.filter(function (x) { return x.id === K.toCustomer; })[0]; K.toCustomer = ''; if (lc) OW.api('/admin/api/contact', Object.assign({}, lc, { kind: 'Customer', customer_id: j.id, next_step: '', next_date: '' })).then(loadContacts); } });
   });
   $('cyf').addEventListener('submit', function (e) { e.preventDefault(); OW.api('/admin/api/county', { name: $('cy_n').value, email: $('cy_e').value }).then(function (j) { if (!j.ok) { $('cym').className = 'msg err'; $('cym').textContent = j.error; return; } $('cym').textContent = ''; $('cy_n').value = ''; $('cy_e').value = ''; OW.toast('County saved.'); loadCounties(); }); });
-  OW.api('/admin/api/config').then(function (j) { if (j.ok) { S.cfg = j; if (j.operator && j.operator.phone) OW.CONTACT.phone = j.operator.phone; $('who').textContent = 'Admin portal · ' + j.me; } }).then(function () { loadList(); loadInvoices(); loadCounties(); });
+  OW.api('/admin/api/config').then(function (j) { if (j.ok) { S.cfg = j; if (j.operator && j.operator.phone) OW.CONTACT.phone = j.operator.phone; $('who').textContent = 'Admin portal · ' + j.me; } }).then(function () { loadList(); loadInvoices(); loadCounties(); loadContacts(); });
 })();

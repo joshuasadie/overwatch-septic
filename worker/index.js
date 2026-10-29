@@ -19,6 +19,15 @@ async function send(env, to, subject, text, replyTo) {
   } catch { return false; }
 }
 
+// a website request is also kept as a Lead in the admin Contacts list
+async function saveLead(env, x) {
+  if (!env.DB) return;
+  await ensureSchema(env);
+  const now = new Date().toISOString(), today = now.slice(0, 10);
+  await env.DB.prepare("INSERT INTO contacts (id, name, company, kind, county, phone, email, next_step, next_date, notes, customer_id, created_at, updated_at) VALUES (?, ?, '', 'Lead', '', ?, ?, ?, ?, ?, '', ?, ?)")
+    .bind(id(), x.name, x.phone, x.email, 'Reply to website request (' + x.need + ')', today, 'Property: ' + x.address, now, now).run();
+}
+
 export async function request(req, env) {
   if (req.method !== 'POST') return reply({ ok: false, error: 'Method not allowed.' }, 405, { allow: 'POST' });
   const origin = req.headers.get('origin');
@@ -47,6 +56,7 @@ export async function request(req, env) {
   const need = NEED[d.need];
   const owner = await send(env, env.MAIL_TO, `[${d.need === 'alarm' ? 'ALARM' : 'Request'}] ${oneLine(name)}`, ['New request from overwatchseptic.com', '', 'Need: ' + need, 'Name: ' + name, 'Phone: ' + phone, 'Email: ' + email, 'Address: ' + address, '', 'Received: ' + new Date().toISOString()].join('\n'), email);
   if (!owner) return reply({ ok: false, error: 'Your request could not be sent. Please try again in a few minutes.' }, 502);
+  await saveLead(env, { name, email, phone, address, need }).catch(() => {});
   await send(env, email, 'We received your request', [`Hello ${name},`, '', 'Thank you. Overwatch Septic received your request' + (d.need === 'alarm' ? ' for an alarm' : '') + ' and will contact you.', '', 'If your plans change, reply to this email.', '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
   return reply({ ok: true });
 }
@@ -55,7 +65,7 @@ import { adminApi } from './admin.js';
 import { loginRequest, loginVerify, portalApi } from './portal.js';
 import { tokenApi } from './contracts.js';
 import { payRedirect, stripeWebhook, countyReportPage, runDaily } from './billing.js';
-import { ensureSchema, originOk, readJson, turnstileOk } from './lib.js';
+import { ensureSchema, originOk, readJson, turnstileOk, id } from './lib.js';
 
 // POST /api/phone: the phone number is never in the page. It is returned only after a fresh Turnstile check
 // (tokens are single use, so every reveal needs its own check). The number lives in the PHONE_NUMBER secret.

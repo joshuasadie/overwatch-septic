@@ -147,4 +147,17 @@ ok((await J(await adm('/admin/api/customer-delete', { id: cid, confirm: ' ' + cu
 ok(!(await J(await adm('/admin/api/customers'))).customers.some(c => c.id === cid), 'test customer is gone');
 ok(sql.prepare("SELECT COUNT(*) AS n FROM contracts WHERE customer_id = ?").get(cid).n === 0 && sql.prepare("SELECT COUNT(*) AS n FROM test_customers WHERE customer_id = ?").get(cid).n === 0, 'its contracts and flag are removed');
 ok(sql.prepare("SELECT COUNT(*) AS n FROM audit WHERE action = 'test-customer-deleted'").get().n === 1, 'deletion is logged');
+// contacts
+{ let k = await J(await adm('/admin/api/contacts'));
+  ok(k.ok && k.contacts.filter(c => c.id.startsWith('seed')).length === 11 && k.contacts.some(c => c.name === 'Hunter' && c.kind === 'Installer') && k.contacts.some(c => c.name === 'Solomon Rosenbluth' && c.county === 'Durham'), 'contacts start with the 11 people from this week');
+  ok(k.contacts[0].next_date && k.contacts[1].next_date === '2026-11-04' && !k.contacts[2].next_date && k.contacts.some(c => c.kind === 'Lead'), 'contacts with a follow-up date come first; the earlier website request is a Lead');
+  ok((await adm('/admin/api/contact', { name: '' })).status === 400 && (await adm('/admin/api/contact', { name: 'X', email: 'nope' })).status === 400, 'contact needs a name and a real email');
+  const a = await J(await adm('/admin/api/contact', { name: 'Pat Realtor', company: 'Home Realty', kind: 'Realtor', county: 'Wake', next_date: '2026-11-10', next_step: 'Coffee' })); ok(a.ok, 'contact added');
+  ok((await J(await adm('/admin/api/contact', { id: a.id, name: 'Pat Realtor', kind: 'Bogus' }))).ok && (await J(await adm('/admin/api/contacts'))).contacts.find(c => c.id === a.id).kind === 'Other', 'unknown type becomes Other');
+  ok((await adm('/admin/api/contact', { id: 'nope', name: 'Q' })).status === 404, 'editing a missing contact is refused');
+  await adm('/admin/api/contact', { id: a.id, remove: true }); ok(!(await J(await adm('/admin/api/contacts'))).contacts.some(c => c.id === a.id), 'contact removed');
+  const before = (await J(await adm('/admin/api/contacts'))).contacts.length;
+  const rq = await call('/api/request', { method: 'POST', headers: { origin: O, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Lee Lead', address: '5 Elm St, Apex', need: 'alarm', phone: '919-555-2222', email: 'lee@lead.com', consent: true, token: 't' }) });
+  k = (await J(await adm('/admin/api/contacts'))).contacts; const ld = k.find(c => c.name === 'Lee Lead');
+  ok(rq.status === 200 && k.length === before + 1 && ld && ld.kind === 'Lead' && ld.email === 'lee@lead.com' && /5 Elm St/.test(ld.notes) && /Alarm/.test(ld.next_step), 'a website request is added as a Lead'); }
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);

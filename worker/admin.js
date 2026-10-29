@@ -27,6 +27,13 @@ async function invoiceRows(env, where, bind) {
   return rows.map(i => ({ id: i.id, customer_id: i.customer_id, customer_name: i.customer_name, county: i.customer_county, kind: i.kind, ref_id: i.ref_id, visit_date: i.visit_date || '', amount_cents: i.amount_cents, status: i.status, flag: i.flag, paused: !!i.paused, created_date: i.created_date, age: daysBetween(i.created_date, today), release_date: i.release_date, released: !!i.released_at, notice_state: i.notice_state, term_date: i.term_date, tracking: i.tracking, note: i.note, reminders: i.reminders }));
 }
 
+export const CONTACT_KINDS = ['Installer', 'County', 'Realtor', 'Builder', 'Inspector', 'Referral', 'Lead', 'Customer', 'Other'];
+function cleanContact(b) {
+  const c = { name: clean(b.name, 100), company: clean(b.company, 120), kind: CONTACT_KINDS.includes(b.kind) ? b.kind : 'Other', county: clean(b.county, 40), phone: clean(b.phone, 40), email: clean(b.email, 254), next_step: clean(b.next_step, 200), next_date: /^\d{4}-\d{2}-\d{2}$/.test(b.next_date || '') ? b.next_date : '', notes: clean(b.notes, 2000), customer_id: clean(b.customer_id, 40) };
+  if (!c.name) return { error: 'Enter a name.' };
+  if (c.email && !EMAIL.test(c.email)) return { error: 'That email address does not look right.' };
+  return c;
+}
 const setTest = (env, cid, on) => on ? env.DB.prepare('INSERT OR IGNORE INTO test_customers (customer_id) VALUES (?)').bind(cid).run() : env.DB.prepare('DELETE FROM test_customers WHERE customer_id = ?').bind(cid).run();
 export async function adminApi(request, env, path) {
   const who = await verifyAccess(request, env);
@@ -232,6 +239,22 @@ export async function adminApi(request, env, path) {
     return reply({ ok: true, kind, owner: d.owner, county: d.county, address: d.customer.address, name: d.customer.name, county_name: d.customer.county, term: d.term });
   }
   if (path === '/admin/api/counties' && method === 'GET') return reply({ ok: true, counties: (await env.DB.prepare('SELECT name, email FROM counties ORDER BY name').all()).results });
+  // ---- contacts: installers, county staff, referrals and leads
+  if (path === '/admin/api/contacts' && method === 'GET') return reply({ ok: true, kinds: CONTACT_KINDS, contacts: (await env.DB.prepare("SELECT * FROM contacts ORDER BY CASE WHEN next_date = '' THEN 1 ELSE 0 END, next_date, name").all()).results });
+  if (path === '/admin/api/contact' && method === 'POST') {
+    const j = await readJson(request, 8192); if (j.res) return j.res; const b = j.body || {};
+    if (b.remove) { await env.DB.prepare('DELETE FROM contacts WHERE id = ?').bind(clean(b.id, 40)).run(); await audit(env, email, 'contact-removed', clean(b.id, 40)).run(); return reply({ ok: true }); }
+    const c = cleanContact(b); if (c.error) return reply({ ok: false, error: c.error }, 400);
+    const now = new Date().toISOString(), cid = clean(b.id, 40);
+    if (cid) {
+      const r = await env.DB.prepare('UPDATE contacts SET name=?, company=?, kind=?, county=?, phone=?, email=?, next_step=?, next_date=?, notes=?, customer_id=?, updated_at=? WHERE id=?').bind(c.name, c.company, c.kind, c.county, c.phone, c.email, c.next_step, c.next_date, c.notes, c.customer_id, now, cid).run();
+      if (!r.meta || !r.meta.changes) return reply({ ok: false, error: 'Not found.' }, 404);
+      return reply({ ok: true, id: cid });
+    }
+    const nid = id();
+    await env.DB.batch([env.DB.prepare('INSERT INTO contacts (id, name, company, kind, county, phone, email, next_step, next_date, notes, customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(nid, c.name, c.company, c.kind, c.county, c.phone, c.email, c.next_step, c.next_date, c.notes, c.customer_id, now, now), audit(env, email, 'contact-added', nid, c.name)]);
+    return reply({ ok: true, id: nid });
+  }
   if (path === '/admin/api/county' && method === 'POST') {
     const j = await readJson(request); if (j.res) return j.res;
     const name = clean(j.body.name, 40).toLowerCase().replace(/\s+county$/, ''), mail = clean(j.body.email, 254).toLowerCase();
