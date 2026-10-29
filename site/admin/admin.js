@@ -2,7 +2,7 @@
   var $ = OW.$, E = OW.esc, S = { list: [], sel: null, d: null, cfg: null, editing: null };
   $('brand').innerHTML = OW.brand('/');
   var LS = { get: function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }, set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
-  window.OWA = { S: S, LS: LS, fail: fail, get cfg() { return S.cfg; }, refresh: function () { return refresh(); } };
+  window.OWA = { contacts: function () { return K.list; }, S: S, LS: LS, fail: fail, get cfg() { return S.cfg; }, refresh: function () { return refresh(); } };
   function fail(j) { OW.toast(j.error || 'Something went wrong.'); }
 
   function loadList() {
@@ -38,6 +38,14 @@
   function loadCounties() {
     return OW.api('/admin/api/counties').then(function (j) { if (j.ok) $('ctyN').textContent = j.counties.length; if (j.ok) $('cty').innerHTML = j.counties.map(function (c) { return '<li><span><b>' + E(c.name.replace(/\b\w/g, function (x) { return x.toUpperCase(); })) + ' County</b><small>' + E(c.email) + '</small></span><button class="b danger" data-cdel="' + E(c.name) + '">Remove</button></li>'; }).join('') || '<li class="mute">No counties yet. Add one so reports and notices can reach it.</li>'; });
   }
+  // installer and repair preferences for a customer's system
+  function installerBox(ins) {
+    if (!ins) return '<div class="mute" style="background:color-mix(in srgb,var(--mute) 10%,var(--paper));border-radius:10px;padding:10px 14px;margin:8px 0;font-size:14px">Installer not recorded. Add it in System setup if the permit or owner tells you.</div>';
+    var who = E(ins.name) + (ins.company ? ', ' + E(ins.company) : '') + (ins.date ? ' (' + E(OW.date(ins.date)) + ')' : '');
+    var reach = [ins.phone && '<a style="color:inherit" href="tel:' + E(ins.phone.replace(/[^\d+x]/g, '')) + '">' + E(ins.phone) + '</a>', ins.email && '<a style="color:inherit" href="mailto:' + E(ins.email) + '">' + E(ins.email) + '</a>'].filter(Boolean).join(' &middot; ');
+    return '<div style="background:var(--note);color:var(--noteink);border-radius:10px;padding:10px 14px;margin:8px 0;font-size:14px"><b>Installed by ' + who + '</b>' + (reach ? '<br>' + reach : '') + '<br>' + (ins.repair_prefs ? 'Repairs: ' + E(ins.repair_prefs) : '<span style="opacity:.8">No repair preferences noted yet. Add them on the installer\'s contact.</span>') + '</div>';
+  }
+  OWA.installerBox = installerBox; OWA.reloadContacts = function () { return loadContacts(); };
   // ---- contacts
   var K = { list: [], kinds: [], kind: 'All', q: '', edit: '', toCustomer: '' };
   function loadContacts() {
@@ -60,26 +68,27 @@
     var q = K.q.toLowerCase(), rows = K.list.filter(function (c) { return (K.kind === 'All' || c.kind === K.kind) && (!q || [c.name, c.company, c.county, c.email, c.notes].join(' ').toLowerCase().indexOf(q) >= 0); });
     $('kt').innerHTML = rows.map(function (c) {
       var reach = [c.phone && '<a href="tel:' + E(c.phone.replace(/[^\d+x]/g, '')) + '">' + E(c.phone) + '</a>', c.email && '<a href="mailto:' + E(c.email) + '">' + E(c.email) + '</a>'].filter(Boolean).join('<br>') || '-';
-      return '<tr><td><b>' + E(c.name) + '</b>' + (c.notes ? '<br><small class="mute">' + E(c.notes) + '</small>' : '') + '</td><td>' + E([c.company, c.county && c.county + ' County'].filter(Boolean).join(' · ') || '-') + '</td><td><span class="pill" style="color:' + kindColor(c.kind) + '">' + E(c.kind) + '</span></td><td>' + reach + '</td><td>' + E(c.next_step || '-') + (c.next_date ? '<br><small class="mute">' + E(OW.date(c.next_date)) + '</small>' : '') + '</td><td><span class="row" style="gap:6px"><button class="b alt" type="button" data-kedit="' + E(c.id) + '">Edit</button>' + (c.kind === 'Lead' && !c.customer_id ? '<button class="b" type="button" data-kcust="' + E(c.id) + '">Make customer</button>' : '') + '<button class="b danger" type="button" data-kdel="' + E(c.id) + '">Remove</button></span></td></tr>';
+      return '<tr><td><b>' + E(c.name) + '</b>' + (c.notes ? '<br><small class="mute">' + E(c.notes) + '</small>' : '') + (c.repair_prefs ? '<br><small><b>Repairs:</b> ' + E(c.repair_prefs) + '</small>' : '') + ((c.systems || []).length ? '<br><small class="mute">Installed: ' + c.systems.map(function (y) { return '<a href="#" data-kgo="' + E(y.id) + '">' + E(y.name) + '</a>'; }).join(', ') + '</small>' : '') + '</td><td>' + E([c.company, c.county && c.county + ' County'].filter(Boolean).join(' · ') || '-') + '</td><td><span class="pill" style="color:' + kindColor(c.kind) + '">' + E(c.kind) + '</span></td><td>' + reach + '</td><td>' + E(c.next_step || '-') + (c.next_date ? '<br><small class="mute">' + E(OW.date(c.next_date)) + '</small>' : '') + '</td><td><span class="row" style="gap:6px"><button class="b alt" type="button" data-kedit="' + E(c.id) + '">Edit</button>' + (c.kind === 'Lead' && !c.customer_id ? '<button class="b" type="button" data-kcust="' + E(c.id) + '">Make customer</button>' : '') + '<button class="b danger" type="button" data-kdel="' + E(c.id) + '">Remove</button></span></td></tr>';
     }).join('') || '<tr><td colspan="6" class="mute">No contacts match.</td></tr>';
   }
   function contactForm(c) {
     K.edit = c ? c.id : ''; $('kfT').textContent = c ? 'Edit ' + c.name : 'Add a contact'; $('kX').hidden = !c; $('km2').textContent = '';
     $('k_name').value = c ? c.name : ''; $('k_company').value = c ? c.company : ''; $('k_kind').value = c ? c.kind : 'Installer'; $('k_county').value = c ? c.county : '';
-    $('k_phone').value = c ? c.phone : ''; $('k_email').value = c ? c.email : ''; $('k_next').value = c ? c.next_step : ''; $('k_date').value = c ? c.next_date : ''; $('k_notes').value = c ? c.notes : '';
+    $('k_phone').value = c ? c.phone : ''; $('k_email').value = c ? c.email : ''; $('k_next').value = c ? c.next_step : ''; $('k_date').value = c ? c.next_date : ''; $('k_notes').value = c ? c.notes : ''; $('k_prefs').value = c ? (c.repair_prefs || '') : '';
     if (c) $('kf').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   $('kq').addEventListener('input', function () { K.q = this.value; drawContacts(); });
   $('kX').onclick = function () { contactForm(null); };
   $('kf').addEventListener('submit', function (e) {
     e.preventDefault(); var old = K.list.filter(function (x) { return x.id === K.edit; })[0] || {};
-    OW.api('/admin/api/contact', { id: K.edit || undefined, name: $('k_name').value, company: $('k_company').value, kind: $('k_kind').value, county: $('k_county').value, phone: $('k_phone').value, email: $('k_email').value, next_step: $('k_next').value, next_date: $('k_date').value, notes: $('k_notes').value, customer_id: old.customer_id || '' }).then(function (j) {
+    OW.api('/admin/api/contact', { id: K.edit || undefined, name: $('k_name').value, company: $('k_company').value, kind: $('k_kind').value, county: $('k_county').value, phone: $('k_phone').value, email: $('k_email').value, next_step: $('k_next').value, next_date: $('k_date').value, notes: $('k_notes').value, repair_prefs: $('k_prefs').value, customer_id: old.customer_id || '' }).then(function (j) {
       if (!j.ok) { $('km2').className = 'msg err'; $('km2').textContent = j.error; return; }
       OW.toast('Contact saved.'); contactForm(null); loadContacts();
     });
   });
   $('contacts').addEventListener('click', function (e) {
     var t = e.target, g = function (a) { var x = t.closest('[' + a + ']'); return x && x.getAttribute(a); }, c, k;
+    if ((k = g('data-kgo'))) { e.preventDefault(); return void select(k).then(function () { var dd = $('detail'); if (dd) dd.scrollIntoView({ behavior: 'smooth', block: 'start' }); }); }
     if ((k = g('data-kkind'))) { K.kind = k; return void drawContacts(); }
     if ((k = g('data-kedit'))) return void contactForm(K.list.filter(function (x) { return x.id === k; })[0]);
     if ((k = g('data-kdel'))) { c = K.list.filter(function (x) { return x.id === k; })[0]; if (c && confirm('Remove ' + c.name + ' from contacts?')) OW.api('/admin/api/contact', { id: k, remove: true }).then(loadContacts); return; }
@@ -108,7 +117,7 @@
 
   function renderDetail() {
     var d = S.d, c = d.customer, open = d.contracts.filter(function (x) { return x.status === 'sent' || x.status === 'owner_signed'; }).length;
-    var h = '<div class="grid2"><section class="card"><h2>' + E(c.name) + (c.test ? ' <span class="pill mute">Test</span>' : '') + '</h2><p class="mute" style="margin:0 0 10px">' + [c.email, c.phone, c.county && c.county + ' County', c.permit && 'Permit ' + c.permit].filter(Boolean).map(E).join(' &middot; ') + '<br>' + E(c.address) + '</p>' + (c.notes ? '<p class="mute" style="font-size:14px">' + E(c.notes) + '</p>' : '') +
+    var h = '<div class="grid2"><section class="card"><h2>' + E(c.name) + (c.test ? ' <span class="pill mute">Test</span>' : '') + '</h2><p class="mute" style="margin:0 0 10px">' + [c.email, c.phone, c.county && c.county + ' County', c.permit && 'Permit ' + c.permit].filter(Boolean).map(E).join(' &middot; ') + '<br>' + E(c.address) + '</p>' + (c.notes ? '<p class="mute" style="font-size:14px">' + E(c.notes) + '</p>' : '') + installerBox(d.installer) +
       '<div class="row"><button class="b" id="bSend"' + (open ? ' title="An agreement is already open"' : '') + '>Send contract</button><button class="b" id="bInsp">New inspection</button><button class="b alt" id="bSetup">System setup</button><button class="b alt" id="bRep">Upload a report PDF</button><button class="b alt" id="bEdit">Edit</button></div>' +
       '<h3 style="margin:16px 0 4px">Contracts</h3><ul class="list">' + (d.contracts.map(function (x) {
         var btns = '<button class="b alt" data-act="view" data-id="' + x.id + '">View</button>';

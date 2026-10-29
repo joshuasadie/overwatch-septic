@@ -161,4 +161,19 @@ ok(sql.prepare("SELECT COUNT(*) AS n FROM audit WHERE action = 'test-customer-de
   const rq = await call('/api/request', { method: 'POST', headers: { origin: O, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Lee Lead', address: '5 Elm St, Apex', need: 'alarm', phone: '919-555-2222', email: 'lee@lead.com', consent: true, token: 't' }) });
   k = (await J(await adm('/admin/api/contacts'))).contacts; const ld = k.find(c => c.name === 'Lee Lead');
   ok(rq.status === 200 && k.length === before + 1 && ld && ld.kind === 'Lead' && ld.email === 'lee@lead.com' && /5 Elm St/.test(ld.notes) && /Alarm/.test(ld.next_step), 'a website request is added as a Lead'); }
+// installer on a customer's system, and repair preferences
+{ const cid = (await J(await adm('/admin/api/customer', { name: 'Ina Stall', email: 'ina@home.com', address: '9 Pine Rd, Pittsboro', county: 'Chatham', sys_type: 'IV' }))).id;
+  let k = (await J(await adm('/admin/api/contacts'))).contacts; const hunter = k.find(c => c.name === 'Hunter');
+  ok((await J(await adm('/admin/api/contact', { ...hunter, repair_prefs: 'Call Hunter directly; text photos first' }))).ok, 'repair preferences saved');
+  ok((await J(await adm('/admin/api/system', { customer_id: cid, system: { installer: { id: hunter.id, name: 'Hunter', date: '2025-03-04' }, permit: {} } }))).ok, 'installer saved on the system');
+  let d = await J(await adm('/admin/api/customer/' + cid));
+  ok(d.installer && d.installer.name === 'Hunter' && d.installer.company === "Lloyd's Excavation" && /text photos/.test(d.installer.repair_prefs) && d.installer.date === '2025-03-04', 'customer shows installer and repair preferences');
+  k = (await J(await adm('/admin/api/contacts'))).contacts;
+  ok(k.find(c => c.id === hunter.id).systems.some(y => y.id === cid), "installer's contact lists the systems they installed");
+  const n0 = k.length;
+  ok((await J(await adm('/admin/api/system', { customer_id: cid, system: { installer: { id: '', name: 'New Dig Co', date: '' }, permit: {} } }))).ok, 'a typed installer name is accepted');
+  k = (await J(await adm('/admin/api/contacts'))).contacts; const nd = k.find(c => c.name === 'New Dig Co');
+  ok(k.length === n0 + 1 && nd && nd.kind === 'Installer' && (await J(await adm('/admin/api/customer/' + cid))).installer.id === nd.id, 'a new installer name becomes an Installer contact and is linked');
+  await adm('/admin/api/system', { customer_id: cid, system: { installer: { id: '', name: 'new dig co' }, permit: {} } });
+  ok((await J(await adm('/admin/api/contacts'))).contacts.length === n0 + 1, 'typing the same installer again does not duplicate it'); }
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);

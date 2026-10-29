@@ -34,6 +34,7 @@ function cleanContact(b) {
   if (c.email && !EMAIL.test(c.email)) return { error: 'That email address does not look right.' };
   return c;
 }
+const savePrefs = (env, cid, b) => b.repair_prefs === undefined ? null : env.DB.prepare('INSERT INTO contact_extra (contact_id, repair_prefs) VALUES (?, ?) ON CONFLICT(contact_id) DO UPDATE SET repair_prefs = excluded.repair_prefs').bind(cid, clean(b.repair_prefs, 2000)).run();
 const setTest = (env, cid, on) => on ? env.DB.prepare('INSERT OR IGNORE INTO test_customers (customer_id) VALUES (?)').bind(cid).run() : env.DB.prepare('DELETE FROM test_customers WHERE customer_id = ?').bind(cid).run();
 export async function adminApi(request, env, path) {
   const who = await verifyAccess(request, env);
@@ -102,7 +103,13 @@ export async function adminApi(request, env, path) {
     const states = new Map((await env.DB.prepare('SELECT report_id, released_at, county_sent_at, county_to FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(c.id).all()).results.map(x => [x.report_id, x]));
     for (const r of reports) { const st = states.get(r.id); r.state = st ? (st.released_at ? 'released' : 'held') : 'released'; r.county_sent_at = st ? st.county_sent_at : ''; r.sent_owner = st && st.released_at ? st.released_at : ''; r.county_to = st ? st.county_to : ''; }
     await attachInspections(env, reports, false);
-    return reply({ ok: true, customer: c, contracts, reports, invoices: await invoiceRows(env, 'i.customer_id = ?', [c.id]) });
+    let installer = null;
+    { const sr = await env.DB.prepare('SELECT data FROM systems WHERE customer_id = ?').bind(c.id).first(); let si = null; try { si = sr && JSON.parse(sr.data).installer; } catch { si = null; }
+      if (si && (si.id || si.name)) {
+        const k = si.id ? await env.DB.prepare('SELECT c.*, x.repair_prefs FROM contacts c LEFT JOIN contact_extra x ON x.contact_id = c.id WHERE c.id = ?').bind(si.id).first() : null;
+        installer = { id: si.id || '', name: k ? k.name : si.name, company: k ? k.company : '', phone: k ? k.phone : '', email: k ? k.email : '', repair_prefs: k ? (k.repair_prefs || '') : '', date: si.date || '' };
+      } }
+    return reply({ ok: true, customer: c, installer, contracts, reports, invoices: await invoiceRows(env, 'i.customer_id = ?', [c.id]) });
   }
   if (path === '/admin/api/customer-delete' && method === 'POST') {
     const j = await readJson(request); if (j.res) return j.res;
@@ -154,7 +161,15 @@ export async function adminApi(request, env, path) {
     const j = await readJson(request, 65536); if (j.res) return j.res;
     const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(String(j.body.customer_id || '')).first();
     if (!c) return reply({ ok: false, error: 'Not found.' }, 404);
-    return out(await saveSystem(env, email, c, j.body.system || {}));
+    const sb = j.body.system || {}, ins = sb.installer || {};
+    const iname = clean(ins.name, 120);
+    if (iname && !clean(ins.id, 40)) {
+      const hit = await env.DB.prepare("SELECT id FROM contacts WHERE kind = 'Installer' AND (lower(name) = lower(?) OR lower(company) = lower(?))").bind(iname, iname).first();
+      if (hit) ins.id = hit.id;
+      else { ins.id = id(); const now = new Date().toISOString(); await env.DB.prepare("INSERT INTO contacts (id, name, company, kind, county, phone, email, next_step, next_date, notes, customer_id, created_at, updated_at) VALUES (?, ?, '', 'Installer', ?, '', '', '', '', ?, '', ?, ?)").bind(ins.id, iname, c.county || '', 'Added from System setup for ' + c.name, now, now).run(); }
+      sb.installer = ins;
+    }
+    return out(await saveSystem(env, email, c, sb));
   }
   if (path === '/admin/api/inspection' && method === 'POST') {
     const j = await readJson(request, 65536); if (j.res) return j.res;
@@ -240,19 +255,30 @@ export async function adminApi(request, env, path) {
   }
   if (path === '/admin/api/counties' && method === 'GET') return reply({ ok: true, counties: (await env.DB.prepare('SELECT name, email FROM counties ORDER BY name').all()).results });
   // ---- contacts: installers, county staff, referrals and leads
-  if (path === '/admin/api/contacts' && method === 'GET') return reply({ ok: true, kinds: CONTACT_KINDS, contacts: (await env.DB.prepare("SELECT * FROM contacts ORDER BY CASE WHEN next_date = '' THEN 1 ELSE 0 END, next_date, name").all()).results });
+  if (path === '/admin/api/contacts' && method === 'GET') {
+    const list = (await env.DB.prepare("SELECT c.*, COALESCE(x.repair_prefs, '') AS repair_prefs FROM contacts c LEFT JOIN contact_extra x ON x.contact_id = c.id ORDER BY CASE WHEN c.next_date = '' THEN 1 ELSE 0 END, c.next_date, c.name").all()).results;
+    const built = new Map();
+    for (const r of (await env.DB.prepare('SELECT s.data, c.id AS cid, c.name AS cname, c.address AS caddr FROM systems s JOIN customers c ON c.id = s.customer_id').all()).results) {
+      let si = null; try { si = JSON.parse(r.data).installer; } catch { si = null; }
+      if (si && si.id) { if (!built.has(si.id)) built.set(si.id, []); built.get(si.id).push({ id: r.cid, name: r.cname, address: r.caddr }); }
+    }
+    for (const k of list) k.systems = built.get(k.id) || [];
+    return reply({ ok: true, kinds: CONTACT_KINDS, contacts: list });
+  }
   if (path === '/admin/api/contact' && method === 'POST') {
     const j = await readJson(request, 8192); if (j.res) return j.res; const b = j.body || {};
-    if (b.remove) { await env.DB.prepare('DELETE FROM contacts WHERE id = ?').bind(clean(b.id, 40)).run(); await audit(env, email, 'contact-removed', clean(b.id, 40)).run(); return reply({ ok: true }); }
+    if (b.remove) { await env.DB.batch([env.DB.prepare('DELETE FROM contacts WHERE id = ?').bind(clean(b.id, 40)), env.DB.prepare('DELETE FROM contact_extra WHERE contact_id = ?').bind(clean(b.id, 40))]); await audit(env, email, 'contact-removed', clean(b.id, 40)).run(); return reply({ ok: true }); }
     const c = cleanContact(b); if (c.error) return reply({ ok: false, error: c.error }, 400);
     const now = new Date().toISOString(), cid = clean(b.id, 40);
     if (cid) {
       const r = await env.DB.prepare('UPDATE contacts SET name=?, company=?, kind=?, county=?, phone=?, email=?, next_step=?, next_date=?, notes=?, customer_id=?, updated_at=? WHERE id=?').bind(c.name, c.company, c.kind, c.county, c.phone, c.email, c.next_step, c.next_date, c.notes, c.customer_id, now, cid).run();
       if (!r.meta || !r.meta.changes) return reply({ ok: false, error: 'Not found.' }, 404);
+      await savePrefs(env, cid, b);
       return reply({ ok: true, id: cid });
     }
     const nid = id();
     await env.DB.batch([env.DB.prepare('INSERT INTO contacts (id, name, company, kind, county, phone, email, next_step, next_date, notes, customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(nid, c.name, c.company, c.kind, c.county, c.phone, c.email, c.next_step, c.next_date, c.notes, c.customer_id, now, now), audit(env, email, 'contact-added', nid, c.name)]);
+    await savePrefs(env, nid, b);
     return reply({ ok: true, id: nid });
   }
   if (path === '/admin/api/county' && method === 'POST') {

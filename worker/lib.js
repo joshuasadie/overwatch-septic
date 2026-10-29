@@ -132,6 +132,8 @@ export const SCHEMA = [
   "INSERT OR IGNORE INTO contacts (id, name, company, kind, county, phone, email, next_step, next_date, notes, created_at, updated_at) SELECT 'inst09', 'Rob Hartsell', 'Rob''s Backhoe Services, Aberdeen', 'Installer', 'Moore', '910-638-5519', '', 'Call to introduce Overwatch', '2026-11-06', 'Strong reviews; works closely with county health departments', '2026-10-29T17:15:00Z', '2026-10-29T17:15:00Z' WHERE NOT EXISTS (SELECT 1 FROM seeds WHERE k = 'contacts-2026-10-installers')",
   "INSERT OR IGNORE INTO contacts (id, name, company, kind, county, phone, email, next_step, next_date, notes, created_at, updated_at) SELECT 'inst10', 'Clean Septic Tank Services', 'Clean Septic Tank Services, Hillsborough', 'Installer', 'Orange', '919-291-6412', '', 'Call to introduce Overwatch', '2026-11-06', 'Mostly replacements', '2026-10-29T17:15:00Z', '2026-10-29T17:15:00Z' WHERE NOT EXISTS (SELECT 1 FROM seeds WHERE k = 'contacts-2026-10-installers')",
   "INSERT OR IGNORE INTO seeds (k) VALUES ('contacts-2026-10-installers')",
+  // extra contact fields kept beside the contacts table (repair preferences for installers)
+  "CREATE TABLE IF NOT EXISTS contact_extra (contact_id TEXT PRIMARY KEY, repair_prefs TEXT NOT NULL DEFAULT '')",
   'CREATE TABLE IF NOT EXISTS test_customers (customer_id TEXT PRIMARY KEY)',
   "CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, who TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '')",
 ];
