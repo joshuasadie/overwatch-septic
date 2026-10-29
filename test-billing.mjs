@@ -101,7 +101,7 @@ ok((await adm('/admin/api/invoice-release', { id: rA.fin.invoice })).status === 
 
 // county copy
 { const cs = (await J(await adm('/admin/api/counties'))).counties.map(c => c.name + ' ' + c.email).join(';');
-  ok(cs.includes('harnett khinson@harnett.org') && cs.includes('randolph eh-info@randolphcountync.gov') && cs.includes('wake ominspect@wake.gov') && cs.includes('chatham brad.jones@chathamcountync.gov') && cs.includes('lee envhealth@leecountync.gov') && cs.includes('orange ehapplications@orangecountync.gov'), 'county report addresses are filled in'); }
+  ok(cs.includes('harnett khinson@harnett.org') && cs.includes('randolph eh-info@randolphcountync.gov') && cs.includes('wake ominspect@wake.gov') && cs.includes('chatham brad.jones@chathamcountync.gov') && cs.includes('lee envhealth@leecountync.gov') && cs.includes('orange ehapplications@orangecountync.gov') && cs.includes('durham healthinspector@dconc.gov') && cs.includes('alamance eh.admin@alamancecountync.gov'), 'county report addresses are filled in'); }
 await adm('/admin/api/county', { name: 'chatham', remove: true });
 const rB = await rep('2026-10-21', '250'); sent.length = 0;
 await adm('/admin/api/invoice-paid', { id: rB.fin.invoice });

@@ -102,6 +102,10 @@ export const SCHEMA = [
   "INSERT OR IGNORE INTO seeds (k) VALUES ('counties-2026-10-lee')",
   "INSERT OR IGNORE INTO counties (name, email) SELECT 'orange', 'ehapplications@orangecountync.gov' WHERE NOT EXISTS (SELECT 1 FROM seeds WHERE k = 'counties-2026-10-orange')",
   "INSERT OR IGNORE INTO seeds (k) VALUES ('counties-2026-10-orange')",
+  "INSERT OR IGNORE INTO counties (name, email) SELECT 'durham', 'healthinspector@dconc.gov' WHERE NOT EXISTS (SELECT 1 FROM seeds WHERE k = 'counties-2026-10-durham')",
+  "INSERT OR IGNORE INTO seeds (k) VALUES ('counties-2026-10-durham')",
+  "INSERT OR IGNORE INTO counties (name, email) SELECT 'alamance', 'eh.admin@alamancecountync.gov' WHERE NOT EXISTS (SELECT 1 FROM seeds WHERE k = 'counties-2026-10-alamance')",
+  "INSERT OR IGNORE INTO seeds (k) VALUES ('counties-2026-10-alamance')",
   'CREATE TABLE IF NOT EXISTS test_customers (customer_id TEXT PRIMARY KEY)',
   "CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, who TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '')",
 ];
