@@ -36,7 +36,7 @@
     });
   }
   function loadCounties() {
-    return OW.api('/admin/api/counties').then(function (j) { if (j.ok) $('cty').innerHTML = j.counties.map(function (c) { return '<li><span><b>' + E(c.name.replace(/\b\w/g, function (x) { return x.toUpperCase(); })) + ' County</b><small>' + E(c.email) + '</small></span><button class="b danger" data-cdel="' + E(c.name) + '">Remove</button></li>'; }).join('') || '<li class="mute">No counties yet. Add one so reports and notices can reach it.</li>'; });
+    return OW.api('/admin/api/counties').then(function (j) { if (j.ok) $('ctyN').textContent = j.counties.length; if (j.ok) $('cty').innerHTML = j.counties.map(function (c) { return '<li><span><b>' + E(c.name.replace(/\b\w/g, function (x) { return x.toUpperCase(); })) + ' County</b><small>' + E(c.email) + '</small></span><button class="b danger" data-cdel="' + E(c.name) + '">Remove</button></li>'; }).join('') || '<li class="mute">No counties yet. Add one so reports and notices can reach it.</li>'; });
   }
   // ---- contacts
   var K = { list: [], kinds: [], kind: 'All', q: '', edit: '', toCustomer: '' };
@@ -52,6 +52,7 @@
     var today = new Date().toISOString().slice(0, 10), soon = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
     var due = K.list.filter(function (c) { return c.next_date && c.next_date <= soon; });
     $('kdue').innerHTML = due.length ? '<div style="background:var(--note);color:var(--noteink);border-radius:10px;padding:10px 14px;margin:6px 0"><b>Follow up this week (' + due.length + ')</b><br>' + due.map(function (c) { return E(c.name) + (c.company ? ', ' + E(c.company) : '') + ': ' + E(c.next_step || 'follow up') + ', ' + (c.next_date < today ? '<b>overdue ' + E(OW.date(c.next_date)) + '</b>' : E(OW.date(c.next_date))); }).join('<br>') + '</div>' : '';
+    $('kN').innerHTML = K.list.length + (due.length ? ' &middot; <span style="color:var(--warn)">' + due.length + ' to follow up</span>' : '');
     var counts = { All: K.list.length }; K.list.forEach(function (c) { counts[c.kind] = (counts[c.kind] || 0) + 1; });
     $('kchips').innerHTML = ['All'].concat(K.kinds.filter(function (k) { return counts[k]; })).map(function (k) { return '<button type="button" class="b' + (K.kind === k ? '' : ' alt') + '" data-kkind="' + E(k) + '" style="padding:4px 12px;min-height:0;font-size:14px">' + E(k) + ' ' + counts[k] + '</button>'; }).join('');
     var q = K.q.toLowerCase(), rows = K.list.filter(function (c) { return (K.kind === 'All' || c.kind === K.kind) && (!q || [c.name, c.company, c.county, c.email, c.notes].join(' ').toLowerCase().indexOf(q) >= 0); });
