@@ -48,17 +48,19 @@
       drawContacts();
     });
   }
+  // type colors: installers bronze, county blue, referrals green, leads orange
+  function kindColor(k) { return { Installer: 'var(--c1)', County: 'var(--c2)', Referral: 'var(--c3)', Lead: 'var(--warn)', Customer: 'var(--good)' }[k] || 'var(--mute)'; }
   function drawContacts() {
     var today = new Date().toISOString().slice(0, 10), soon = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
     var due = K.list.filter(function (c) { return c.next_date && c.next_date <= soon; });
     $('kdue').innerHTML = due.length ? '<div style="background:var(--note);color:var(--noteink);border-radius:10px;padding:10px 14px;margin:6px 0"><b>Follow up this week (' + due.length + ')</b><br>' + due.map(function (c) { return E(c.name) + (c.company ? ', ' + E(c.company) : '') + ': ' + E(c.next_step || 'follow up') + ', ' + (c.next_date < today ? '<b>overdue ' + E(OW.date(c.next_date)) + '</b>' : E(OW.date(c.next_date))); }).join('<br>') + '</div>' : '';
     $('kN').innerHTML = K.list.length + (due.length ? ' &middot; <span style="color:var(--warn)">' + due.length + ' to follow up</span>' : '');
     var counts = { All: K.list.length }; K.list.forEach(function (c) { counts[c.kind] = (counts[c.kind] || 0) + 1; });
-    $('kchips').innerHTML = ['All'].concat(K.kinds.filter(function (k) { return counts[k]; })).map(function (k) { return '<button type="button" class="b' + (K.kind === k ? '' : ' alt') + '" data-kkind="' + E(k) + '" style="padding:4px 12px;min-height:0;font-size:14px">' + E(k) + ' ' + counts[k] + '</button>'; }).join('');
+    $('kchips').innerHTML = ['All'].concat(K.kinds.filter(function (k) { return counts[k]; })).map(function (k) { return '<button type="button" class="b' + (K.kind === k ? '' : ' alt') + '" data-kkind="' + E(k) + '" style="padding:4px 12px;min-height:0;font-size:14px">' + (k === 'All' ? '' : '<span aria-hidden="true" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + kindColor(k) + ';margin-right:6px"></span>') + E(k) + ' ' + counts[k] + '</button>'; }).join('');
     var q = K.q.toLowerCase(), rows = K.list.filter(function (c) { return (K.kind === 'All' || c.kind === K.kind) && (!q || [c.name, c.company, c.county, c.email, c.notes].join(' ').toLowerCase().indexOf(q) >= 0); });
     $('kt').innerHTML = rows.map(function (c) {
       var reach = [c.phone && '<a href="tel:' + E(c.phone.replace(/[^\d+x]/g, '')) + '">' + E(c.phone) + '</a>', c.email && '<a href="mailto:' + E(c.email) + '">' + E(c.email) + '</a>'].filter(Boolean).join('<br>') || '-';
-      return '<tr><td><b>' + E(c.name) + '</b>' + (c.notes ? '<br><small class="mute">' + E(c.notes) + '</small>' : '') + '</td><td>' + E([c.company, c.county && c.county + ' County'].filter(Boolean).join(' · ') || '-') + '</td><td><span class="pill mute">' + E(c.kind) + '</span></td><td>' + reach + '</td><td>' + E(c.next_step || '-') + (c.next_date ? '<br><small class="mute">' + E(OW.date(c.next_date)) + '</small>' : '') + '</td><td><span class="row" style="gap:6px"><button class="b alt" type="button" data-kedit="' + E(c.id) + '">Edit</button>' + (c.kind === 'Lead' && !c.customer_id ? '<button class="b" type="button" data-kcust="' + E(c.id) + '">Make customer</button>' : '') + '<button class="b danger" type="button" data-kdel="' + E(c.id) + '">Remove</button></span></td></tr>';
+      return '<tr><td><b>' + E(c.name) + '</b>' + (c.notes ? '<br><small class="mute">' + E(c.notes) + '</small>' : '') + '</td><td>' + E([c.company, c.county && c.county + ' County'].filter(Boolean).join(' · ') || '-') + '</td><td><span class="pill" style="color:' + kindColor(c.kind) + '">' + E(c.kind) + '</span></td><td>' + reach + '</td><td>' + E(c.next_step || '-') + (c.next_date ? '<br><small class="mute">' + E(OW.date(c.next_date)) + '</small>' : '') + '</td><td><span class="row" style="gap:6px"><button class="b alt" type="button" data-kedit="' + E(c.id) + '">Edit</button>' + (c.kind === 'Lead' && !c.customer_id ? '<button class="b" type="button" data-kcust="' + E(c.id) + '">Make customer</button>' : '') + '<button class="b danger" type="button" data-kdel="' + E(c.id) + '">Remove</button></span></td></tr>';
     }).join('') || '<tr><td colspan="6" class="mute">No contacts match.</td></tr>';
   }
   function contactForm(c) {
