@@ -58,6 +58,7 @@ ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, rule
 sent.length = 0; j = await J(await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, annual_fee: '', inspection_fee: '250', visits: 'q1s', rule_set: '18E' } })); ok(j.ok && j.emailed, 'contract sent (priced per inspection, 18E)');
 { const k = (await J(await adm('/admin/api/customer/' + cid))).contracts[0]; ok(k.terms.annual_fee === '500' && k.terms.inspection_fee === '250' && k.terms.visits === 'q1s', 'stored: $250 per inspection, annual fee $500');
   ok(k.terms.rule_set === '18E' && /18E \.1303\(b\)/.test(k.terms.cite) && /Table XXXII/.test(JSON.stringify(k.text)) && !/Table V/.test(JSON.stringify(k.text)), 'stored 18E agreement cites 18E and Table XXXII'); }
+{ const cp = sent.find(m => m.to[0] === 'joshua@overwatchseptic.com' && /^\[Copy\] Agreement sent to/.test(m.subject)); ok(sent.length === 2 && cp && cp.text.includes('ann@home.com') && cp.text.includes('Inspection and Maintenance Agreement') && !/\/c\/[A-Za-z0-9_-]{20,}/.test(cp.text), 'you get a copy of the agreement email, without the signing link'); }
 const link = sent[0].text.match(/https:\/\/overwatchseptic\.com\/c\/([A-Za-z0-9_-]+)/); ok(!!link && sent[0].to[0] === 'ann@home.com', 'email has unique link');
 const t1 = link[1];
 ok((await call('/c/' + t1)).status === 200 && (await (await call('/c/' + t1)).text()) === 'A:/c/', 'signing page served for token path (no redirect that would drop the token)');
@@ -74,7 +75,7 @@ ok((await sign('Ann Home')).status === 400, 'cannot sign twice');
 // countersign
 j = await J(await adm('/admin/api/customer/' + cid)); const kid = j.contracts[0].id; ok(j.contracts[0].status === 'owner_signed', 'status owner_signed');
 ok((await adm('/admin/api/contract-void', { id: kid }).then(J)).ok, 'void allowed before complete (then re-create)');
-j = await J(await adm('/admin/api/contract', { customer_id: cid, terms })); const t2 = sent[sent.length - 1].text.match(/\/c\/([A-Za-z0-9_-]+)/)[1];
+j = await J(await adm('/admin/api/contract', { customer_id: cid, terms })); const t2 = sent.filter(m => m.to[0] === 'ann@home.com').pop().text.match(/\/c\/([A-Za-z0-9_-]+)/)[1];
 await call('/api/contract/' + t2 + '/sign', { method: 'POST', headers: { origin: O, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Ann Home', agree: true }) });
 j = await J(await adm('/admin/api/customer/' + cid)); const k2 = j.contracts.find(c => c.status === 'owner_signed').id;
 sent.length = 0; r = await adm('/admin/api/contract-sign', { id: k2, name: 'Joshua Klein' }); ok((await J(r)).ok, 'countersigned');

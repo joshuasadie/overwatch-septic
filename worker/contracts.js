@@ -52,7 +52,11 @@ export async function createContract(env, who, customer, termsIn) {
 }
 async function mailOwner(env, customer, token) {
   const link = `${siteOrigin(env)}/c/${token}`;
-  return sendMail(env, customer.email, 'Please review and sign your septic agreement', [`Hello ${customer.name},`, '', 'Your Inspection and Maintenance Agreement with Overwatch Septic is ready. Please read it and sign it here. The link works for ' + LINK_DAYS + ' days:', '', link, '', 'Signing is done by typing your name. After you sign, we sign, and you can see the signed agreement in your customer portal.', '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
+  const text = l => [`Hello ${customer.name},`, '', 'Your Inspection and Maintenance Agreement with Overwatch Septic is ready. Please read it and sign it here. The link works for ' + LINK_DAYS + ' days:', '', l, '', 'Signing is done by typing your name. After you sign, we sign, and you can see the signed agreement in your customer portal.', '', 'Overwatch Septic, LLC'].join('\n');
+  const sent = await sendMail(env, customer.email, 'Please review and sign your septic agreement', text(link), env.MAIL_TO);
+  // your copy, so you know it went out. The signing link is left out so only the owner can sign.
+  if (sent && env.MAIL_TO) await sendMail(env, env.MAIL_TO, `[Copy] Agreement sent to ${customer.name}`, [`Sent to ${customer.email} on ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}.`, '', '----- What they received -----', '', text('(signing link: sent only to the owner)')].join('\n'));
+  return sent;
 }
 export async function resendContract(env, who, cid) {
   const c = await env.DB.prepare('SELECT * FROM contracts WHERE id = ?').bind(cid).first();
