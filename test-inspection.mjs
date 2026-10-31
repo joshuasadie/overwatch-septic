@@ -90,6 +90,8 @@ ok((await adm('/admin/api/reports/' + r2.id + '/photo/1')).status === 200 && (aw
 await adm('/admin/api/county', { name: 'Chatham County', email: 'eh@chatham.gov' });
 await adm('/admin/api/report-finish', { id: r1.id, amount: '0' });
 sent.length = 0; j = await J(await adm('/admin/api/report-finish', { id: r2.id, amount: '0' })); ok(j.ok && j.released, 'finished and released with the fee waived');
+{ const om = sent.find(m => m.to[0] === 'ann@home.com' && /Your septic inspection report/.test(m.subject));
+  ok(om && om.html && om.html.includes('Your septic system check-up') && om.html.includes('Contactor is pitting') && !om.html.includes('PRIVATE') && /below/.test(om.text), "the owner's report arrives in the email itself, without your private comments"); }
 const cm = sent.find(m => m.to[0] === 'eh@chatham.gov'); ok(!!cm, 'county was emailed'); const link = cm.text.match(/\/r\/([A-Za-z0-9_-]+)/)[1];
 let r = await call('/r/' + link); const html = await r.text();
 ok(r.status === 200 && html.includes('CERTIFIED OPERATOR MAINTENANCE/MONITORING REPORT') && html.includes('P-2019-3381') && html.includes('SS-1019571') && html.includes('118% (outside 10% of design)') && html.includes('Needs maintenance'), 'county page is the technical state-style report with the certificate number');

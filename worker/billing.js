@@ -1,5 +1,5 @@
 // Billing: invoices, Stripe Checkout, the 3 business day hold, release of contracts and reports, and the daily unpaid sequence.
-import { countyInspectionHtml } from './inspection.js';
+import { countyInspectionHtml, ownerReportEmailHtml } from './inspection.js';
 import { reply, clean, id, rand, sha, siteOrigin, sendMail, esc, ensureSchema } from './lib.js';
 
 export const HOLD_DAYS = 3, NOTICE_DAYS = 30;
@@ -150,10 +150,18 @@ export async function releaseInvoice(env, inv, who, now = new Date()) {
 }
 export async function releaseReport(env, reportId, customer, nowIso = new Date().toISOString()) {
   await env.DB.prepare("INSERT INTO report_state (report_id, released_at) VALUES (?, ?) ON CONFLICT(report_id) DO UPDATE SET released_at = excluded.released_at").bind(reportId, nowIso).run();
-  const rep = await env.DB.prepare('SELECT visit_date FROM reports WHERE id = ?').bind(reportId).first();
+  const rep = await env.DB.prepare('SELECT visit_date, kind, pdf_key FROM reports WHERE id = ?').bind(reportId).first();
   if (!rep) return;
-  await sendMail(env, customer.email, 'Your septic visit report is ready', [`Hello ${customer.name},`, '', `The report from your visit on ${rep.visit_date} is ready. Sign in to your customer portal to see it: ${siteOrigin(env)}/login/`, '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
-  await sendCountyReport(env, reportId, customer);
+  // the owner's copy goes by email: the report itself (inspection) or the uploaded PDF attached
+  const extra = {};
+  try {
+    if (rep.kind === 'inspection') extra.html = await ownerReportEmailHtml(env, reportId, customer);
+    else if (rep.pdf_key && env.FILES) { const o = await env.FILES.get(rep.pdf_key); if (o) { const b = new Uint8Array(await o.arrayBuffer()); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); extra.attachments = [{ filename: `septic-report-${rep.visit_date}.pdf`, content: btoa(s) }]; } }
+  } catch { /* fall back to the plain email */ }
+  await sendMail(env, customer.email, `Your septic inspection report, ${rep.visit_date}`, [`Hello ${customer.name},`, '', `Your report from the visit on ${rep.visit_date} is ${extra.html ? 'below' : extra.attachments ? 'attached' : 'ready'}. Please keep a copy for your records. You can also sign in to your customer portal: ${siteOrigin(env)}/login/`, '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO, extra);
+  // the county may already have its copy (sent by day 25 while payment was pending)
+  const st = await env.DB.prepare('SELECT county_sent_at FROM report_state WHERE report_id = ?').bind(reportId).first();
+  if (!(st && st.county_sent_at)) await sendCountyReport(env, reportId, customer);
 }
 export async function sendCountyReport(env, reportId, customer) {
   const to = await getCounty(env, customer.county);
@@ -245,6 +253,14 @@ export async function runDaily(env, now = new Date()) {
       if (inv.term_date && today >= inv.term_date) { await env.DB.prepare("UPDATE invoices SET notice_state = 'final_drafted' WHERE id = ?").bind(inv.id).run(); await alertOwner(env, 'Final notice ready for your OK', `${c.name}'s agreement reaches its termination date (${niceDate(inv.term_date)}) unpaid. Review and send the final notice in the admin portal. Sending it cancels the agreement and tells the county.`); acted++; }
       else if (inv.last_reminder_date !== today && daysBetween(inv.last_reminder_date || inv.notice_sent_at.slice(0, 10), today) >= 7) await remind(`Reminder: agreement ends ${niceDate(inv.term_date)}`, [`Your invoice of ${amt} for the ${what} is still unpaid. Your agreement will end on ${niceDate(inv.term_date)} unless we receive payment before then.`], 'reminders = reminders');
     }
+  }
+  // 3. the county copy is due within 30 days of the inspection, paid or not (15A NCAC 18E .1304(c)).
+  //    Send it by day 25 for any report still held for payment. The owner's copy still waits for payment.
+  const held = (await env.DB.prepare("SELECT r.id, r.visit_date, r.customer_id FROM reports r JOIN report_state s ON s.report_id = r.id WHERE s.released_at = '' AND s.county_sent_at = ''").all()).results;
+  for (const r of held) {
+    if (daysBetween(r.visit_date, today) < 25) continue;
+    const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(r.customer_id).first(); if (!c) continue;
+    if (await sendCountyReport(env, r.id, c)) { acted++; await alertOwner(env, 'County copy sent before payment', `${c.name}'s report from ${r.visit_date} went to ${c.county} County today because the county must have it within 30 days of the inspection. The owner's copy is still waiting for payment.`); }
   }
   return acted;
 }

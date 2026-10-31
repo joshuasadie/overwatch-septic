@@ -13,10 +13,11 @@ export const siteOrigin = env => list(env.ALLOWED_ORIGINS)[0] || 'https://overwa
 export const originOk = (request, env) => { const o = request.headers.get('origin'); return !!o && list(env.ALLOWED_ORIGINS).includes(o); };
 export const getCookie = (request, name) => { for (const p of (request.headers.get('cookie') || '').split(/;\s*/)) { const i = p.indexOf('='); if (i > 0 && p.slice(0, i) === name) return p.slice(i + 1); } return ''; };
 
-export async function sendMail(env, to, subject, text, replyTo) {
+// extra: { html, attachments: [{ filename, content (base64) }] }
+export async function sendMail(env, to, subject, text, replyTo, extra = {}) {
   if (!env.RESEND_API_KEY || !env.MAIL_FROM) return false;
   try {
-    const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' }, body: JSON.stringify({ from: env.MAIL_FROM, to: [to], ...(replyTo ? { reply_to: replyTo } : {}), subject, text }) });
+    const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' }, body: JSON.stringify({ from: env.MAIL_FROM, to: [to], ...(replyTo ? { reply_to: replyTo } : {}), subject, text, ...(extra.html ? { html: extra.html } : {}), ...(extra.attachments && extra.attachments.length ? { attachments: extra.attachments } : {}) }) });
     return r.ok;
   } catch { return false; }
 }

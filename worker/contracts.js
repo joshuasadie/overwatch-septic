@@ -6,7 +6,7 @@ import { fmtPhone } from './inspection.js';
 
 const TOKEN = /^[A-Za-z0-9_-]{20,60}$/;
 export const LINK_DAYS = 14;
-const TERM_KEYS = ['date', 'owner_name', 'owner_address', 'county', 'system_address', 'permit', 'sys_type', 'rules', 'cite', 'contractor_name', 'contractor_address', 'health_dept', 'response_hours', 'annual_fee', 'increase_pct', 'interest_pct', 'repair_days', 'origination_fee', 'inspection_fee', 'visits', 'rule_set'];
+const TERM_KEYS = ['date', 'owner_name', 'owner_address', 'county', 'system_address', 'permit', 'sys_type', 'rules', 'cite', 'contractor_name', 'contractor_address', 'health_dept', 'response_hours', 'annual_fee', 'increase_pct', 'interest_pct', 'repair_days', 'origination_fee', 'inspection_fee', 'visits', 'rule_set', 'health_addr'];
 
 export function normalizeTerms(input, customer) {
   const t = { ...DEFAULT_TERMS, owner_name: customer.name, owner_address: customer.address, system_address: customer.address, county: customer.county, sys_type: customer.sys_type, permit: customer.permit, date: new Date().toISOString().slice(0, 10) };
@@ -35,6 +35,8 @@ export async function createContract(env, who, customer, termsIn) {
   if (terms.rule_set === '18E') { terms.cite = R18E.contract; terms.rules = R18E.rules; }
   else if (terms.rule_set && terms.rule_set !== '18A') return { status: 400, error: 'Choose which rules apply: 18E or 18A.' };
   else if (!terms.rule_set) delete terms.rule_set;
+  // agreement version 2: report, repair, operator, price and notice wording requested by owners (Oct 2026)
+  terms.v = 2; const op = { name: env.OPERATOR_NAME || '', cert: env.OPERATOR_CERT || '' }; if (op.name && op.cert) { terms.operator_name = op.name; terms.operator_cert = op.cert; }
   const miss = missingTerms(terms);
   if (miss.length) return { status: 400, error: 'Please fill in: ' + miss.join(', ') + '.' };
   if (!/^\d+(\.\d{1,2})?$/.test(terms.annual_fee.replace(/,/g, ''))) return { status: 400, error: 'The annual fee must be a number, like 500.' };

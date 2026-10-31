@@ -18,7 +18,7 @@ globalThis.fetch = async (u, o) => {
   return { ok: true, json: async () => ({ keys: [jwk] }) };
 };
 const O = 'https://overwatchseptic.com';
-const env = { DB, FILES, ASSETS: { fetch: async r => { const p = new URL(r.url).pathname; return p === '/c/index.html' ? new Response(null, { status: 307, headers: { location: '/c/' } }) : new Response('A:' + p); } }, ACCESS_TEAM_DOMAIN: 't.cloudflareaccess.com', ACCESS_AUD: 'AUD', ADMIN_EMAILS: 'joshua@overwatchseptic.com', ALLOWED_ORIGINS: O, TURNSTILE_SECRET: 's', RESEND_API_KEY: 'k', MAIL_TO: 'joshua@overwatchseptic.com', MAIL_FROM: 'O <joshua@overwatchseptic.com>' };
+const env = { OPERATOR_NAME: 'Joshua Klein', OPERATOR_CERT: 'SS-1019571', DB, FILES, ASSETS: { fetch: async r => { const p = new URL(r.url).pathname; return p === '/c/index.html' ? new Response(null, { status: 307, headers: { location: '/c/' } }) : new Response('A:' + p); } }, ACCESS_TEAM_DOMAIN: 't.cloudflareaccess.com', ACCESS_AUD: 'AUD', ADMIN_EMAILS: 'joshua@overwatchseptic.com', ALLOWED_ORIGINS: O, TURNSTILE_SECRET: 's', RESEND_API_KEY: 'k', MAIL_TO: 'joshua@overwatchseptic.com', MAIL_FROM: 'O <joshua@overwatchseptic.com>' };
 const call = (path, o = {}) => worker.fetch(new Request(O + path, o), env);
 const tok = await mkTok('Joshua@overwatchseptic.com');
 const adm = (path, body, extra = {}) => call(path, { method: body === undefined ? 'GET' : 'POST', headers: { 'cf-access-jwt-assertion': tok, origin: O, 'content-type': 'application/json', ...extra }, body: body === undefined ? undefined : (body instanceof ArrayBuffer ? body : JSON.stringify(body)) });
@@ -56,6 +56,12 @@ ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, rule
   ok(ct.annualFrom(250, 'q1s') === 500 && ct.annualFrom(250, '4') === 1000, 'annual fee is the steady yearly total');
   ok(ct.contractText({ ...base }).sections[1].p[0].startsWith('a) The Owner shall pay to the Contractor the sum of $500 per year for periodic'), 'older agreements keep their exact wording'); }
 sent.length = 0; j = await J(await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, annual_fee: '', inspection_fee: '250', visits: 'q1s', rule_set: '18E' } })); ok(j.ok && j.emailed, 'contract sent (priced per inspection, 18E)');
+{ const k = (await J(await adm('/admin/api/customer/' + cid))).contracts[0], tx = JSON.stringify(k.text);
+  ok(k.terms.v === 2 && /Inspections shall be performed by Joshua Klein, North Carolina Certified Subsurface Operator, Certificate No\. SS-1019571/.test(tx), 'new agreements name the operator and certificate');
+  ok(/The Contractor does not perform repairs/.test(tx) && /notify the Owner within twenty-four \(24\) hours/.test(tx) && /no repair work shall be performed without the Owner's prior approval/.test(tx), 'repairs need the owner\'s approval; emergencies reported within 24 hours');
+  ok(/The Owner's copy of each report shall be sent to the Owner by email once payment for that inspection has been received/.test(tx) && /18E \.1304\(g\)/.test(tx), 'reporting clause: county within 30 days, owner by email after payment, state data system');
+  ok(/The per-inspection fee may be amended upon sixty \(60\) days advance written notice/.test(tx) && !/The annual fee may be amended/.test(tx), 'price changes apply to the per-inspection fee');
+  ok(/not less than four \(4\) times in the first year and two \(2\) times per year thereafter, as required by the Operation Permit\./.test(tx), 'inspection frequency from the permit is stated'); }
 { const k = (await J(await adm('/admin/api/customer/' + cid))).contracts[0]; ok(k.terms.annual_fee === '500' && k.terms.inspection_fee === '250' && k.terms.visits === 'q1s', 'stored: $250 per inspection, annual fee $500');
   ok(k.terms.rule_set === '18E' && /18E \.1303\(b\)/.test(k.terms.cite) && /Table XXXII/.test(JSON.stringify(k.text)) && !/Table V/.test(JSON.stringify(k.text)), 'stored 18E agreement cites 18E and Table XXXII'); }
 { const cp = sent.find(m => m.to[0] === 'joshua@overwatchseptic.com' && /^\[Copy\] Agreement sent to/.test(m.subject)); ok(sent.length === 2 && cp && cp.text.includes('ann@home.com') && cp.text.includes('Inspection and Maintenance Agreement') && !/\/c\/[A-Za-z0-9_-]{20,}/.test(cp.text), 'you get a copy of the agreement email, without the signing link'); }
