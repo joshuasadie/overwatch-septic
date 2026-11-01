@@ -32,7 +32,7 @@ export function dateParts(iso) {
 }
 // how many inspections a year, in words, from the per-inspection pricing (agreement version 2)
 const visitWords = v => ({ '1': 'one (1) time per year', '2': 'two (2) times per year', '4': 'four (4) times per year', q1s: 'four (4) times in the first year and two (2) times per year thereafter' })[v] || '';
-// Agreement version 3 (18E systems): the state's 2025 "Sample Maintenance and Inspection Agreement" for 15A NCAC 18E, word for word,
+// Agreement version 3 (every new agreement, whatever the permit date): the state's 2025 "Sample Maintenance and Inspection Agreement" for 15A NCAC 18E, word for word,
 // with its blanks filled and these additions: the permit's inspection frequency (1b), report timing and delivery (1d), repairs (1f, 2b, 3d),
 // the named operator (1i), per-inspection pricing and price changes (2a), late interest (2a), and the health department contact (9).
 function contractText18E(x, dp) {
@@ -105,7 +105,7 @@ function contractText18E(x, dp) {
   };
 }
 export function contractText(t) {
-  if (Number((t || {}).v) >= 3 && (t || {}).rule_set === '18E') { const y = { ...DEFAULT_TERMS, ...t }; return contractText18E(y, dateParts(y.date || new Date().toISOString().slice(0, 10))); }
+  if (Number((t || {}).v) >= 3) { const y = { ...DEFAULT_TERMS, ...t }; return contractText18E(y, dateParts(y.date || new Date().toISOString().slice(0, 10))); }
   const x = { ...DEFAULT_TERMS, ...t }, dp = dateParts(x.date || new Date().toISOString().slice(0, 10)), ty = T(x.sys_type), V2 = Number(x.v) >= 2, E18 = x.rule_set === '18E', cite = E18 ? R18E.contract : T(x.cite), citeT = E18 ? R18E.table : cite, rules = E18 ? R18E.rules : T(x.rules);
   const maint = (x.maintenance || []).filter(Boolean).map((m, i) => `${i + 1}) ${T(m)}`);
   return {
