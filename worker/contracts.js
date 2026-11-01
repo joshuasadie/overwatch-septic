@@ -6,7 +6,7 @@ import { fmtPhone } from './inspection.js';
 
 const TOKEN = /^[A-Za-z0-9_-]{20,60}$/;
 export const LINK_DAYS = 14;
-const TERM_KEYS = ['date', 'owner_name', 'owner_address', 'county', 'system_address', 'permit', 'sys_type', 'rules', 'cite', 'contractor_name', 'contractor_address', 'health_dept', 'response_hours', 'annual_fee', 'increase_pct', 'interest_pct', 'repair_days', 'origination_fee', 'inspection_fee', 'visits', 'rule_set', 'health_addr', 'approval_no', 'health_contact'];
+const TERM_KEYS = ['date', 'owner_name', 'owner_address', 'county', 'system_address', 'permit', 'sys_type', 'rules', 'cite', 'contractor_name', 'contractor_address', 'health_dept', 'response_hours', 'annual_fee', 'increase_pct', 'interest_pct', 'repair_days', 'origination_fee', 'inspection_fee', 'visits', 'rule_set', 'health_addr', 'approval_no', 'health_contact', 'permit_issued', 'emergency_fee'];
 
 export function normalizeTerms(input, customer) {
   const t = { ...DEFAULT_TERMS, owner_name: customer.name, owner_address: customer.address, system_address: customer.address, county: customer.county, sys_type: customer.sys_type, permit: customer.permit, date: new Date().toISOString().slice(0, 10) };

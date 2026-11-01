@@ -175,12 +175,13 @@
       '<p id="k_rsw" style="background:var(--note);color:var(--noteink);border-radius:10px;padding:10px 14px;margin:8px 0 0;font-weight:600">Checking System setup for the permit date…</p>' +
       '<label for="k_maint">Routine maintenance (one per line)</label><textarea id="k_maint" style="min-height:120px">' + maintDefault(c) + '</textarea>' +
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Email signing link to ' + E(c.name.split(' ')[0]) + '</button></div><div class="msg" id="km" role="status"></div></form>';
+    var permitIssued = '';
     var showTotal = function () { $('k_tot').textContent = feeTotal($('k_per').value, $('k_visits').value); };
     $('k_per').addEventListener('input', showTotal); $('k_visits').addEventListener('change', showTotal); showTotal();
     OW.api('/admin/api/system?customer_id=' + c.id + '&date=' + today).then(function (j) {
       var pm = (j && j.ok && j.system && j.system.permit) || {}, f = FREQ_VISITS[pm.freq], rs = ruleSetFor(pm.issued);
       if (f && $('k_visits')) { $('k_visits').value = f; showTotal(); }
-      if (pm.other_no && $('k_appr') && !$('k_appr').value) $('k_appr').value = pm.other_no;
+      if (pm.other_no && $('k_appr') && !$('k_appr').value) $('k_appr').value = pm.other_no; permitIssued = pm.issued || '';
       if (!$('k_rs')) return;
       if (rs) {
         var said = 'Set from System setup: permit issued ' + OW.date(pm.issued) + '.';
@@ -195,7 +196,7 @@
       if (!v('k_rs')) { $('km').className = 'msg err'; $('km').textContent = 'Choose which rules apply. Check the permit date.'; return; }
       if (!/^\d+(\.\d{1,2})?$/.test(per) || Number(per) <= 0) { $('km').className = 'msg err'; $('km').textContent = 'Enter the fee per inspection, like 250.'; return; }
       $('km').className = 'msg'; $('km').textContent = 'Sending...';
-      OW.api('/admin/api/contract', { customer_id: c.id, terms: { contractor_name: v('k_contractor'), contractor_address: v('k_caddr'), health_dept: v('k_health'), health_addr: v('k_haddr'), health_contact: v('k_hcon'), approval_no: v('k_appr'), inspection_fee: per, visits: v('k_visits'), origination_fee: v('k_orig'), date: v('k_date'), response_hours: v('k_resp'), rule_set: v('k_rs'), maintenance: v('k_maint').split('\n') } }).then(function (j) {
+      OW.api('/admin/api/contract', { customer_id: c.id, terms: { contractor_name: v('k_contractor'), contractor_address: v('k_caddr'), health_dept: v('k_health'), health_addr: v('k_haddr'), health_contact: v('k_hcon'), approval_no: v('k_appr'), permit_issued: permitIssued, inspection_fee: per, visits: v('k_visits'), origination_fee: v('k_orig'), date: v('k_date'), response_hours: v('k_resp'), rule_set: v('k_rs'), maintenance: v('k_maint').split('\n') } }).then(function (j) {
         if (!j.ok) { $('km').className = 'msg err'; $('km').textContent = j.error; return; }
         LS.set('ow_cn', v('k_contractor')); LS.set('ow_per', per); LS.set('ow_orig', v('k_orig')); LS.set('ow_ca', v('k_caddr')); LS.set('ow_hd_' + (c.county || ''), v('k_health')); LS.set('ow_ha_' + (c.county || ''), v('k_haddr')); LS.set('ow_hc_' + (c.county || ''), v('k_hcon'));
         OW.toast(j.emailed ? 'Signing link emailed.' : 'Saved, but the email did not send. Use Resend link.'); refresh();
