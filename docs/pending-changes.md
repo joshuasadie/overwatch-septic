@@ -16,6 +16,10 @@ New contracts for systems permitted on or after Jan 1, 2024 use the state's 2025
 - The signature block says "Operator"
 Systems permitted before 2024 still get version 2 (the 18A text). Signed agreements are unchanged.
 
+### Contract details come from the permit (added Nov 1)
+New contracts take these from the permit in System setup: owner name(s), mailing address, property address(es) with the parcel number, county, system type, issue date and approval number. Anything left blank in System setup comes from the customer record.
+Also added to version 3: either co-owner may give approvals (2(d)), there's no charge for county inspections (2(a)), and emergency make-safe steps are billed at $150 each (1(f)).
+
 ### Report delivery (updated Nov 1)
 - Day 25, unpaid: the county copy and the owner's copy both go. The owner's copy says "payment still due" and includes the pay link. Josh gets an email. The portal copy unlocks once paid. When payment comes in, the owner is not emailed again.
 
@@ -58,7 +62,7 @@ The 2025 sample cites 18E only, with no 18A option, which supports the 18E-only 
 The sample leaves fees, interest, the yearly increase cap, the per-inspection price and response hours blank or out, so version 2's additions there are allowed.
 
 ## Before relying on version 2
-- Lawyer review of 1(c) (payment tie-in, and item 1 above), 1(e) (repair rewrite) and 2(a) (per-inspection pricing).
+- Lawyer review of 1(c) (payment tie-in, and item 1 above), 2(d) (co-owners jointly and severally responsible), 1(e) (repair rewrite) and 2(a) (per-inspection pricing).
 
 ## Then, for Sean Wilkins
 1. System setup: enter the permit issued date, Oct 19, 2026.
