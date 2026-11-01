@@ -28,11 +28,23 @@ Signed and already-sent agreements keep their exact original text.
 - Josh gets a "[Copy] Agreement sent to ..." email each time an agreement is sent or resent. The signing link is left out of his copy.
 
 ## Proposed, not built yet
-- 18E only for new contracts: remove the "Rules that apply" menu (or keep it as a hidden override). Signed 18A agreements keep their wording until renewed. Confirm with Brad Jones first: "Should all new O&M contracts cite 18E, even for systems first permitted under 18A?"
-- Compare version 2 with the state's newer sample, "Sample Maintenance and Inspection Agreement" (dated June 10, 2025, on the state's 18E resources page). Josh to download and attach it.
+- 18E only for new contracts: remove the "Rules that apply" menu (or keep it as a hidden override). Signed 18A agreements keep their wording until renewed. Confirm with Brad Jones first: "Should all new O&M contracts cite 18E, even for systems first permitted under 18A?" Also ask him about witness/notary lines (item 6 below).
+
+### Compared with the state's 2025 (18E) sample: Josh attached it Nov 1
+The 2025 sample cites 18E only, with no 18A option, which supports the 18E-only change above. Gaps found:
+
+1. **Owner's report timing (needs a decision).** The sample, and 18E .1304(c), say the report goes to the Owner, the manufacturer and the county. Version 2 holds the owner's copy until payment, so an unpaid owner could go past 30 days without a report. Proposed fix: on day 25 the daily job sends the owner's copy along with the county's, marked "payment still due". Payment is still enforced by late interest and termination for cause under 3(d).
+2. **Repairs wording conflicts (fix).** Version 2's 1(e) says Overwatch does not repair, but 2(b) and 3(d) still say the owner shall "request the Contractor to complete needed repairs". Proposed: "provide the Contractor evidence that the needed repairs were completed by a licensed contractor", plus the same change in 3(d).
+3. **Approval number (add).** The sample's maintenance clause cites the Operation Permit number, the Provisional or Innovative Approval number, and 18E Section .1300. Proposed: a new "Approval no." field, e.g. Perc-Rite IWWS-1993-01-R9A for Sean.
+4. **Updated terms (18E contracts).** "On-site wastewater treatment and dispersal system" and "Wastewater Treatment and Dispersal Systems" replace the 2005 sample's "ground absorption sewage treatment system" and "Sanitary Sewage Collection, Treatment and Disposal".
+5. **Health department contact name (optional).** The sample's Notice block asks for a contact name as well as an address.
+6. **Witness/notary lines (ask).** The sample has a witness/notary line under each signature. The site uses e-signatures with no witness. Ask Brad whether Chatham expects it.
+7. "Operator" vs "Contractor": no change needed. Same meaning.
+
+The sample leaves fees, interest, the yearly increase cap, the per-inspection price and response hours blank or out, so version 2's additions there are allowed.
 
 ## Before relying on version 2
-- Lawyer review of 1(c) (payment tie-in), 1(e) (repair rewrite) and 2(a) (per-inspection pricing).
+- Lawyer review of 1(c) (payment tie-in, and item 1 above), 1(e) (repair rewrite) and 2(a) (per-inspection pricing).
 
 ## Then, for Sean Wilkins
 1. System setup: enter the permit issued date, Oct 19, 2026.
