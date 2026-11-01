@@ -4,6 +4,21 @@ Last updated: November 1, 2026. Branch: `report-payment-flow` (built, tested, no
 
 ## Built on the branch, waiting for Josh's OK
 
+### Agreement version 3: the state's 18E sample (added Nov 1)
+New contracts for systems permitted on or after Jan 1, 2024 use the state's 2025 "Sample Maintenance and Inspection Agreement" (15A NCAC 18E) word for word, using its terms ("Operator", "on-site wastewater treatment and dispersal system"). Blanks are filled in, and these additions are clearly marked:
+- 1(b): not less than the inspection frequency on the Operation Permit (Sean's request 1)
+- 1(c): Operation Permit number and Provisional/Innovative Approval number (from System setup)
+- 1(d): reports within 30 days (.1304(c)) and to the state data system (.1304(g)). The owner's copy is emailed when paid or on day 25, whichever is earlier (request 3)
+- 1(f): the owner picks who repairs. Overwatch may do repairs but doesn't have to, and they are billed. No repairs without the owner's approval. Emergency make-safe steps, with the owner told within 24 hours (request 6). 2(b) and 3(d)(2) match.
+- 1(i): named operator and certificate number (request 4)
+- 2(a): $250 per inspection × 2 = $500 a year. The per-inspection fee may change on 60 days' notice, by no more than 10% a year. Interest of 1.5% a month on late payments (request 7)
+- 9: Operator address 374 Hubert Herndon Rd. Health department contact name, department and address (request 5)
+- The signature block says "Operator"
+Systems permitted before 2024 still get version 2 (the 18A text). Signed agreements are unchanged.
+
+### Report delivery (updated Nov 1)
+- Day 25, unpaid: the county copy and the owner's copy both go. The owner's copy says "payment still due" and includes the pay link. Josh gets an email. The portal copy unlocks once paid. When payment comes in, the owner is not emailed again.
+
 ### Contract wording: agreement version 2 (new agreements only)
 Signed and already-sent agreements keep their exact original text.
 
@@ -20,9 +35,8 @@ Signed and already-sent agreements keep their exact original text.
 - New field: health department mailing address (fills in Chatham's).
 - Contractor address fills in 374 Hubert Herndon Rd, Chapel Hill by default.
 
-### Report delivery
-- County copy: if payment is still pending 25 days after the visit, the daily job sends the county its copy and emails Josh. Keeps the 30-day rule.
-- Owner's copy: waits for payment. Once payment clears, the owner gets the report in the email itself (uploaded PDF reports are attached). The county is not sent a second copy.
+### Report delivery (version 2 wording, now superseded by the update above)
+- Paid before day 25: the owner gets the report by email (PDF attached for uploaded reports), and the county gets its copy.
 
 ### Contract emails
 - Josh gets a "[Copy] Agreement sent to ..." email each time an agreement is sent or resent. The signing link is left out of his copy.

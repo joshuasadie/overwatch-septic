@@ -91,6 +91,7 @@ export const SCHEMA = [
   'CREATE INDEX IF NOT EXISTS invoices_ref ON invoices (ref_id)',
   "CREATE TABLE IF NOT EXISTS report_state (report_id TEXT PRIMARY KEY, released_at TEXT NOT NULL DEFAULT '', county_sent_at TEXT NOT NULL DEFAULT '', county_to TEXT NOT NULL DEFAULT '', token_hash TEXT NOT NULL DEFAULT '', token_exp TEXT NOT NULL DEFAULT '')",
   'CREATE INDEX IF NOT EXISTS report_state_token ON report_state (token_hash)',
+  "CREATE TABLE IF NOT EXISTS report_owner_sent (report_id TEXT PRIMARY KEY, sent_at TEXT NOT NULL DEFAULT '')",
   'CREATE TABLE IF NOT EXISTS counties (name TEXT PRIMARY KEY, email TEXT NOT NULL)',
   // County addresses for operator reports, from each county's reply (Oct 2026). Added once; edits and removals in the admin portal stick.
   'CREATE TABLE IF NOT EXISTS seeds (k TEXT PRIMARY KEY)',

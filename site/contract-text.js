@@ -32,7 +32,79 @@ export function dateParts(iso) {
 }
 // how many inspections a year, in words, from the per-inspection pricing (agreement version 2)
 const visitWords = v => ({ '1': 'one (1) time per year', '2': 'two (2) times per year', '4': 'four (4) times per year', q1s: 'four (4) times in the first year and two (2) times per year thereafter' })[v] || '';
+// Agreement version 3 (18E systems): the state's 2025 "Sample Maintenance and Inspection Agreement" for 15A NCAC 18E, word for word,
+// with its blanks filled and these additions: the permit's inspection frequency (1b), report timing and delivery (1d), repairs (1f, 2b, 3d),
+// the named operator (1i), per-inspection pricing and price changes (2a), late interest (2a), and the health department contact (9).
+function contractText18E(x, dp) {
+  const ty = T(x.sys_type), vw = visitWords(T(x.visits)), tbl = 'Table XXXII of 15A NCAC 18E .1301(b)';
+  const maint = (x.maintenance || []).filter(Boolean).map((m, i) => `${i + 1}. ${T(m)}`);
+  const hd = [T(x.health_contact), T(x.health_dept), T(x.health_addr)].filter(Boolean).join(', ');
+  return {
+    title: 'MAINTENANCE AND INSPECTION AGREEMENT', party: 'Operator',
+    intro: [
+      'STATE OF NORTH CAROLINA',
+      `COUNTY OF ${T(x.county)}`,
+      `This agreement is made and entered into this ${dp.day} day of ${dp.month}, ${dp.year}, by and between ${T(x.owner_name)} (hereinafter referred to as the Owner) and ${T(x.contractor_name)} (hereinafter referred to as the Operator).`,
+      'WITNESSETH',
+      `WHEREAS the Owner owns or controls the property upon which an on-site wastewater treatment and dispersal system (hereinafter system) is installed, such system being designated a Type ${ty} system under 15A NCAC 18E, Wastewater Treatment and Dispersal Systems; and`,
+      'WHEREAS 15A NCAC 18E .1303(b) requires a contract to be executed between the system owner and a management entity prior to the issuance of an Operation Permit for said system; and',
+      'WHEREAS 15A NCAC 18E .1303(b) requires that a condition of the Operation Permit for said system be that a properly executed contract between the system owner and a management entity, shall be in effect for as long as the system is in use; and',
+      `WHEREAS the Operator is a management entity, of a type identified by 15A NCAC 18E .1301 to manage a Type ${ty} system.`,
+      'NOW THEREFORE, in consideration of the premises and of the mutual covenants and promises contained in this Agreement, it is hereby agreed by and between the Owner and the Operator as stipulated below.',
+    ],
+    sections: [
+      { h: "1) The Operator's Obligations", p: [
+        `(a) The Operator shall perform the following services on the Owner's system located at: ${T(x.system_address)}: the inspections, routine maintenance procedures and reports described in Subparagraphs (b) through (d) below.`,
+        `(b) The Operator shall inspect the system at a minimum at the frequency specified in ${tbl} for a Type ${ty} System${vw ? `, and in any case not less than ${vw}, as required by the Operation Permit` : ''}.`,
+        `(c) The Operator shall perform the following routine maintenance procedures in accordance with the conditions on Operation Permit${T(x.permit) ? ' Number ' + T(x.permit) : ''}${T(x.approval_no) ? ', the requirements in the Provisional or Innovative Approval Number ' + T(x.approval_no) : ''}, and the requirements in 15A NCAC 18E Section .1300:`,
+        ...maint,
+        `(d) The Operator shall report the results of their inspections to the Owner, Manufacturer, and Local Health Department at the frequency specified in ${tbl} for a Type ${ty} System. Each report shall be provided within thirty (30) days of the inspection, as required by 15A NCAC 18E .1304(c), and submitted to the Department's centralized data management system as required by 15A NCAC 18E .1304(g). The Owner's copy shall be sent to the Owner by email when payment for that inspection is received, or on the twenty-fifth (25th) day after the inspection, whichever is earlier. The Owner is responsible for keeping copies of the reports.`,
+        '(e) If an inspection indicates the need for system repairs, the Operator shall notify the Local Health Department within 48 hours of the inspection.',
+        "(f) The Operator shall notify the Owner of needed repairs that are outside the scope of routine maintenance described in Subparagraph (c) above. The Owner may select the person or company that performs the repairs. The Operator may, but is not required to, perform repairs at the Owner's request. Any repair the Operator agrees to perform shall be billed at the Operator's normal charge for services and materials. No repair work shall be performed without the Owner's prior approval, except that where immediate action is required to prevent an unsafe condition, the Operator may take temporary steps to make the system safe, such as shutting off a pump, and shall notify the Owner within twenty-four (24) hours.",
+        `(g) The Operator shall employ or contract with a certified operator(s) if required by ${tbl} for a Type ${ty} System.`,
+        `(h) The Operator shall respond to a request for a nonscheduled service or maintenance call within ${T(x.response_hours)} hours after receipt of such request.`,
+        ...(T(x.operator_name) ? [`(i) Inspections shall be performed by ${T(x.operator_name)}, North Carolina Certified Subsurface Operator, Certificate No. ${T(x.operator_cert)}, or by another operator holding the certification required for this system.`] : []),
+      ] },
+      { h: "2) The Owner's Obligations", p: [
+        `(a) The Owner shall pay to the Operator ${feeClause(x)} for required inspections, routine maintenance procedures, and reports. ${T(x.inspection_fee) ? `Each inspection is billed when it is performed. Any inspection or visit beyond those required by the Operation Permit will be billed at the Operator's normal and customary fees. The per-inspection fee may be amended upon sixty (60) days advance written notice to the Owner, but may not be increased by more than ${T(x.increase_pct)} percent per year. ` : ''}The Owner shall pay to the Operator his normal and customary fees for any work performed on the system as a result of nonscheduled service or maintenance calls. All fees are due and payable within thirty (30) days of billing. Payments unpaid after thirty (30) days shall accrue interest from the due date until paid at a rate of ${T(x.interest_pct)} percent per month.`,
+        `(b) Within ${T(x.repair_days)} days of receipt of notice of needed repairs required pursuant to Paragraph (1)(e) above, the Owner shall request the Operator to complete needed repairs, if the Operator agrees to do so, or shall provide to the Operator evidence that the needed repairs were satisfactorily completed by another entity.`,
+        '(c) The Owner shall provide the Operator with access to the system as is reasonably necessary for the Operator to comply with the terms of this Agreement.',
+      ] },
+      { h: '3) Term', p: [
+        'This Agreement shall remain in effect until terminated.',
+        '(a) This agreement shall automatically terminate if the Operation Permit for the system is revoked, and all appeals of the revocation are exhausted or the time for requesting an appeal has passed.',
+        '(b) The Parties may mutually agree to terminate this Agreement by giving written notice of termination by mutual consent to the Local Health Department 30 days in advance of the date of termination.',
+        '(c) The Owner may terminate this Agreement by giving notice to the Operator and to the Local Health Department 30 days in advance of the date of termination.',
+        '(d) The Operator may terminate this Agreement for cause by giving written notice of intent to terminate this Agreement to the Owner and to the Local Health Department 30 days in advance of the date of termination. Cause shall be defined as:',
+        '1. Failure to remit payment for any bill for services performed under and in accordance with this Agreement if said bill is not paid within thirty (30) days of receipt by the Owner of the bill. If said bill is paid after notice of termination of this Agreement, the Agreement shall continue in effect;',
+        `2. Failure of the Owner to provide to the Operator authorization to complete needed repairs, if the Operator has agreed to perform them, or satisfactory evidence that needed repairs to the system were completed by another entity within ${T(x.repair_days)} days of receipt of notice of needed repairs pursuant to Paragraph (1)(e) above. If authorization to complete needed repairs or evidence of completion of repairs is provided after notice of termination is given but prior to the date of termination of this Agreement, this Agreement shall continue in effect; or`,
+        '3. Failure of the Owner to allow the Operator access to the system as is reasonably necessary in order for the Operator to comply with the terms of this Agreement.',
+        '(e) The Operator may not terminate this Agreement without cause but may assign its rights and duties under this Agreement as provided for in Paragraph (4), below.',
+      ] },
+      { h: '4) Assignment', p: [
+        '(a) The Owner shall notify the Operator of the name and address of any purchaser of the property on which the system is located. The Owner shall also notify any purchaser of the property on which the system is located of the existence of this Agreement and shall assign all rights and duties under this Agreement to said purchaser.',
+        `(b) The Operator may assign its rights and duties under this Agreement to another management entity, which is qualified pursuant to 15A NCAC 18E Section .1300 to manage a Type ${ty} system upon 30 days written notice to the Owner and to the local health department.`,
+      ] },
+      { h: '5) Subcontractors', p: ["The Operator may subcontract with such manufacturers, suppliers and Operators as it deems desirable to perform any of the Operator's duties under this Agreement. The Operator shall at all times remain responsible for the performance of and payment for all work performed by all suboperators."] },
+      { h: '6) Representations', p: ['The Parties represent to each other that each has the power, authority and legal right to enter into and perform its obligations as set forth in this Agreement.'] },
+      { h: '7) Regulatory Amendments', p: ['References in this Agreement to sections of the Administrative Code shall include such rules as they may be amended in the future.'] },
+      { h: '8) No Implied Waiver', p: ['The waiver by either Party, of the default or a breach by the other Party of any provision of this Agreement shall not operate or be construed to operate as a waiver of any subsequent default or breach. The failure at any time of either Party to enforce any provision of this Agreement (a) shall not be construed to be a waiver of such provisions, or of any other provision; and (b) shall not in any way affect the validity of this Agreement, or any part of this Agreement, or the right of either Party thereafter to enforce each and every provision of this Agreement.'] },
+      { h: '9) Notice', p: [
+        'Every notice required under this Agreement shall be in writing and shall be deemed sufficiently given if delivered in person or sent by certified or registered mail, return receipt requested, postage prepaid to the Party to be notified and addressed as follows:',
+        `Owner Name and Address: ${T(x.owner_name)}, ${T(x.owner_address)}`,
+        `Operator Name and Address: ${T(x.contractor_name)}, ${T(x.contractor_address)}`,
+        `Local Health Department Contact Name and Address: ${hd}`,
+        'The date of any Notice shall be the date of personal delivery or the date shown on the return receipt as the date of delivery or attempted delivery, as the case may be. Changes in the respective addresses to which notice may be directed may be made from time to time by either Party by notice to the other party.',
+      ] },
+      { h: '10) Governing Law', p: ['This Agreement and any questions concerning its validity, the system construction or performance shall be governed by the laws of the State of North Carolina, notwithstanding the place of execution, or the order in which the signatures of the Parties are affixed.'] },
+      { h: '11) Entire Agreement and Amendment', p: ['This Agreement supersedes all prior negotiations, agreements and understandings between the Parties with respect to the subject matter hereof and constitutes the entire Agreement between the Parties with respect to the subject matter hereof. To be effective, any amendment or modification to this Agreement must be in writing and must be signed by the Parties.'] },
+      { h: '12) Severability', p: ['In the event that any provision of this Agreement shall, for any reason, be determined to be invalid, illegal or unenforceable in any respect, the Parties shall negotiate in good faith and agree to such amendments, modifications or supplements of or to this Agreement or such other appropriate actions as shall, to the maximum practicable in light of such determination, implement and give effect to the intentions of the Parties as reflected in this Agreement, and the other provisions of this Agreement shall, as so amended, modified, supplemented or otherwise affected by such actions, remain in full force and effect.'] },
+    ],
+    closing: 'IN TESTIMONY WHEREOF, the Parties hereto have executed this Agreement in duplicate originals, one of which is retained by each of the Parties, the day and year first above written.',
+  };
+}
 export function contractText(t) {
+  if (Number((t || {}).v) >= 3 && (t || {}).rule_set === '18E') { const y = { ...DEFAULT_TERMS, ...t }; return contractText18E(y, dateParts(y.date || new Date().toISOString().slice(0, 10))); }
   const x = { ...DEFAULT_TERMS, ...t }, dp = dateParts(x.date || new Date().toISOString().slice(0, 10)), ty = T(x.sys_type), V2 = Number(x.v) >= 2, E18 = x.rule_set === '18E', cite = E18 ? R18E.contract : T(x.cite), citeT = E18 ? R18E.table : cite, rules = E18 ? R18E.rules : T(x.rules);
   const maint = (x.maintenance || []).filter(Boolean).map((m, i) => `${i + 1}) ${T(m)}`);
   return {

@@ -164,10 +164,11 @@
   OWA.visitFee = function () { return contractVisitFee(S.d); };
   function contractForm() {
     var c = S.d.customer, today = new Date().toISOString().slice(0, 10);
-    $('panel').innerHTML = '<h2>New contract</h2><p class="mute" style="margin:0 0 4px">The text is the state sample, except that paragraph 2(a) prices it per inspection and permits from 2024 on cite the 18E rules. These fields fill its blanks.</p><form id="kf" novalidate><div class="two">' +
+    $('panel').innerHTML = '<h2>New contract</h2><p class="mute" style="margin:0 0 4px">Permits from 2024 on use the state\'s 18E sample agreement (2025); older permits use the 18A sample. Additions are per-inspection pricing, report delivery, repairs and the named operator. These fields fill its blanks.</p><form id="kf" novalidate><div class="two">' +
       field('k_contractor', 'Contractor name', LS.get('ow_cn') || 'Overwatch Septic, LLC') + field('k_per', 'Fee per inspection ($)', LS.get('ow_per') || (S.cfg && S.cfg.defaults.visit) || '250', 'inputmode="decimal"') +
       '<div><label for="k_visits">Inspections per year, per the permit</label><select id="k_visits">' + VISITS.map(function (v) { return '<option value="' + v[0] + '">' + v[1] + '</option>'; }).join('') + '</select></div>' + field('k_orig', 'Origination fee, billed when you countersign ($, 0 for none)', LS.get('ow_orig') || (S.cfg && S.cfg.defaults.origination) || '100', 'inputmode="decimal"') +
       field('k_caddr', 'Contractor mailing address (for notices)', LS.get('ow_ca') || '374 Hubert Herndon Rd, Chapel Hill, NC 27516') + field('k_health', 'Local health department', LS.get('ow_hd_' + (c.county || '')) || (/^chatham$/i.test(c.county || '') ? 'Chatham County Public Health Department, Environmental Health Division' : c.county ? c.county + ' County Environmental Health' : '')) + field('k_haddr', 'Health department mailing address (for notices)', LS.get('ow_ha_' + (c.county || '')) || (/^chatham$/i.test(c.county || '') ? 'PO Box 130, 80 East St., Pittsboro, NC 27312' : '')) +
+      field('k_hcon', 'Health department contact name (optional)', LS.get('ow_hc_' + (c.county || '')) || '') + field('k_appr', 'Provisional or Innovative Approval no. (from System setup)', '') +
       field('k_date', 'Agreement date', today, 'type="date"') + field('k_resp', 'Response time (hours)', '48') + '</div>' +
       '<p id="k_tot" role="status" style="background:var(--note);color:var(--noteink);border-radius:10px;padding:10px 14px;margin:14px 0 0;font-weight:600"></p><p class="mute" style="margin:4px 0 0;font-size:14px">Each inspection is billed at this fee when you upload its report. Extra visits are billed at your normal fees.</p>' +
       '<label for="k_rs">Rules that apply</label><select id="k_rs"><option value="">Choose…</option><option value="18E">15A NCAC 18E (permit issued January 1, 2024 or later)</option><option value="18A">15A NCAC 18A .1900 (permit issued before 2024)</option></select>' +
@@ -179,6 +180,7 @@
     OW.api('/admin/api/system?customer_id=' + c.id + '&date=' + today).then(function (j) {
       var pm = (j && j.ok && j.system && j.system.permit) || {}, f = FREQ_VISITS[pm.freq], rs = ruleSetFor(pm.issued);
       if (f && $('k_visits')) { $('k_visits').value = f; showTotal(); }
+      if (pm.other_no && $('k_appr') && !$('k_appr').value) $('k_appr').value = pm.other_no;
       if (!$('k_rs')) return;
       if (rs) {
         var said = 'Set from System setup: permit issued ' + OW.date(pm.issued) + '.';
@@ -193,9 +195,9 @@
       if (!v('k_rs')) { $('km').className = 'msg err'; $('km').textContent = 'Choose which rules apply. Check the permit date.'; return; }
       if (!/^\d+(\.\d{1,2})?$/.test(per) || Number(per) <= 0) { $('km').className = 'msg err'; $('km').textContent = 'Enter the fee per inspection, like 250.'; return; }
       $('km').className = 'msg'; $('km').textContent = 'Sending...';
-      OW.api('/admin/api/contract', { customer_id: c.id, terms: { contractor_name: v('k_contractor'), contractor_address: v('k_caddr'), health_dept: v('k_health'), health_addr: v('k_haddr'), inspection_fee: per, visits: v('k_visits'), origination_fee: v('k_orig'), date: v('k_date'), response_hours: v('k_resp'), rule_set: v('k_rs'), maintenance: v('k_maint').split('\n') } }).then(function (j) {
+      OW.api('/admin/api/contract', { customer_id: c.id, terms: { contractor_name: v('k_contractor'), contractor_address: v('k_caddr'), health_dept: v('k_health'), health_addr: v('k_haddr'), health_contact: v('k_hcon'), approval_no: v('k_appr'), inspection_fee: per, visits: v('k_visits'), origination_fee: v('k_orig'), date: v('k_date'), response_hours: v('k_resp'), rule_set: v('k_rs'), maintenance: v('k_maint').split('\n') } }).then(function (j) {
         if (!j.ok) { $('km').className = 'msg err'; $('km').textContent = j.error; return; }
-        LS.set('ow_cn', v('k_contractor')); LS.set('ow_per', per); LS.set('ow_orig', v('k_orig')); LS.set('ow_ca', v('k_caddr')); LS.set('ow_hd_' + (c.county || ''), v('k_health')); LS.set('ow_ha_' + (c.county || ''), v('k_haddr'));
+        LS.set('ow_cn', v('k_contractor')); LS.set('ow_per', per); LS.set('ow_orig', v('k_orig')); LS.set('ow_ca', v('k_caddr')); LS.set('ow_hd_' + (c.county || ''), v('k_health')); LS.set('ow_ha_' + (c.county || ''), v('k_haddr')); LS.set('ow_hc_' + (c.county || ''), v('k_hcon'));
         OW.toast(j.emailed ? 'Signing link emailed.' : 'Saved, but the email did not send. Use Resend link.'); refresh();
       });
     });
@@ -227,7 +229,7 @@
     });
   }
   function viewContract(x) {
-    $('panel').innerHTML = '<h2>Agreement</h2><div class="doc" tabindex="0">' + OW.contractHtml(x.text) + '</div><div class="sigs"><div class="sig"><b>Owner</b><div class="n">' + E(x.owner.name || '') + '&nbsp;</div></div><div class="sig"><b>Contractor</b><div class="n">' + E(x.contractor.signed_at ? x.contractor.name : '') + '&nbsp;</div></div></div>';
+    $('panel').innerHTML = '<h2>Agreement</h2><div class="doc" tabindex="0">' + OW.contractHtml(x.text) + '</div><div class="sigs"><div class="sig"><b>Owner</b><div class="n">' + E(x.owner.name || '') + '&nbsp;</div></div><div class="sig"><b>' + E((x.text && x.text.party) || 'Contractor') + '</b><div class="n">' + E(x.contractor.signed_at ? x.contractor.name : '') + '&nbsp;</div></div></div>';
   }
   function countersign(x) {
     $('panel').innerHTML = '<h2>Sign as contractor</h2><p class="mute">' + E(x.owner.name) + ' signed ' + E(OW.date(x.owner.signed_at)) + '. Read it once more, then type your name.</p><div class="doc" tabindex="0">' + OW.contractHtml(x.text) + '</div><form id="sf" novalidate><label for="s_nm">Your full name</label><input id="s_nm" value="' + E(x.contractor.name || '') + '"><div class="row" style="margin-top:10px"><button class="b" type="submit">Sign agreement</button></div><div class="msg" id="sm" role="status"></div></form>';

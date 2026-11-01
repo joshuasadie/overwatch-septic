@@ -5,7 +5,7 @@
     $('state').hidden = true; $('docCard').hidden = !c.text;
     if (c.text) $('doc').innerHTML = OW.contractHtml(c.text);
     $('sigs').innerHTML = '<div class="sig"><b>Owner</b><div class="n">' + (c.owner.name ? OW.esc(c.owner.name) : '&nbsp;') + '</div><small class="mute">' + OW.esc(c.owner_label) + (c.owner.signed_at ? ' &middot; ' + OW.date(c.owner.signed_at) : '') + '</small></div>' +
-      '<div class="sig"><b>Contractor</b><div class="n">' + (c.contractor.signed_at ? OW.esc(c.contractor.name) : '&nbsp;') + '</div><small class="mute">' + OW.esc(c.contractor_label) + (c.contractor.signed_at ? ' &middot; ' + OW.date(c.contractor.signed_at) : '') + '</small></div>';
+      '<div class="sig"><b>' + OW.esc((c.text && c.text.party) || 'Contractor') + '</b><div class="n">' + (c.contractor.signed_at ? OW.esc(c.contractor.name) : '&nbsp;') + '</div><small class="mute">' + OW.esc(c.contractor_label) + (c.contractor.signed_at ? ' &middot; ' + OW.date(c.contractor.signed_at) : '') + '</small></div>';
     $('signCard').hidden = c.status !== 'sent';
     if (c.status !== 'sent') done(c);
   }

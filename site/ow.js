@@ -113,7 +113,7 @@
       L.letterhead([OW.CONTACT.phone, OW.CONTACT.email, OW.CONTACT.site]);
       L.text(t.title, { bold: true, size: 15, center: true, after: 10 });
       t.intro.forEach(function (p) { L.text(p, {}); });
-      t.sections.forEach(function (s) { L.gap(4); L.text(s.h, { bold: true }); s.p.forEach(function (p) { L.text(p, { indent: /^([a-z]\)|\d\))/.test(p) ? 14 : 0 }); }); });
+      t.sections.forEach(function (s) { L.gap(4); L.text(s.h, { bold: true }); s.p.forEach(function (p) { L.text(p, { indent: /^([a-z]\)|\d\)|\([a-z]\)|\d\.)/.test(p) ? 14 : 0 }); }); });
       L.gap(6); L.text(t.closing, {}); L.gap(8);
       function sig(role, who, name, when) {
         L.need(90); L.text(role, { bold: true, after: 2 });
@@ -122,7 +122,7 @@
         L.text(who + (when ? '   Signed electronically on ' + OW.date(when) : ''), { size: 9.5, after: 12 });
       }
       sig('OWNER', c.owner_label, c.owner.name, c.owner.signed_at);
-      sig('CONTRACTOR', c.contractor_label, c.contractor.signed_at ? c.contractor.name : '', c.contractor.signed_at);
+      sig(((c.text && c.text.party) || 'Contractor').toUpperCase(), c.contractor_label, c.contractor.signed_at ? c.contractor.name : '', c.contractor.signed_at);
       L.text('Each signature above was entered by the named person typing their name in this agreement\'s secure signing page.', { size: 9, italic: true });
       return L.save();
     });
