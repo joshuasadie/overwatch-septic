@@ -18,7 +18,7 @@ globalThis.fetch = async (u, o) => {
   return { ok: true, json: async () => ({ keys: [jwk] }) };
 };
 const O = 'https://overwatchseptic.com';
-const env = { DB, FILES, ASSETS: { fetch: async r => { const p = new URL(r.url).pathname; return p === '/c/index.html' ? new Response(null, { status: 307, headers: { location: '/c/' } }) : new Response('A:' + p); } }, ACCESS_TEAM_DOMAIN: 't.cloudflareaccess.com', ACCESS_AUD: 'AUD', ADMIN_EMAILS: 'joshua@overwatchseptic.com', ALLOWED_ORIGINS: O, TURNSTILE_SECRET: 's', RESEND_API_KEY: 'k', MAIL_TO: 'joshua@overwatchseptic.com', MAIL_FROM: 'O <joshua@overwatchseptic.com>' };
+const env = { OPERATOR_NAME: 'Joshua Klein', OPERATOR_CERT: 'SS-1019571', DB, FILES, ASSETS: { fetch: async r => { const p = new URL(r.url).pathname; return p === '/c/index.html' ? new Response(null, { status: 307, headers: { location: '/c/' } }) : new Response('A:' + p); } }, ACCESS_TEAM_DOMAIN: 't.cloudflareaccess.com', ACCESS_AUD: 'AUD', ADMIN_EMAILS: 'joshua@overwatchseptic.com', ALLOWED_ORIGINS: O, TURNSTILE_SECRET: 's', RESEND_API_KEY: 'k', MAIL_TO: 'joshua@overwatchseptic.com', MAIL_FROM: 'O <joshua@overwatchseptic.com>' };
 const call = (path, o = {}) => worker.fetch(new Request(O + path, o), env);
 const tok = await mkTok('Joshua@overwatchseptic.com');
 const adm = (path, body, extra = {}) => call(path, { method: body === undefined ? 'GET' : 'POST', headers: { 'cf-access-jwt-assertion': tok, origin: O, 'content-type': 'application/json', ...extra }, body: body === undefined ? undefined : (body instanceof ArrayBuffer ? body : JSON.stringify(body)) });
@@ -52,12 +52,31 @@ ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, rule
   ok(/beyond those required by the Operation Permit will be billed/.test(p2('2')), 'extra visits billed separately');
   ok(ct.ruleSetFor('2024-01-01') === '18E' && ct.ruleSetFor('2023-12-31') === '18A' && ct.ruleSetFor('') === '', 'rules follow the permit date');
   { const e = JSON.stringify(ct.contractText({ ...base, rule_set: '18E' })); ok(/within thirty \(30\) days of the inspection, as required by 15A N\.C\. Administrative Code 18E \.1304\(c\)/.test(e) && !/18A/.test(e), '18E agreement: 30-day reports, no 18A citations'); }
+  { const { permitTerms } = await import('./worker/contracts.js');
+    const cu = { name: 'Sean Wilkins', address: '1718 Charlie Brooks Road, Moncure, NC 27559', county: 'Chatham', sys_type: 'V', permit: '' };
+    const pt = permitTerms({ addresses: ['1718 Charlie Brooks Road, Moncure, NC 27559', '1720 Charlie Brooks Road, Moncure, NC 27559'], permit: { owners: 'Sean & Stacy Wilkins', mail: '1718 Charlie Brooks Road, Moncure, NC 27559', type: 'Type Vd', county: 'Chatham', parcel: '78733', issued: '2026-10-19', other_no: 'IWWS-1993-01-R9A' } }, cu);
+    ok(pt.owner_name === 'Sean & Stacy Wilkins' && pt.sys_type === 'Vd' && pt.system_address === '1718 Charlie Brooks Road, Moncure, NC 27559 and 1720 Charlie Brooks Road, Moncure, NC 27559 (Parcel No. 78733)' && pt.permit_issued === '2026-10-19' && pt.approval_no === 'IWWS-1993-01-R9A', 'contract details come from the permit in System setup');
+    const pf = permitTerms(null, cu); ok(pf.owner_name === 'Sean Wilkins' && pf.system_address === cu.address && pf.sys_type === 'V', 'no System setup: the customer record fills in'); }
   ok(JSON.stringify(ct.contractText({ ...base, rule_set: '18A' })) === JSON.stringify(ct.contractText({ ...base })), '18A agreement matches the original wording');
+  { const v3 = ct.contractText({ ...base, v: 3, rule_set: '18E', permit: 'OP-1', approval_no: 'IWWS-1993-01-R9A', health_contact: 'Brad Jones', health_dept: 'Chatham County EH', health_addr: 'PO Box 130', visits: '2', inspection_fee: '250' }), e = JSON.stringify(v3);
+    ok(/Operation Permit Number OP-1, the requirements in the Provisional or Innovative Approval Number IWWS-1993-01-R9A/.test(e) && /Contact Name and Address: Brad Jones, Chatham County EH, PO Box 130/.test(e) && /not less than two \(2\) times per year/.test(e) && /\$250\.00 per inspection/.test(e), 'version 3 fills the permit, approval, contact, frequency and price');
+    { const e2 = JSON.stringify(ct.contractText({ ...base, v: 3, rule_set: '18E', permit: '', permit_issued: '2026-10-19' })); ok(/conditions on the Operation Permit issued October 19, 2026/.test(e2) && /billed at \$150\.00 per occurrence/.test(e2), 'version 3: permit by issue date when it has no number; $150 emergency charge');
+      ok(/any one of them may give approvals/.test(e2) && /does not charge for inspections performed by the Local Health Department/.test(e2), 'version 3: either co-owner may approve; no charge for county inspections'); }
+    ok(ct.contractText({ ...base, v: 3, rule_set: '18A' }).party === 'Operator' && !/18A/.test(JSON.stringify(ct.contractText({ ...base, v: 3, rule_set: '18A' }))), 'version 3 uses the 18E sample for older permits too');
+    ok(/The Contractor does not perform repairs/.test(JSON.stringify(ct.contractText({ ...base, v: 2, rule_set: '18E' }))), 'version 2 agreements keep their text'); }
   ok(ct.annualFrom(250, 'q1s') === 500 && ct.annualFrom(250, '4') === 1000, 'annual fee is the steady yearly total');
   ok(ct.contractText({ ...base }).sections[1].p[0].startsWith('a) The Owner shall pay to the Contractor the sum of $500 per year for periodic'), 'older agreements keep their exact wording'); }
 sent.length = 0; j = await J(await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, annual_fee: '', inspection_fee: '250', visits: 'q1s', rule_set: '18E' } })); ok(j.ok && j.emailed, 'contract sent (priced per inspection, 18E)');
+{ const k = (await J(await adm('/admin/api/customer/' + cid))).contracts[0], tx = JSON.stringify(k.text);
+  ok(k.terms.v === 3 && k.text.party === 'Operator' && /Inspections shall be performed by Joshua Klein, North Carolina Certified Subsurface Operator, Certificate No\. SS-1019571/.test(tx), 'new agreements: the 18E sample, naming the operator and certificate');
+  ok(/The Owner may select the person or company that performs the repairs/.test(tx) && /The Operator may, but is not required to, perform repairs/.test(tx) && /notify the Owner within twenty-four \(24\) hours/.test(tx) && /No repair work shall be performed without the Owner's prior approval/.test(tx) && /if the Operator agrees to do so/.test(tx), 'repairs: owner picks, operator may decline, charged, owner approval, 24-hour emergency notice');
+  ok(/report the results of their inspections to the Owner, Manufacturer, and Local Health Department/.test(tx) && /twenty-fifth \(25th\) day after the inspection, whichever is earlier/.test(tx) && /18E \.1304\(g\)/.test(tx), 'reporting clause: owner, manufacturer and county; owner copy by payment or day 25; state data system');
+  ok(/on-site wastewater treatment and dispersal system/.test(tx) && !/18A|ground absorption|Contractor/.test(tx), '18E sample wording, no 18A or Contractor wording');
+  ok(/The per-inspection fee may be amended upon sixty \(60\) days advance written notice/.test(tx) && !/The annual fee may be amended/.test(tx), 'price changes apply to the per-inspection fee');
+  ok(/not less than four \(4\) times in the first year and two \(2\) times per year thereafter, as required by the Operation Permit\./.test(tx), 'inspection frequency from the permit is stated'); }
 { const k = (await J(await adm('/admin/api/customer/' + cid))).contracts[0]; ok(k.terms.annual_fee === '500' && k.terms.inspection_fee === '250' && k.terms.visits === 'q1s', 'stored: $250 per inspection, annual fee $500');
   ok(k.terms.rule_set === '18E' && /18E \.1303\(b\)/.test(k.terms.cite) && /Table XXXII/.test(JSON.stringify(k.text)) && !/Table V/.test(JSON.stringify(k.text)), 'stored 18E agreement cites 18E and Table XXXII'); }
+{ const cp = sent.find(m => m.to[0] === 'joshua@overwatchseptic.com' && /^\[Copy\] Agreement sent to/.test(m.subject)); ok(sent.length === 2 && cp && cp.text.includes('ann@home.com') && cp.text.includes('Inspection and Maintenance Agreement') && !/\/c\/[A-Za-z0-9_-]{20,}/.test(cp.text), 'you get a copy of the agreement email, without the signing link'); }
 const link = sent[0].text.match(/https:\/\/overwatchseptic\.com\/c\/([A-Za-z0-9_-]+)/); ok(!!link && sent[0].to[0] === 'ann@home.com', 'email has unique link');
 const t1 = link[1];
 ok((await call('/c/' + t1)).status === 200 && (await (await call('/c/' + t1)).text()) === 'A:/c/', 'signing page served for token path (no redirect that would drop the token)');
@@ -74,7 +93,7 @@ ok((await sign('Ann Home')).status === 400, 'cannot sign twice');
 // countersign
 j = await J(await adm('/admin/api/customer/' + cid)); const kid = j.contracts[0].id; ok(j.contracts[0].status === 'owner_signed', 'status owner_signed');
 ok((await adm('/admin/api/contract-void', { id: kid }).then(J)).ok, 'void allowed before complete (then re-create)');
-j = await J(await adm('/admin/api/contract', { customer_id: cid, terms })); const t2 = sent[sent.length - 1].text.match(/\/c\/([A-Za-z0-9_-]+)/)[1];
+j = await J(await adm('/admin/api/contract', { customer_id: cid, terms })); const t2 = sent.filter(m => m.to[0] === 'ann@home.com').pop().text.match(/\/c\/([A-Za-z0-9_-]+)/)[1];
 await call('/api/contract/' + t2 + '/sign', { method: 'POST', headers: { origin: O, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Ann Home', agree: true }) });
 j = await J(await adm('/admin/api/customer/' + cid)); const k2 = j.contracts.find(c => c.status === 'owner_signed').id;
 sent.length = 0; r = await adm('/admin/api/contract-sign', { id: k2, name: 'Joshua Klein' }); ok((await J(r)).ok, 'countersigned');

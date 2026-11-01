@@ -161,4 +161,20 @@ await hook('checkout.session.async_payment_succeeded', { client_reference_id: rH
 ok((await invs()).find(x => x.id === rH.fin.invoice).status === 'paid', 'bank payment confirmed later marks paid');
 // Stripe not set up
 const saved = env.STRIPE_SECRET_KEY; delete env.STRIPE_SECRET_KEY; r = await call('/pay/' + rE.fin.invoice); ok(r.status === 503, 'pay link says payments are unavailable when Stripe is not set up'); env.STRIPE_SECRET_KEY = saved;
+// report copies: the county by day 25 whether or not paid; the owner by email once paid, with the PDF attached
+{ const store = new Map(); env.FILES = { put: async (k, v) => { store.set(k, v); }, get: async k => store.has(k) ? { arrayBuffer: async () => store.get(k) } : null, delete: async () => {} };
+  const today = etDate(), visit = addDays(today, -26);
+  const rE = await rep(visit, '250');
+  const pdf = new TextEncoder().encode('%PDF-1.4\n' + 'x'.repeat(200));
+  ok((await call('/admin/api/reports/' + rE.id + '/pdf', { method: 'POST', headers: { 'cf-access-jwt-assertion': tok, origin: O, 'content-type': 'application/pdf' }, body: pdf })).status === 200, 'report PDF uploaded');
+  sent.length = 0; await runDaily(env, new Date(`${today}T16:00:00Z`));
+  ok(emailsTo('eh@chatham.gov').length === 1, 'unpaid at day 26: county copy goes');
+  const due = emailsTo('ann@home.com').find(m => m.subject === `Your septic inspection report, ${visit}`);
+  ok(due && /still due/.test(due.text) && due.text.includes('/pay/' + rE.fin.invoice) && due.attachments && due.attachments[0].filename === `septic-report-${visit}.pdf`, 'unpaid at day 26: owner gets the report too, marked payment still due, with the pay link');
+  ok(emailsTo('joshua@overwatchseptic.com').some(m => /Report sent before payment/.test(m.subject)), 'you are told the report went before payment');
+  sent.length = 0; await runDaily(env, new Date(`${today}T16:00:00Z`)); ok(emailsTo('eh@chatham.gov').length === 0 && emailsTo('ann@home.com').every(m => !/inspection report/.test(m.subject)), 'neither copy is sent twice');
+  await adm('/admin/api/invoice-paid', { id: rE.fin.invoice }); sent.length = 0;
+  await runDaily(env, new Date(`${addBusinessDays(today, 3)}T16:00:00Z`));
+  ok(!emailsTo('ann@home.com').some(m => m.subject === `Your septic inspection report, ${visit}`), 'on payment, an owner who already has the report is not sent it again');
+  ok(!emailsTo('eh@chatham.gov').some(m => m.text.includes(visit)), 'the county is not sent a second copy on payment'); }
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);

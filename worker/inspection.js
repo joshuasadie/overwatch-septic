@@ -134,6 +134,15 @@ export async function deleteInspectionFiles(env, rids) {
 }
 
 // the county's technical copy as a standalone page (used by the emailed link)
+// the homeowner report as an email: the same wording as the portal, without photos (they stay in the portal)
+export async function ownerReportEmailHtml(env, reportId, c) {
+  const r = await env.DB.prepare('SELECT id, kind, visit_date FROM reports WHERE id = ?').bind(reportId).first();
+  if (!r || r.kind !== 'inspection') return '';
+  const rows = [{ id: r.id, kind: r.kind }]; await attachInspections(env, rows, true);
+  const x = rows[0].insp; if (!x) return '';
+  const body = OWI.homeHtml({ visit_date: r.visit_date, insp: { ...x, photos: 0 } }, { name: c.name, address: c.address }, x.data.operator || operatorOf(env), null);
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><style>${OWI.CSS}</style></head><body style="margin:0;padding:12px;background:#f3f3f3">${body}<p style="font:13px Georgia,serif;color:#444;max-width:760px">Please keep this email for your records. Overwatch Septic, LLC</p></body></html>`;
+}
 export async function countyInspectionHtml(env, r, c) {
   const rows = [{ id: r.id, kind: r.kind }]; await attachInspections(env, rows, false);
   const x = rows[0].insp; if (!x) return null;

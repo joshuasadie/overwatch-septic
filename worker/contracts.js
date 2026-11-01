@@ -6,11 +6,24 @@ import { fmtPhone } from './inspection.js';
 
 const TOKEN = /^[A-Za-z0-9_-]{20,60}$/;
 export const LINK_DAYS = 14;
-const TERM_KEYS = ['date', 'owner_name', 'owner_address', 'county', 'system_address', 'permit', 'sys_type', 'rules', 'cite', 'contractor_name', 'contractor_address', 'health_dept', 'response_hours', 'annual_fee', 'increase_pct', 'interest_pct', 'repair_days', 'origination_fee', 'inspection_fee', 'visits', 'rule_set'];
+const TERM_KEYS = ['date', 'owner_name', 'owner_address', 'county', 'system_address', 'permit', 'sys_type', 'rules', 'cite', 'contractor_name', 'contractor_address', 'health_dept', 'response_hours', 'annual_fee', 'increase_pct', 'interest_pct', 'repair_days', 'origination_fee', 'inspection_fee', 'visits', 'rule_set', 'health_addr', 'approval_no', 'health_contact', 'permit_issued', 'emergency_fee'];
 
-export function normalizeTerms(input, customer) {
-  const t = { ...DEFAULT_TERMS, owner_name: customer.name, owner_address: customer.address, system_address: customer.address, county: customer.county, sys_type: customer.sys_type, permit: customer.permit, date: new Date().toISOString().slice(0, 10) };
-  for (const k of TERM_KEYS) if (input && input[k] !== undefined && input[k] !== null) t[k] = clean(input[k], 300);
+// The permit as entered in System setup is the source for the agreement; the customer record fills anything left blank there.
+export function permitTerms(sys, customer) {
+  const p = (sys && sys.permit) || {}, s = v => String(v ?? '').trim();
+  const list = ((sys && sys.addresses) || []).map(s).filter(Boolean);
+  const addr = list.length ? (list.length === 1 ? list[0] : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1]) : s(customer.address), parcel = s(p.parcel);
+  return {
+    owner_name: s(p.owners) || customer.name, owner_address: s(p.mail) || customer.address,
+    system_address: addr && parcel && !addr.includes(parcel) ? `${addr} (Parcel No. ${parcel})` : addr,
+    county: s(p.county) || customer.county, sys_type: s(p.type).replace(/^type\s+/i, '') || customer.sys_type,
+    permit: customer.permit, permit_issued: /^\d{4}-\d{2}-\d{2}$/.test(s(p.issued)) ? s(p.issued) : '', approval_no: s(p.other_no),
+  };
+}
+export function normalizeTerms(input, customer, pm) {
+  const t = { ...DEFAULT_TERMS, ...permitTerms(pm, customer), date: new Date().toISOString().slice(0, 10) };
+  for (const k of ['permit_issued', 'approval_no']) if (!t[k]) delete t[k];
+  for (const k of TERM_KEYS) if (input && input[k] !== undefined && input[k] !== null && !((k === 'permit_issued' || k === 'approval_no') && !String(input[k]).trim())) t[k] = clean(input[k], 300);
   t.maintenance = (Array.isArray(input && input.maintenance) ? input.maintenance : DEFAULT_TERMS.maintenance).map(m => clean(m, 200)).filter(Boolean).slice(0, 8);
   return t;
 }
@@ -23,7 +36,9 @@ const publicView = (c, customer, locked = false) => {
 };
 
 export async function createContract(env, who, customer, termsIn) {
-  const terms = normalizeTerms(termsIn, customer);
+  let pm = null;
+  try { const row = await env.DB.prepare('SELECT data FROM systems WHERE customer_id = ?').bind(customer.id).first(); pm = row ? JSON.parse(row.data) : null; } catch { pm = null; }
+  const terms = normalizeTerms(termsIn, customer, pm);
   // Per-inspection pricing: the annual fee is the fee times the inspections per year the permit requires.
   const per = String(terms.inspection_fee ?? '').replace(/,/g, '').trim();
   if (per) {
@@ -35,6 +50,8 @@ export async function createContract(env, who, customer, termsIn) {
   if (terms.rule_set === '18E') { terms.cite = R18E.contract; terms.rules = R18E.rules; }
   else if (terms.rule_set && terms.rule_set !== '18A') return { status: 400, error: 'Choose which rules apply: 18E or 18A.' };
   else if (!terms.rule_set) delete terms.rule_set;
+  // agreement version 2: report, repair, operator, price and notice wording requested by owners (Oct 2026)
+  terms.v = 3; const op = { name: env.OPERATOR_NAME || '', cert: env.OPERATOR_CERT || '' }; if (op.name && op.cert) { terms.operator_name = op.name; terms.operator_cert = op.cert; }
   const miss = missingTerms(terms);
   if (miss.length) return { status: 400, error: 'Please fill in: ' + miss.join(', ') + '.' };
   if (!/^\d+(\.\d{1,2})?$/.test(terms.annual_fee.replace(/,/g, ''))) return { status: 400, error: 'The annual fee must be a number, like 500.' };
@@ -52,7 +69,11 @@ export async function createContract(env, who, customer, termsIn) {
 }
 async function mailOwner(env, customer, token) {
   const link = `${siteOrigin(env)}/c/${token}`;
-  return sendMail(env, customer.email, 'Please review and sign your septic agreement', [`Hello ${customer.name},`, '', 'Your Inspection and Maintenance Agreement with Overwatch Septic is ready. Please read it and sign it here. The link works for ' + LINK_DAYS + ' days:', '', link, '', 'Signing is done by typing your name. After you sign, we sign, and you can see the signed agreement in your customer portal.', '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
+  const text = l => [`Hello ${customer.name},`, '', 'Your Inspection and Maintenance Agreement with Overwatch Septic is ready. Please read it and sign it here. The link works for ' + LINK_DAYS + ' days:', '', l, '', 'Signing is done by typing your name. After you sign, we sign, and you can see the signed agreement in your customer portal.', '', 'Overwatch Septic, LLC'].join('\n');
+  const sent = await sendMail(env, customer.email, 'Please review and sign your septic agreement', text(link), env.MAIL_TO);
+  // your copy, so you know it went out. The signing link is left out so only the owner can sign.
+  if (sent && env.MAIL_TO) await sendMail(env, env.MAIL_TO, `[Copy] Agreement sent to ${customer.name}`, [`Sent to ${customer.email} on ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}.`, '', '----- What they received -----', '', text('(signing link: sent only to the owner)')].join('\n'));
+  return sent;
 }
 export async function resendContract(env, who, cid) {
   const c = await env.DB.prepare('SELECT * FROM contracts WHERE id = ?').bind(cid).first();

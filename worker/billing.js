@@ -1,5 +1,5 @@
 // Billing: invoices, Stripe Checkout, the 3 business day hold, release of contracts and reports, and the daily unpaid sequence.
-import { countyInspectionHtml } from './inspection.js';
+import { countyInspectionHtml, ownerReportEmailHtml } from './inspection.js';
 import { reply, clean, id, rand, sha, siteOrigin, sendMail, esc, ensureSchema } from './lib.js';
 
 export const HOLD_DAYS = 3, NOTICE_DAYS = 30;
@@ -150,10 +150,25 @@ export async function releaseInvoice(env, inv, who, now = new Date()) {
 }
 export async function releaseReport(env, reportId, customer, nowIso = new Date().toISOString()) {
   await env.DB.prepare("INSERT INTO report_state (report_id, released_at) VALUES (?, ?) ON CONFLICT(report_id) DO UPDATE SET released_at = excluded.released_at").bind(reportId, nowIso).run();
-  const rep = await env.DB.prepare('SELECT visit_date FROM reports WHERE id = ?').bind(reportId).first();
-  if (!rep) return;
-  await sendMail(env, customer.email, 'Your septic visit report is ready', [`Hello ${customer.name},`, '', `The report from your visit on ${rep.visit_date} is ready. Sign in to your customer portal to see it: ${siteOrigin(env)}/login/`, '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
-  await sendCountyReport(env, reportId, customer);
+  // the owner may already have the report (sent by day 25 while payment was pending); the portal copy unlocks now either way
+  if (!(await env.DB.prepare('SELECT 1 AS x FROM report_owner_sent WHERE report_id = ?').bind(reportId).first())) await sendOwnerReport(env, reportId, customer);
+  // the county may already have its copy too
+  const st = await env.DB.prepare('SELECT county_sent_at FROM report_state WHERE report_id = ?').bind(reportId).first();
+  if (!(st && st.county_sent_at)) await sendCountyReport(env, reportId, customer);
+}
+// The owner's copy, by email: the report itself (inspection) or the uploaded PDF attached. payUrl: payment is still due.
+export async function sendOwnerReport(env, reportId, customer, payUrl = '') {
+  const rep = await env.DB.prepare('SELECT visit_date, kind, pdf_key FROM reports WHERE id = ?').bind(reportId).first();
+  if (!rep) return false;
+  const extra = {};
+  try {
+    if (rep.kind === 'inspection') extra.html = await ownerReportEmailHtml(env, reportId, customer);
+    else if (rep.pdf_key && env.FILES) { const o = await env.FILES.get(rep.pdf_key); if (o) { const b = new Uint8Array(await o.arrayBuffer()); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); extra.attachments = [{ filename: `septic-report-${rep.visit_date}.pdf`, content: btoa(s) }]; } }
+  } catch { /* fall back to the plain email */ }
+  const due = payUrl ? ['', `Payment for this inspection is still due. North Carolina rules require that you receive this report within thirty (30) days of the inspection, so we are sending it now. Pay here: ${payUrl}`] : [];
+  const ok = await sendMail(env, customer.email, `Your septic inspection report, ${rep.visit_date}`, [`Hello ${customer.name},`, '', `Your report from the visit on ${rep.visit_date} is ${extra.html ? 'below' : extra.attachments ? 'attached' : 'ready'}. Please keep a copy for your records.${payUrl ? '' : ` You can also sign in to your customer portal: ${siteOrigin(env)}/login/`}`, ...due, '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO, extra);
+  if (ok) await env.DB.prepare('INSERT OR IGNORE INTO report_owner_sent (report_id, sent_at) VALUES (?, ?)').bind(reportId, new Date().toISOString()).run();
+  return ok;
 }
 export async function sendCountyReport(env, reportId, customer) {
   const to = await getCounty(env, customer.county);
@@ -245,6 +260,18 @@ export async function runDaily(env, now = new Date()) {
       if (inv.term_date && today >= inv.term_date) { await env.DB.prepare("UPDATE invoices SET notice_state = 'final_drafted' WHERE id = ?").bind(inv.id).run(); await alertOwner(env, 'Final notice ready for your OK', `${c.name}'s agreement reaches its termination date (${niceDate(inv.term_date)}) unpaid. Review and send the final notice in the admin portal. Sending it cancels the agreement and tells the county.`); acted++; }
       else if (inv.last_reminder_date !== today && daysBetween(inv.last_reminder_date || inv.notice_sent_at.slice(0, 10), today) >= 7) await remind(`Reminder: agreement ends ${niceDate(inv.term_date)}`, [`Your invoice of ${amt} for the ${what} is still unpaid. Your agreement will end on ${niceDate(inv.term_date)} unless we receive payment before then.`], 'reminders = reminders');
     }
+  }
+  // 3. the owner, county and manufacturer must have the report within 30 days of the inspection, paid or not (15A NCAC 18E .1304(c)).
+  //    By day 25, any report still held for payment goes to the county, and to the owner marked "payment still due".
+  const held = (await env.DB.prepare("SELECT r.id, r.visit_date, r.customer_id, s.county_sent_at FROM reports r JOIN report_state s ON s.report_id = r.id LEFT JOIN report_owner_sent o ON o.report_id = r.id WHERE s.released_at = '' AND (s.county_sent_at = '' OR o.report_id IS NULL)").all()).results;
+  for (const r of held) {
+    if (daysBetween(r.visit_date, today) < 25) continue;
+    const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(r.customer_id).first(); if (!c) continue;
+    const inv = await env.DB.prepare("SELECT id FROM invoices WHERE kind = 'visit' AND ref_id = ?").bind(r.id).first();
+    const went = [];
+    if (!r.county_sent_at && await sendCountyReport(env, r.id, c)) went.push(`${c.county} County`);
+    if (!(await env.DB.prepare('SELECT 1 AS x FROM report_owner_sent WHERE report_id = ?').bind(r.id).first()) && await sendOwnerReport(env, r.id, c, inv ? payLink(env, inv) : `${siteOrigin(env)}/login/`)) went.push('the owner (marked "payment still due")');
+    if (went.length) { acted++; await alertOwner(env, 'Report sent before payment', `${c.name}'s report from ${r.visit_date} went to ${went.join(' and ')} today, because the rules require it within 30 days of the inspection. The invoice is still unpaid; the portal copy unlocks when it is paid.`); }
   }
   return acted;
 }
