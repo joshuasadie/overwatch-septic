@@ -176,11 +176,21 @@
       '<label for="k_maint">Routine maintenance (one per line)</label><textarea id="k_maint" style="min-height:120px">' + maintDefault(c) + '</textarea>' +
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Preview agreement</button></div><div class="msg" id="km" role="status"></div></form>';
     var permitIssued = '';
+    // Unsent changes are kept in this browser for each customer until the agreement is sent (the date is not kept: it is always today).
+    var DK = 'ow_kdraft_' + c.id, KF = ['k_contractor', 'k_per', 'k_visits', 'k_orig', 'k_caddr', 'k_health', 'k_haddr', 'k_hcon', 'k_appr', 'k_resp', 'k_rs', 'k_maint'], draft = null;
+    try { draft = JSON.parse(LS.get(DK) || 'null'); } catch (e) { draft = null; }
+    if (draft && draft.f) {
+      KF.forEach(function (k) { if (draft.f[k] != null && $(k)) $(k).value = draft.f[k]; });
+      $('km').className = 'msg'; $('km').innerHTML = 'Restored your unsent changes from ' + E(OW.date(draft.at)) + '. <a href="#" id="k_reset">Start over</a>';
+      $('k_reset').onclick = function (e) { e.preventDefault(); try { localStorage.removeItem(DK); } catch (x) {} contractForm(); };
+    }
+    var saveDraft = function () { var f = {}; KF.forEach(function (k) { if ($(k)) f[k] = $(k).value; }); LS.set(DK, JSON.stringify({ at: new Date().toISOString(), f: f })); };
+    $('kf').addEventListener('input', saveDraft); $('kf').addEventListener('change', saveDraft);
     var showTotal = function () { $('k_tot').textContent = feeTotal($('k_per').value, $('k_visits').value); };
     $('k_per').addEventListener('input', showTotal); $('k_visits').addEventListener('change', showTotal); showTotal();
     OW.api('/admin/api/system?customer_id=' + c.id + '&date=' + today).then(function (j) {
       var pm = (j && j.ok && j.system && j.system.permit) || {}, f = FREQ_VISITS[pm.freq], rs = ruleSetFor(pm.issued);
-      if (f && $('k_visits')) { $('k_visits').value = f; showTotal(); }
+      if (f && $('k_visits') && !(draft && draft.f)) { $('k_visits').value = f; showTotal(); }
       if (pm.other_no && $('k_appr') && !$('k_appr').value) $('k_appr').value = pm.other_no; permitIssued = pm.issued || '';
       if (!$('k_rs')) return;
       if (rs) {
@@ -199,7 +209,8 @@
       // Preview first: the server builds the terms exactly as it would for sending, and nothing is saved.
       OW.api('/admin/api/contract-preview', { customer_id: c.id, terms: terms }).then(function (j) {
         if (!j.ok) { $('km').className = 'msg err'; $('km').textContent = j.error; return; }
-        $('km').textContent = ''; showPreview(j, terms, v, per);
+        $('km').textContent = ''; saveDraft(); LS.set('ow_cn', v('k_contractor')); LS.set('ow_ca', v('k_caddr')); LS.set('ow_hd_' + (c.county || ''), v('k_health')); LS.set('ow_ha_' + (c.county || ''), v('k_haddr')); LS.set('ow_hc_' + (c.county || ''), v('k_hcon'));
+        showPreview(j, terms, v, per);
       });
     });
     function showPreview(p, terms, v, per) {
@@ -223,6 +234,7 @@
 
         if (!j.ok) { $('kpm').className = 'msg err'; $('kpm').textContent = j.error; return; }
         LS.set('ow_cn', v('k_contractor')); LS.set('ow_per', per); LS.set('ow_orig', v('k_orig')); LS.set('ow_ca', v('k_caddr')); LS.set('ow_hd_' + (c.county || ''), v('k_health')); LS.set('ow_ha_' + (c.county || ''), v('k_haddr')); LS.set('ow_hc_' + (c.county || ''), v('k_hcon'));
+        try { localStorage.removeItem(DK); } catch (x) {}
         OW.toast(j.emailed ? 'Signing link emailed.' : 'Saved, but the email did not send. Use Resend link.'); refresh();
         });
       };
