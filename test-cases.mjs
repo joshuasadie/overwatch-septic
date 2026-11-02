@@ -1,0 +1,85 @@
+// End-to-end API test for the admin portal, signing page and customer portal, using an in-memory SQLite stand-in for D1.
+import { DatabaseSync } from 'node:sqlite';
+import worker from './worker/index.js';
+const sql = new DatabaseSync(':memory:');
+const mk = (q, args = []) => ({ bind: (...a) => mk(q, a), all: async () => ({ results: sql.prepare(q).all(...args) }), first: async () => sql.prepare(q).get(...args) ?? null, run: async () => { const r = sql.prepare(q).run(...args); return { meta: { changes: Number(r.changes) } }; } });
+const DB = { prepare: q => mk(q), batch: async st => { for (const s of st) await s.run(); return []; } };
+const store = new Map();
+const FILES = { put: async (k, v) => store.set(k, v), get: async k => store.has(k) ? { arrayBuffer: async () => store.get(k) } : null, delete: async k => store.delete(k) };
+const kp = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+const jwk = { ...(await crypto.subtle.exportKey('jwk', kp.publicKey)), kid: 'k1' };
+const b = o => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString('base64url');
+const mkTok = async (email, aud = 'AUD') => { const h = b({ alg: 'RS256', kid: 'k1' }), p = b({ iss: 'https://t.cloudflareaccess.com', aud: [aud], exp: Math.floor(Date.now() / 1000) + 600, email }); return `${h}.${p}.${Buffer.from(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', kp.privateKey, new TextEncoder().encode(h + '.' + p))).toString('base64url')}`; };
+const sent = [];
+globalThis.fetch = async (u, o) => {
+  u = String(u);
+  if (u.includes('resend')) { sent.push(JSON.parse(o.body)); return { ok: true, json: async () => ({}) }; }
+  if (u.includes('turnstile')) return { ok: true, json: async () => ({ success: true }) };
+  return { ok: true, json: async () => ({ keys: [jwk] }) };
+};
+const O = 'https://overwatchseptic.com';
+const env = { OPERATOR_NAME: 'Joshua Klein', OPERATOR_CERT: 'SS-1019571', DB, FILES, ASSETS: { fetch: async r => { const p = new URL(r.url).pathname; return p === '/c/index.html' ? new Response(null, { status: 307, headers: { location: '/c/' } }) : new Response('A:' + p); } }, ACCESS_TEAM_DOMAIN: 't.cloudflareaccess.com', ACCESS_AUD: 'AUD', ADMIN_EMAILS: 'joshua@overwatchseptic.com', ALLOWED_ORIGINS: O, TURNSTILE_SECRET: 's', RESEND_API_KEY: 'k', MAIL_TO: 'joshua@overwatchseptic.com', MAIL_FROM: 'O <joshua@overwatchseptic.com>' };
+const call = (path, o = {}) => worker.fetch(new Request(O + path, o), env);
+const tok = await mkTok('Joshua@overwatchseptic.com');
+const adm = (path, body, extra = {}) => call(path, { method: body === undefined ? 'GET' : 'POST', headers: { 'cf-access-jwt-assertion': tok, origin: O, 'content-type': 'application/json', ...extra }, body: body === undefined ? undefined : (body instanceof ArrayBuffer ? body : JSON.stringify(body)) });
+let fail = 0; const ok = (c, m) => { if (!c) fail++; console.log(c ? 'PASS' : 'FAIL', m); };
+
+const J = async r => r.json();
+// ---- cases: numbering, parts and RMAs, comments with time, closing rules, auto-case from a visit, portal view
+const mkC = async (name, email) => (await J(await adm('/admin/api/customer', { name, email, address: '1 Main St, Moncure, NC', county: 'Chatham', sys_type: 'Vd' }))).id;
+const ann = await mkC('Ann Smith', 'ann@home.com'), bob = await mkC('Bob Jones', 'bob@home.com');
+let j = await J(await adm('/admin/api/case', { customer_id: ann, title: 'Zone 3 pressure low', type: 'County action item', due_date: '2026-11-06', description: 'From county report' }));
+ok(j.ok && j.no === 'OWS-00101', 'first case is OWS-00101');
+const k1 = j.id;
+j = await J(await adm('/admin/api/case', { customer_id: bob, title: 'Callback' })); ok(j.no === 'OWS-00102', 'numbers count up across customers');
+ok((await adm('/admin/api/case', { customer_id: ann, title: '' })).status === 400, 'a case needs a title');
+j = await J(await adm('/admin/api/case-item', { case_id: k1, kind: 'part', title: 'Pressure regulator', vendor: 'Perc-Rite', eta: '2026-11-05', status: 'Ordered' }));
+ok(j.ok && j.no === 'P-000101', 'first part is P-000101'); const p1 = j.id;
+j = await J(await adm('/admin/api/case-item', { case_id: k1, kind: 'rma', title: 'Zone valve', status: 'Shipped', tracking: '1Z' }));
+ok(j.ok && j.no === 'RMA-0000101', 'first RMA is RMA-0000101'); const r1 = j.id;
+j = await J(await adm('/admin/api/case-item', { case_id: k1, kind: 'part', title: 'Float' })); ok(j.no === 'P-000102', 'parts count up on their own');
+const p2 = j.id;
+// comments: public emailed, private, phone, time
+sent.length = 0;
+j = await J(await adm('/admin/api/case-comment', { case_id: k1, visibility: 'public', channel: 'overwatch', body: 'The part is on order.', minutes: 45, email: true }));
+ok(j.ok && j.emailed && sent.length === 1 && sent[0].to[0] === 'ann@home.com' && sent[0].subject === '[OWS-00101] Zone 3 pressure low' && !/45/.test(sent[0].text), 'public comment emailed with the case number; time not in the email');
+await adm('/admin/api/case-comment', { case_id: k1, visibility: 'private', channel: 'phone_out', who: 'Josh', body: 'RMA approved. Do not bill the valve.', minutes: 30 });
+await adm('/admin/api/case-comment', { case_id: k1, visibility: 'public', channel: 'phone_in', who: 'Stacy', body: 'Approved the repair.', minutes: 15, at: '2026-11-02T10:18' });
+sent.length = 0; j = await J(await adm('/admin/api/case-comment', { case_id: k1, visibility: 'private', body: 'note', email: true })); ok(j.ok && !j.emailed && sent.length === 0, 'private comments are never emailed');
+ok((await adm('/admin/api/case-comment', { case_id: k1, body: '' })).status === 400, 'an empty comment is refused');
+let k = (await J(await adm('/admin/api/case/' + k1))).case;
+ok(k.minutes === 90 && k.items.length === 3 && k.comments[0].seq > k.comments[1].seq, 'time totals from comments; comments newest first');
+ok(k.comments.some(c => c.kind === 'event' && /P-000101 created/.test(c.body)) && k.comments.some(c => c.channel === 'phone_in' && c.visibility === 'public'), 'events logged; phone notes can be public');
+// closing rules
+j = await J(await adm('/admin/api/case', { id: k1, status: 'Done' })); ok(!j.ok && /Can't close yet: P-000101 and RMA-0000101 and P-000102 are open/.test(j.error), 'cannot close with open parts or RMAs');
+await adm('/admin/api/case-item', { id: p1, status: 'Installed' }); await adm('/admin/api/case-item', { id: r1, status: 'Credited' }); await adm('/admin/api/case-item', { id: p2, status: 'Cancelled' });
+j = await J(await adm('/admin/api/case', { id: k1, status: 'Waiting on vendor' })); ok(j.ok, 'status changes');
+k = (await J(await adm('/admin/api/case/' + k1))).case; ok(k.comments.some(c => /Status changed from Open to Waiting on vendor/.test(c.body)), 'status change logged');
+// lists
+j = await J(await adm('/admin/api/cases')); ok(j.cases.length === 2 && j.meta.status.includes('Waiting on county'), 'open cases list covers every account');
+j = await J(await adm('/admin/api/customer/' + ann)); ok(j.cases.length === 1 && j.cases[0].no === 'OWS-00101', 'customer page lists its cases');
+// auto-case from a visit with a repair
+let rep = await J(await adm('/admin/api/report', { customer_id: ann, visit_date: '2026-10-30', readings: { pump_min: 4 }, checks: [{ label: 'Alarm', status: 'repair' }, { label: 'Lid', status: 'pass' }] }));
+await adm('/admin/api/report-finish', { id: rep.id, amount: '0' });
+j = await J(await adm('/admin/api/cases?customer_id=' + ann)); const auto = j.cases.find(c => c.source === 'Inspection');
+ok(auto && auto.county_due === '2026-11-01' && auto.owner_due === '2026-11-29' && /Alarm/.test(auto.description) && !/Lid/.test(auto.description), 'a repair on a visit opens a case with the 48-hour and 30-day deadlines');
+rep = await J(await adm('/admin/api/report', { customer_id: bob, visit_date: '2026-10-30', readings: { pump_min: 4 }, checks: [{ label: 'Alarm', status: 'pass' }] }));
+await adm('/admin/api/report-finish', { id: rep.id, amount: '0' });
+ok(!(await J(await adm('/admin/api/cases?customer_id=' + bob))).cases.some(c => c.source === 'Inspection'), 'a clean visit opens no case');
+// portal
+const signIn = async email => { sent.length = 0; await call('/login/api/request', { method: 'POST', headers: { origin: O, 'content-type': 'application/json', 'cf-connecting-ip': '3.3.3.' + email.length }, body: JSON.stringify({ email, token: 't' }) }); const t = sent[0].text.match(/verify\?t=([A-Za-z0-9_-]+)/)[1]; const r = await call('/login/verify', { method: 'POST', headers: { origin: O, 'content-type': 'application/x-www-form-urlencoded' }, body: 't=' + t }); const ck = r.headers.get('set-cookie').split(';')[0]; return (p, o = {}) => call(p, { ...o, headers: { cookie: ck, origin: O, 'content-type': 'application/json' } }); };
+const annP = await signIn('ann@home.com'), bobP = await signIn('bob@home.com');
+j = await J(await annP('/portal/api/cases')); const pc = j.cases.find(c => c.no === 'OWS-00101'), raw = JSON.stringify(j);
+ok(pc && pc.status === 'Waiting on vendor' && pc.comments.length === 2, 'customer sees the exact status and public comments only');
+ok(!/RMA approved|P-000101|RMA-0000101|minutes|Perc-Rite|"event"/.test(raw), 'no private notes, parts, RMAs, time or events in the portal');
+ok(!JSON.stringify(await J(await bobP('/portal/api/cases'))).includes('OWS-00101'), "another customer can't see Ann's cases");
+sent.length = 0; ok((await J(await annP('/portal/api/case-comment', { method: 'POST', body: JSON.stringify({ case_id: k1, body: 'When will you be back?' }) }))).ok && sent.some(m => /\[OWS-00101\] New message from Ann Smith/.test(m.subject)), 'customer reply lands on the case and alerts you');
+ok((await bobP('/portal/api/case-comment', { method: 'POST', body: JSON.stringify({ case_id: k1, body: 'hi' }) })).status === 404, "a customer can't post to someone else's case");
+k = (await J(await adm('/admin/api/case/' + k1))).case; ok(k.comments[0].channel === 'portal' && k.comments[0].visibility === 'public' && k.comments[0].who === 'Ann Smith', 'portal reply shows as public, from customer');
+sent.length = 0; j = await J(await annP('/portal/api/case', { method: 'POST', body: JSON.stringify({ title: 'Alarm going off', body: 'Beeping since this morning.' }) }));
+ok(j.ok && /^OWS-001\d\d$/.test(j.no) && sent.some(m => m.subject.startsWith('[' + j.no + '] New request from Ann Smith')), 'customer can open a new request; you are alerted');
+// closing once items are done; customer delete removes cases
+j = await J(await adm('/admin/api/case', { id: k1, status: 'Done' })); ok(j.ok, 'closes once parts and RMAs are done');
+j = await J(await adm('/admin/api/cases')); ok(!j.cases.some(c => c.id === k1), 'closed cases leave the open list');
+await adm('/admin/api/customer-delete', { id: bob }); ok(!(await J(await adm('/admin/api/cases'))).cases.some(c => c.customer_id === bob), "deleting a customer removes their cases");
+console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);

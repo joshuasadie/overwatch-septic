@@ -129,11 +129,13 @@
       }).join('') || '<li class="mute">None yet.</li>') + '</ul>' +
       '<h3 style="margin:16px 0 4px">Reports</h3><ul class="list">' + (d.reports.map(function (r) {
         return '<li><span><b>' + (r.kind === 'inspection' ? 'Inspection report, ' : 'Visit report, ') + E(OW.date(r.visit_date)) + '</b><small>' + (r.kind === 'upload' ? 'Uploaded PDF' : r.kind === 'inspection' ? E(r.insp ? r.insp.data.status : 'Inspection') + (r.insp && r.insp.calc.pump_now ? ' &middot; time to pump' : '') : 'Entered in form') + (r.notes ? ' &middot; ' + E(r.notes.slice(0, 60)) : '') + (r.state === 'held' ? '' : r.county_sent_at ? ' &middot; county copy sent' : ' &middot; county copy not sent') + '</small></span><span class="row">' + (r.state === 'held' ? '<span class="pill warn">Held until paid</span>' : (r.county_sent_at ? '' : '<button class="b alt" data-county-send="' + r.id + '">Send county copy</button>')) + '' + (r.kind === 'inspection' && r.insp ? '<button class="b alt" data-rep="view" data-id="' + r.id + '">View</button><button class="b alt" data-rep="pdf" data-id="' + r.id + '">Homeowner PDF</button><button class="b alt" data-rep="cpdf" data-id="' + r.id + '">County PDF</button>' : '<button class="b alt" data-rep="pdf" data-id="' + r.id + '">PDF</button>') + '<button class="b alt" data-rep="mail" data-id="' + r.id + '">Email customer</button><button class="b danger" data-rep="del" data-id="' + r.id + '">Delete</button></span></li>';
-      }).join('') || '<li class="mute">None yet.</li>') + '</ul></section>' +
+      }).join('') || '<li class="mute">None yet.</li>') + '</ul>' + (OWA.casesList ? OWA.casesList(d) : '') + '</section>' +
       '<section class="card" id="panel"><h2>Next step</h2><p class="mute">Choose Send contract or New inspection.</p></section></div>' +
+      '<div id="caseView"></div>' +
       '<section class="card"><h2>' + E(c.name) + ': readings over time</h2><div class="charts">' + OW.charts(d.reports) + '</div></section>' +
       '<div class="row"><button class="b danger" id="bDel">Delete customer</button></div><div id="delBox"></div>';
     $('detail').innerHTML = h;
+    if (OWA.afterDetail) OWA.afterDetail();
   }
 
   function field(id, label, val, extra) { return '<div><label for="' + id + '">' + label + '</label><input id="' + id + '" value="' + E(val || '') + '" ' + (extra || '') + '></div>'; }
@@ -162,6 +164,7 @@
     var a = Number(t.annual_fee); return a > 0 ? String(Math.round(a / 2 * 100) / 100) : '';
   }
   OWA.visitFee = function () { return contractVisitFee(S.d); };
+  OWA.select = function (id) { return select(id); };
   function contractForm() {
     var c = S.d.customer, today = new Date().toISOString().slice(0, 10);
     $('panel').innerHTML = '<h2>New contract</h2><p class="mute" style="margin:0 0 4px">New agreements use the state\'s 18E sample agreement (2025), whatever the permit date. Additions are per-inspection pricing, report delivery, repairs and the named operator. These fields fill its blanks.</p><form id="kf" novalidate><div class="two">' +

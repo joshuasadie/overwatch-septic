@@ -91,6 +91,15 @@ export const SCHEMA = [
   'CREATE INDEX IF NOT EXISTS invoices_ref ON invoices (ref_id)',
   "CREATE TABLE IF NOT EXISTS report_state (report_id TEXT PRIMARY KEY, released_at TEXT NOT NULL DEFAULT '', county_sent_at TEXT NOT NULL DEFAULT '', county_to TEXT NOT NULL DEFAULT '', token_hash TEXT NOT NULL DEFAULT '', token_exp TEXT NOT NULL DEFAULT '')",
   'CREATE INDEX IF NOT EXISTS report_state_token ON report_state (token_hash)',
+  // cases (see cases.js)
+  'CREATE TABLE IF NOT EXISTS counters (name TEXT PRIMARY KEY, next INTEGER NOT NULL)',
+  "INSERT OR IGNORE INTO counters (name, next) VALUES ('ows', 101), ('p', 101), ('rma', 101)",
+  "CREATE TABLE IF NOT EXISTS cases (id TEXT PRIMARY KEY, num INTEGER NOT NULL UNIQUE, customer_id TEXT NOT NULL, title TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'Repair follow-up', status TEXT NOT NULL DEFAULT 'Open', due_date TEXT NOT NULL DEFAULT '', county_due TEXT NOT NULL DEFAULT '', county_done TEXT NOT NULL DEFAULT '', owner_due TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', source_ref TEXT NOT NULL DEFAULT '', contact TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, closed_at TEXT NOT NULL DEFAULT '')",
+  'CREATE INDEX IF NOT EXISTS cases_customer ON cases (customer_id)',
+  "CREATE TABLE IF NOT EXISTS case_items (id TEXT PRIMARY KEY, case_id TEXT NOT NULL, kind TEXT NOT NULL, num INTEGER NOT NULL, title TEXT NOT NULL, vendor TEXT NOT NULL DEFAULT '', part_no TEXT NOT NULL DEFAULT '', po TEXT NOT NULL DEFAULT '', cost TEXT NOT NULL DEFAULT '', eta TEXT NOT NULL DEFAULT '', rma_no TEXT NOT NULL DEFAULT '', tracking TEXT NOT NULL DEFAULT '', credit TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (kind, num))",
+  'CREATE INDEX IF NOT EXISTS case_items_case ON case_items (case_id)',
+  "CREATE TABLE IF NOT EXISTS case_comments (id TEXT PRIMARY KEY, case_id TEXT NOT NULL, seq INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'note', visibility TEXT NOT NULL DEFAULT 'private', channel TEXT NOT NULL DEFAULT 'overwatch', who TEXT NOT NULL DEFAULT '', at TEXT NOT NULL, body TEXT NOT NULL, minutes INTEGER NOT NULL DEFAULT 0, emailed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)",
+  'CREATE INDEX IF NOT EXISTS case_comments_case ON case_comments (case_id, seq)',
   "CREATE TABLE IF NOT EXISTS report_owner_sent (report_id TEXT PRIMARY KEY, sent_at TEXT NOT NULL DEFAULT '')",
   'CREATE TABLE IF NOT EXISTS counties (name TEXT PRIMARY KEY, email TEXT NOT NULL)',
   // County addresses for operator reports, from each county's reply (Oct 2026). Added once; edits and removals in the admin portal stick.

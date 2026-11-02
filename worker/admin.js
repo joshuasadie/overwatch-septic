@@ -3,6 +3,7 @@ import { reply, clean, id, EMAIL, siteOrigin, sendMail, readJson, originOk, veri
 import { createInvoice, markPaid, releaseInvoice, releaseReport, sendCountyReport, sendNotice, noticeDrafts, toCents, etDate, daysBetween } from './billing.js';
 import { operatorOf, systemInfo, createInspection, saveSystem, attachInspections, uploadPhoto, servePhoto, deleteInspectionFiles } from './inspection.js';
 import { createContract, previewContract, resendContract, voidContract, countersign, publicView } from './contracts.js';
+import { listCases, getCase, saveCase, saveComment, saveItem, caseFromReport, deleteCasesFor, CASE_STATUS, CASE_TYPES, CHANNELS, ITEM_STATUS } from './cases.js';
 
 export const READINGS = { pump_min: 'Pump run time (minutes per cycle)', sludge_in: 'Sludge depth (inches in tank)', water_gpd: 'Water use (gallons per day)' };
 const CHECK_STATUS = ['pass', 'repair', 'na'];
@@ -109,7 +110,7 @@ export async function adminApi(request, env, path) {
         const k = si.id ? await env.DB.prepare('SELECT c.*, x.repair_prefs FROM contacts c LEFT JOIN contact_extra x ON x.contact_id = c.id WHERE c.id = ?').bind(si.id).first() : null;
         installer = { id: si.id || '', name: k ? k.name : si.name, company: k ? k.company : '', phone: k ? k.phone : '', email: k ? k.email : '', repair_prefs: k ? (k.repair_prefs || '') : '', date: si.date || '' };
       } }
-    return reply({ ok: true, customer: c, installer, contracts, reports, invoices: await invoiceRows(env, 'i.customer_id = ?', [c.id]) });
+    return reply({ ok: true, customer: c, installer, contracts, reports, invoices: await invoiceRows(env, 'i.customer_id = ?', [c.id]), cases: await listCases(env, c.id) });
   }
   if (path === '/admin/api/customer-delete' && method === 'POST') {
     const j = await readJson(request); if (j.res) return j.res;
@@ -123,6 +124,7 @@ export async function adminApi(request, env, path) {
     const reps = (await env.DB.prepare('SELECT pdf_key FROM reports WHERE customer_id = ?').bind(cid).all()).results;
     if (env.FILES) for (const r of reps) if (r.pdf_key) await env.FILES.delete(r.pdf_key);
     await deleteInspectionFiles(env, (await env.DB.prepare('SELECT id FROM reports WHERE customer_id = ?').bind(cid).all()).results.map(x => x.id));
+    await deleteCasesFor(env, cid);
     await env.DB.batch([env.DB.prepare('DELETE FROM inspections WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM systems WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM invoices WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM reports WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM contracts WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM sessions WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM login_tokens WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM test_customers WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM customers WHERE id = ?').bind(cid), audit(env, email, isTest ? 'test-customer-deleted' : 'customer-deleted', cid, c.name)]);
     return reply({ ok: true });
   }
@@ -231,10 +233,21 @@ export async function adminApi(request, env, path) {
     const st = await env.DB.prepare('SELECT released_at FROM report_state WHERE report_id = ?').bind(rid).first();
     if (!st || st.released_at || await env.DB.prepare("SELECT 1 AS x FROM invoices WHERE kind = 'visit' AND ref_id = ?").bind(rid).first()) return reply({ ok: false, error: 'This report was already finished.' }, 409);
     const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(rep.customer_id).first();
+    try { await caseFromReport(env, email, await env.DB.prepare('SELECT id, customer_id, visit_date, checks FROM reports WHERE id = ?').bind(rid).first()); } catch { /* a case is a convenience; never block the report */ }
     if (cents === 0) { await releaseReport(env, rid, c); await audit(env, email, 'report-waived', rid, c.name).run(); return reply({ ok: true, released: true }); }
     const inv = await createInvoice(env, email, c, 'visit', rid, cents);
     return reply({ ok: true, invoice: inv.id, emailed: inv.emailed });
   }
+  // cases
+  if (path === '/admin/api/cases' && method === 'GET') {
+    const cid = new URL(request.url).searchParams.get('customer_id') || '';
+    return reply({ ok: true, cases: await listCases(env, /^[a-f0-9]{20}$/.test(cid) ? cid : ''), meta: { status: CASE_STATUS, types: CASE_TYPES, channels: CHANNELS, item_status: ITEM_STATUS } });
+  }
+  m = /^\/admin\/api\/case\/([a-f0-9]{20})$/.exec(path);
+  if (m && method === 'GET') { const k = await getCase(env, m[1]); return k ? reply({ ok: true, case: k, meta: { status: CASE_STATUS, types: CASE_TYPES, channels: CHANNELS, item_status: ITEM_STATUS } }) : reply({ ok: false, error: 'Not found.' }, 404); }
+  if (path === '/admin/api/case' && method === 'POST') { const j = await readJson(request, 16384); if (j.res) return j.res; return out(await saveCase(env, email, j.body)); }
+  if (path === '/admin/api/case-comment' && method === 'POST') { const j = await readJson(request, 32768); if (j.res) return j.res; return out(await saveComment(env, email, j.body)); }
+  if (path === '/admin/api/case-item' && method === 'POST') { const j = await readJson(request, 16384); if (j.res) return j.res; return out(await saveItem(env, email, j.body)); }
   if (path === '/admin/api/invoices' && method === 'GET') return reply({ ok: true, invoices: await invoiceRows(env, "i.status = 'open' OR i.released_at = '' OR i.notice_state != 'none'", []) });
   m = /^\/admin\/api\/invoice-(waive|paid|pause|release|notice|final)$/.exec(path);
   if (m && method === 'POST') {
