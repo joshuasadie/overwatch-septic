@@ -38,6 +38,7 @@ const visitWords = v => ({ '1': 'one (1) time per year', '2': 'two (2) times per
 function contractText18E(x, dp) {
   const ty = T(x.sys_type), vw = visitWords(T(x.visits)), tbl = 'Table XXXII of 15A NCAC 18E .1301(b)';
   const maint = (x.maintenance || []).filter(Boolean).map((m, i) => `${i + 1}. ${T(m)}`);
+  const V4 = Number(x.v) >= 4, em = e => V4 && T(e) ? `; email ${T(e)}` : '';
   const hd = [T(x.health_contact), T(x.health_dept), T(x.health_addr)].filter(Boolean).join(', ');
   return {
     title: 'MAINTENANCE AND INSPECTION AGREEMENT', party: 'Operator',
@@ -91,11 +92,13 @@ function contractText18E(x, dp) {
       { h: '7) Regulatory Amendments', p: ['References in this Agreement to sections of the Administrative Code shall include such rules as they may be amended in the future.'] },
       { h: '8) No Implied Waiver', p: ['The waiver by either Party, of the default or a breach by the other Party of any provision of this Agreement shall not operate or be construed to operate as a waiver of any subsequent default or breach. The failure at any time of either Party to enforce any provision of this Agreement (a) shall not be construed to be a waiver of such provisions, or of any other provision; and (b) shall not in any way affect the validity of this Agreement, or any part of this Agreement, or the right of either Party thereafter to enforce each and every provision of this Agreement.'] },
       { h: '9) Notice', p: [
-        'Every notice required under this Agreement shall be in writing and shall be deemed sufficiently given if delivered in person or sent by certified or registered mail, return receipt requested, postage prepaid to the Party to be notified and addressed as follows:',
-        `Owner Name and Address: ${T(x.owner_name)}, ${T(x.owner_address)}`,
-        `Operator Name and Address: ${T(x.contractor_name)}, ${T(x.contractor_address)}`,
-        `Local Health Department Contact Name and Address: ${hd}`,
-        'The date of any Notice shall be the date of personal delivery or the date shown on the return receipt as the date of delivery or attempted delivery, as the case may be. Changes in the respective addresses to which notice may be directed may be made from time to time by either Party by notice to the other party.',
+        V4 ? 'Every notice required under this Agreement shall be in writing and shall be deemed sufficiently given if delivered in person, sent by certified or registered mail, return receipt requested, postage prepaid, or sent by email, to the Party to be notified and addressed as follows:'
+          : 'Every notice required under this Agreement shall be in writing and shall be deemed sufficiently given if delivered in person or sent by certified or registered mail, return receipt requested, postage prepaid to the Party to be notified and addressed as follows:',
+        `Owner Name and Address: ${T(x.owner_name)}, ${T(x.owner_address)}${em(x.owner_email)}`,
+        `Operator Name and Address: ${T(x.contractor_name)}, ${T(x.contractor_address)}${em(x.contractor_email)}`,
+        `Local Health Department Contact Name and Address: ${hd}${em(x.health_email)}`,
+        V4 ? 'The date of any Notice shall be the date of personal delivery, the date shown on the return receipt as the date of delivery or attempted delivery, or the date the email is sent, unless the sender receives a message that the email could not be delivered, as the case may be. Changes in the respective addresses, including email addresses, to which notice may be directed may be made from time to time by either Party by notice to the other party.'
+          : 'The date of any Notice shall be the date of personal delivery or the date shown on the return receipt as the date of delivery or attempted delivery, as the case may be. Changes in the respective addresses to which notice may be directed may be made from time to time by either Party by notice to the other party.',
       ] },
       { h: '10) Governing Law', p: ['This Agreement and any questions concerning its validity, the system construction or performance shall be governed by the laws of the State of North Carolina, notwithstanding the place of execution, or the order in which the signatures of the Parties are affixed.'] },
       { h: '11) Entire Agreement and Amendment', p: ['This Agreement supersedes all prior negotiations, agreements and understandings between the Parties with respect to the subject matter hereof and constitutes the entire Agreement between the Parties with respect to the subject matter hereof. To be effective, any amendment or modification to this Agreement must be in writing and must be signed by the Parties.'] },
