@@ -51,7 +51,10 @@ export async function createContract(env, who, customer, termsIn) {
   else if (terms.rule_set && terms.rule_set !== '18A') return { status: 400, error: 'Choose which rules apply: 18E or 18A.' };
   else if (!terms.rule_set) delete terms.rule_set;
   // agreement version 2: report, repair, operator, price and notice wording requested by owners (Oct 2026)
-  terms.v = 3; const op = { name: env.OPERATOR_NAME || '', cert: env.OPERATOR_CERT || '' }; if (op.name && op.cert) { terms.operator_name = op.name; terms.operator_cert = op.cert; }
+  terms.v = 4; // 4: notices may also be sent by email
+  terms.owner_email = customer.email || ''; terms.contractor_email = env.MAIL_TO || '';
+  try { const r = await env.DB.prepare('SELECT email FROM counties WHERE name = ?').bind(String(terms.county || '').trim().toLowerCase()).first(); terms.health_email = r ? r.email : ''; } catch { terms.health_email = ''; }
+  const op = { name: env.OPERATOR_NAME || '', cert: env.OPERATOR_CERT || '' }; if (op.name && op.cert) { terms.operator_name = op.name; terms.operator_cert = op.cert; }
   const miss = missingTerms(terms);
   if (miss.length) return { status: 400, error: 'Please fill in: ' + miss.join(', ') + '.' };
   if (!/^\d+(\.\d{1,2})?$/.test(terms.annual_fee.replace(/,/g, ''))) return { status: 400, error: 'The annual fee must be a number, like 500.' };
