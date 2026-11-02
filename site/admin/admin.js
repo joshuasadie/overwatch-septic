@@ -171,7 +171,7 @@
       field('k_hcon', 'Health department contact name (optional)', LS.get('ow_hc_' + (c.county || '')) || '') + field('k_appr', 'Provisional or Innovative Approval no. (from System setup)', '') +
       field('k_date', 'Agreement date', today, 'type="date"') + field('k_resp', 'Response time (hours)', '48') + '</div>' +
       '<p id="k_tot" role="status" style="background:var(--note);color:var(--noteink);border-radius:10px;padding:10px 14px;margin:14px 0 0;font-weight:600"></p><p class="mute" style="margin:4px 0 0;font-size:14px">Each inspection is billed at this fee when you upload its report. Extra visits are billed at your normal fees.</p>' +
-      '<label for="k_rs">Rules that apply</label><select id="k_rs"><option value="">Choose…</option><option value="18E">15A NCAC 18E (permit issued January 1, 2024 or later)</option><option value="18A">15A NCAC 18A .1900 (permit issued before 2024)</option></select>' +
+      '<label for="k_rs">Rules that apply</label><select id="k_rs"><option value="18E" selected>15A NCAC 18E (current rules)</option><option value="18A">15A NCAC 18A .1900 (older rules)</option></select>' +
       '<p id="k_rsw" style="background:var(--note);color:var(--noteink);border-radius:10px;padding:10px 14px;margin:8px 0 0;font-weight:600">Checking System setup for the permit date…</p>' +
       '<label for="k_maint">Routine maintenance (one per line)</label><textarea id="k_maint" style="min-height:120px">' + maintDefault(c) + '</textarea>' +
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Preview agreement</button></div><div class="msg" id="km" role="status"></div></form>';
@@ -184,11 +184,10 @@
       if (pm.other_no && $('k_appr') && !$('k_appr').value) $('k_appr').value = pm.other_no; permitIssued = pm.issued || '';
       if (!$('k_rs')) return;
       if (rs) {
-        var said = 'Set from System setup: permit issued ' + OW.date(pm.issued) + '.';
-        $('k_rs').value = rs; $('k_rsw').textContent = said;
-        $('k_rs').addEventListener('change', function () { $('k_rsw').textContent = $('k_rs').value === rs ? said : 'This does not match the permit date in System setup (' + OW.date(pm.issued) + '). Check the permit before sending.'; });
+        var said = 'System setup: permit issued ' + OW.date(pm.issued) + '.';
+        $('k_rsw').textContent = said + (rs === '18A' ? ' It was issued under the older 18A rules, but new agreements use 18E, the current rules.' : '');
       }
-      else $('k_rsw').textContent = 'No permit date in System setup. Check the permit and choose the rules that apply.';
+      else $('k_rsw').textContent = 'No permit date in System setup. New agreements use 18E, the current rules.';
     });
     $('kf').addEventListener('submit', function (e) {
       e.preventDefault(); var v = function (i) { return $(i).value.trim(); };
