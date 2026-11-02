@@ -33,8 +33,10 @@ ok(j.ok && j.no === 'OWS-00101', 'first case is OWS-00101');
 const k1 = j.id;
 j = await J(await adm('/admin/api/case', { customer_id: bob, title: 'Callback' })); ok(j.no === 'OWS-00102', 'numbers count up across customers');
 ok((await adm('/admin/api/case', { customer_id: ann, title: '' })).status === 400, 'a case needs a title');
-j = await J(await adm('/admin/api/case-item', { case_id: k1, kind: 'part', title: 'Pressure regulator', vendor: 'Perc-Rite', eta: '2026-11-05', status: 'Ordered' }));
+j = await J(await adm('/admin/api/case-item', { case_id: k1, kind: 'part', title: 'Pressure regulator', qty: 2, vendor: 'Perc-Rite', eta: '2026-11-05', status: 'Ordered' }));
 ok(j.ok && j.no === 'P-000101', 'first part is P-000101'); const p1 = j.id;
+{ let kk = (await J(await adm('/admin/api/case/' + k1))).case; ok(kk.items.find(i => i.id === p1).qty === 2 && kk.comments.some(c => /P-000101 created by .*: 2 × Pressure regulator/.test(c.body)), 'a part keeps its quantity');
+  await adm('/admin/api/case-item', { id: p1, qty: 3 }); kk = (await J(await adm('/admin/api/case/' + k1))).case; ok(kk.items.find(i => i.id === p1).qty === 3, 'quantity can be changed'); }
 j = await J(await adm('/admin/api/case-item', { case_id: k1, kind: 'rma', title: 'Zone valve', status: 'Shipped', tracking: '1Z' }));
 ok(j.ok && j.no === 'RMA-0000101', 'first RMA is RMA-0000101'); const r1 = j.id;
 j = await J(await adm('/admin/api/case-item', { case_id: k1, kind: 'part', title: 'Float' })); ok(j.no === 'P-000102', 'parts count up on their own');
