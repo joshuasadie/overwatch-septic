@@ -1,5 +1,5 @@
 // Contracts: the owner signs from an emailed link (or from the customer portal); the contractor countersigns in /admin.
-import { contractText, REQUIRED, DEFAULT_TERMS, VISITS, annualFrom, R18E } from '../site/contract-text.js';
+import { contractText, REQUIRED, DEFAULT_TERMS, VISITS, annualFrom, R18E, dateParts } from '../site/contract-text.js';
 import { reply, clean, sha, rand, id, isoIn, siteOrigin, sendMail, EMAIL } from './lib.js';
 import { createInvoice, contractLocked, toCents, money } from './billing.js';
 import { fmtPhone } from './inspection.js';
@@ -35,7 +35,8 @@ const publicView = (c, customer, locked = false) => {
   return { locked: hide, id: c.id, status: c.status, created_at: c.created_at, text: hide ? null : contractText(terms), owner: { name: c.owner_name, signed_at: c.owner_signed_at }, contractor: { name: c.op_name || terms.contractor_name, signed_at: c.op_signed_at }, owner_label: customer ? customer.name : terms.owner_name, contractor_label: terms.contractor_name, expires_at: c.expires_at };
 };
 
-export async function createContract(env, who, customer, termsIn) {
+// Builds the exact terms an agreement would be sent with: used by both the preview and the send, so the preview is what is sent.
+export async function buildTerms(env, customer, termsIn) {
   let pm = null;
   try { const row = await env.DB.prepare('SELECT data FROM systems WHERE customer_id = ?').bind(customer.id).first(); pm = row ? JSON.parse(row.data) : null; } catch { pm = null; }
   const terms = normalizeTerms(termsIn, customer, pm);
@@ -62,6 +63,22 @@ export async function createContract(env, who, customer, termsIn) {
   const fee = String(terms.origination_fee ?? '').trim();
   if (fee && toCents(fee) === null) return { status: 400, error: 'The origination fee must be a number, like 100.' };
   terms.origination_fee = fee;
+  return { terms, sys: pm };
+}
+export async function previewContract(env, customer, termsIn) {
+  const b = await buildTerms(env, customer, termsIn); if (b.error) return b;
+  const t = b.terms, p = (b.sys && b.sys.permit) || {}, warn = [];
+  if (!String(t.permit || '').trim()) warn.push(t.permit_issued ? `No Operation Permit number, so the agreement says "the Operation Permit issued ${(d => `${d.month} ${d.day.replace(/\D+$/, '')}, ${d.year}`)(dateParts(t.permit_issued))}".` : 'No Operation Permit number or issue date. Add the issue date in System setup.');
+  if (!t.approval_no) warn.push('No Provisional or Innovative Approval number. Leave it blank only if the system has none.');
+  if (!t.health_email) warn.push(`No email saved for ${t.county || 'this'} County, so the notice section lists no county email.`);
+  if (!p.owners) warn.push('No owners in System setup, so the customer record name is used.');
+  if (!t.health_contact) warn.push('No health department contact name.');
+  const from = [p.owners && 'owners', (b.sys && (b.sys.addresses || []).length) && `addresses (${b.sys.addresses.length})`, p.parcel && `parcel ${p.parcel}`, p.type && p.type, /^\d{4}-\d{2}-\d{2}$/.test(p.issued || '') && `issued ${(d => `${d.month.slice(0, 3)} ${d.day.replace(/\D+$/, '')}, ${d.year}`)(dateParts(p.issued))}`, p.other_no && `approval ${p.other_no}`].filter(Boolean);
+  return { ok: true, text: contractText(t), terms: t, to: customer.email, copy: env.MAIL_TO || '', from_setup: from, warnings: warn };
+}
+export async function createContract(env, who, customer, termsIn) {
+  const b = await buildTerms(env, customer, termsIn); if (b.error) return b;
+  const terms = b.terms;
   const token = rand(24), cid = id(), now = new Date().toISOString();
   await env.DB.batch([
     env.DB.prepare('INSERT INTO contracts (id, customer_id, created_at, status, terms, text_hash, owner_token, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(cid, customer.id, now, 'sent', JSON.stringify(terms), await textHash(terms), await sha(token), isoIn(LINK_DAYS * 864e5)),
