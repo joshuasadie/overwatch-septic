@@ -67,8 +67,15 @@ ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, rule
     ok(/The Contractor does not perform repairs/.test(JSON.stringify(ct.contractText({ ...base, v: 2, rule_set: '18E' }))), 'version 2 agreements keep their text'); }
   ok(ct.annualFrom(250, 'q1s') === 500 && ct.annualFrom(250, '4') === 1000, 'annual fee is the steady yearly total');
   ok(ct.contractText({ ...base }).sections[1].p[0].startsWith('a) The Owner shall pay to the Contractor the sum of $500 per year for periodic'), 'older agreements keep their exact wording'); }
+{ const before = (await J(await adm('/admin/api/customer/' + cid))).contracts.length; sent.length = 0;
+  const pv = await J(await adm('/admin/api/contract-preview', { customer_id: cid, terms: { ...terms, annual_fee: '', inspection_fee: '250', visits: 'q1s', rule_set: '18E' } }));
+  ok(pv.ok && pv.text && pv.text.party === 'Operator' && pv.to === 'ann@home.com' && Array.isArray(pv.warnings) && pv.warnings.length > 0, 'preview returns the agreement text, recipient and checks');
+  ok(sent.length === 0 && (await J(await adm('/admin/api/customer/' + cid))).contracts.length === before, 'preview sends and saves nothing');
+  const bad = await adm('/admin/api/contract-preview', { customer_id: cid, terms: { ...terms, annual_fee: '', inspection_fee: 'abc', visits: '2', rule_set: '18E' } }); ok(bad.status === 400, 'preview reports form errors');
+  globalThis.__pv = pv; }
 sent.length = 0; j = await J(await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, annual_fee: '', inspection_fee: '250', visits: 'q1s', rule_set: '18E' } })); ok(j.ok && j.emailed, 'contract sent (priced per inspection, 18E)');
 { const k = (await J(await adm('/admin/api/customer/' + cid))).contracts[0], tx = JSON.stringify(k.text);
+  ok(JSON.stringify(globalThis.__pv.text) === tx, 'the preview matches the agreement that was sent');
   ok(k.terms.v === 4 && /or sent by email, to the Party to be notified/.test(tx) && /email ann@home\.com/.test(tx) && /the date the email is sent/.test(tx) && k.text.party === 'Operator' && /Inspections shall be performed by Joshua Klein, North Carolina Certified Subsurface Operator, Certificate No\. SS-1019571/.test(tx), 'new agreements: the 18E sample, naming the operator and certificate');
   ok(/The Owner may select the person or company that performs the repairs/.test(tx) && /The Operator may, but is not required to, perform repairs/.test(tx) && /notify the Owner within twenty-four \(24\) hours/.test(tx) && /No repair work shall be performed without the Owner's prior approval/.test(tx) && /if the Operator agrees to do so/.test(tx), 'repairs: owner picks, operator may decline, charged, owner approval, 24-hour emergency notice');
   ok(/report the results of their inspections to the Owner, Manufacturer, and Local Health Department/.test(tx) && /twenty-fifth \(25th\) day after the inspection, whichever is earlier/.test(tx) && /18E \.1304\(g\)/.test(tx), 'reporting clause: owner, manufacturer and county; owner copy by payment or day 25; state data system');

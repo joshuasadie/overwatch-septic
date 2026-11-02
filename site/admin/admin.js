@@ -125,7 +125,7 @@
         if (x.status === 'owner_signed') btns += '<button class="b" data-act="cs" data-id="' + x.id + '">Sign now</button>';
         if (x.status !== 'complete' && x.status !== 'void') btns += '<button class="b danger" data-act="void" data-id="' + x.id + '">Cancel</button>';
         if (x.status === 'complete') btns += '<button class="b alt" data-act="pdf" data-id="' + x.id + '">PDF</button>';
-        return '<li><span><b>Inspection and Maintenance Agreement</b><small>Sent ' + E(OW.date(x.created_at)) + (x.owner.signed_at ? ' &middot; customer signed ' + E(OW.date(x.owner.signed_at)) : '') + (x.contractor.signed_at ? ' &middot; you signed ' + E(OW.date(x.contractor.signed_at)) : '') + '</small></span><span class="row">' + OW.pill(x.status) + btns + '</span></li>';
+        return '<li><span><b>' + E(x.text && /^MAINTENANCE AND/.test(x.text.title) ? 'Maintenance and Inspection Agreement' : 'Inspection and Maintenance Agreement') + '</b><small>Sent ' + E(OW.date(x.created_at)) + (x.owner.signed_at ? ' &middot; customer signed ' + E(OW.date(x.owner.signed_at)) : '') + (x.contractor.signed_at ? ' &middot; you signed ' + E(OW.date(x.contractor.signed_at)) : '') + '</small></span><span class="row">' + OW.pill(x.status) + btns + '</span></li>';
       }).join('') || '<li class="mute">None yet.</li>') + '</ul>' +
       '<h3 style="margin:16px 0 4px">Reports</h3><ul class="list">' + (d.reports.map(function (r) {
         return '<li><span><b>' + (r.kind === 'inspection' ? 'Inspection report, ' : 'Visit report, ') + E(OW.date(r.visit_date)) + '</b><small>' + (r.kind === 'upload' ? 'Uploaded PDF' : r.kind === 'inspection' ? E(r.insp ? r.insp.data.status : 'Inspection') + (r.insp && r.insp.calc.pump_now ? ' &middot; time to pump' : '') : 'Entered in form') + (r.notes ? ' &middot; ' + E(r.notes.slice(0, 60)) : '') + (r.state === 'held' ? '' : r.county_sent_at ? ' &middot; county copy sent' : ' &middot; county copy not sent') + '</small></span><span class="row">' + (r.state === 'held' ? '<span class="pill warn">Held until paid</span>' : (r.county_sent_at ? '' : '<button class="b alt" data-county-send="' + r.id + '">Send county copy</button>')) + '' + (r.kind === 'inspection' && r.insp ? '<button class="b alt" data-rep="view" data-id="' + r.id + '">View</button><button class="b alt" data-rep="pdf" data-id="' + r.id + '">Homeowner PDF</button><button class="b alt" data-rep="cpdf" data-id="' + r.id + '">County PDF</button>' : '<button class="b alt" data-rep="pdf" data-id="' + r.id + '">PDF</button>') + '<button class="b alt" data-rep="mail" data-id="' + r.id + '">Email customer</button><button class="b danger" data-rep="del" data-id="' + r.id + '">Delete</button></span></li>';
@@ -174,7 +174,7 @@
       '<label for="k_rs">Rules that apply</label><select id="k_rs"><option value="">Choose…</option><option value="18E">15A NCAC 18E (permit issued January 1, 2024 or later)</option><option value="18A">15A NCAC 18A .1900 (permit issued before 2024)</option></select>' +
       '<p id="k_rsw" style="background:var(--note);color:var(--noteink);border-radius:10px;padding:10px 14px;margin:8px 0 0;font-weight:600">Checking System setup for the permit date…</p>' +
       '<label for="k_maint">Routine maintenance (one per line)</label><textarea id="k_maint" style="min-height:120px">' + maintDefault(c) + '</textarea>' +
-      '<div class="row" style="margin-top:10px"><button class="b" type="submit">Email signing link to ' + E(c.name.split(' ')[0]) + '</button></div><div class="msg" id="km" role="status"></div></form>';
+      '<div class="row" style="margin-top:10px"><button class="b" type="submit">Preview agreement</button></div><div class="msg" id="km" role="status"></div></form>';
     var permitIssued = '';
     var showTotal = function () { $('k_tot').textContent = feeTotal($('k_per').value, $('k_visits').value); };
     $('k_per').addEventListener('input', showTotal); $('k_visits').addEventListener('change', showTotal); showTotal();
@@ -195,13 +195,39 @@
       var per = v('k_per').replace(/,/g, '');
       if (!v('k_rs')) { $('km').className = 'msg err'; $('km').textContent = 'Choose which rules apply. Check the permit date.'; return; }
       if (!/^\d+(\.\d{1,2})?$/.test(per) || Number(per) <= 0) { $('km').className = 'msg err'; $('km').textContent = 'Enter the fee per inspection, like 250.'; return; }
-      $('km').className = 'msg'; $('km').textContent = 'Sending...';
-      OW.api('/admin/api/contract', { customer_id: c.id, terms: { contractor_name: v('k_contractor'), contractor_address: v('k_caddr'), health_dept: v('k_health'), health_addr: v('k_haddr'), health_contact: v('k_hcon'), approval_no: v('k_appr'), permit_issued: permitIssued, inspection_fee: per, visits: v('k_visits'), origination_fee: v('k_orig'), date: v('k_date'), response_hours: v('k_resp'), rule_set: v('k_rs'), maintenance: v('k_maint').split('\n') } }).then(function (j) {
+      var terms = { contractor_name: v('k_contractor'), contractor_address: v('k_caddr'), health_dept: v('k_health'), health_addr: v('k_haddr'), health_contact: v('k_hcon'), approval_no: v('k_appr'), permit_issued: permitIssued, inspection_fee: per, visits: v('k_visits'), origination_fee: v('k_orig'), date: v('k_date'), response_hours: v('k_resp'), rule_set: v('k_rs'), maintenance: v('k_maint').split('\n') };
+      $('km').className = 'msg'; $('km').textContent = 'Building the preview...';
+      // Preview first: the server builds the terms exactly as it would for sending, and nothing is saved.
+      OW.api('/admin/api/contract-preview', { customer_id: c.id, terms: terms }).then(function (j) {
         if (!j.ok) { $('km').className = 'msg err'; $('km').textContent = j.error; return; }
-        LS.set('ow_cn', v('k_contractor')); LS.set('ow_per', per); LS.set('ow_orig', v('k_orig')); LS.set('ow_ca', v('k_caddr')); LS.set('ow_hd_' + (c.county || ''), v('k_health')); LS.set('ow_ha_' + (c.county || ''), v('k_haddr')); LS.set('ow_hc_' + (c.county || ''), v('k_hcon'));
-        OW.toast(j.emailed ? 'Signing link emailed.' : 'Saved, but the email did not send. Use Resend link.'); refresh();
+        $('km').textContent = ''; showPreview(j, terms, v, per);
       });
     });
+    function showPreview(p, terms, v, per) {
+      var t = p.terms, fee = t.inspection_fee ? usd(t.inspection_fee) + ' per inspection' + (t.visits === 'q1s' ? ' (4 the first year, then 2 a year)' : ' × ' + t.visits + ' = ' + usd(t.annual_fee) + ' a year') : usd(t.annual_fee) + ' a year';
+      var fullName = t.owner_name || c.name, first = c.name.split(' ')[0];
+      $('kf').hidden = true;
+      var box = document.createElement('div'); box.id = 'kprev';
+      box.innerHTML = '<h3 style="margin:6px 0 2px">Preview: agreement for ' + E(fullName) + '</h3><p class="mute" style="margin:0 0 6px">This is the exact text that will be emailed for signing. Nothing has been sent.</p>' +
+        '<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:8px 0 12px"><b>Send to</b><span>' + E(p.to) + (p.copy ? ' (copy to you)' : '') + '</span><b>Price</b><span>' + E(fee) + (Number(t.origination_fee) > 0 ? ' · origination fee ' + usd(t.origination_fee) : '') + '</span><b>From System setup</b><span>' + E(p.from_setup.length ? p.from_setup.join(', ') : 'nothing yet: the customer record was used') + '</span></div>' +
+        p.warnings.map(function (w) { return '<p style="background:var(--note);color:var(--noteink);border-radius:10px;padding:10px 14px;margin:0 0 8px;font-weight:600">Check: ' + E(w) + '</p>'; }).join('') +
+        '<div class="doc" tabindex="0">' + OW.contractHtml(p.text) + '</div>' +
+        '<div class="row" style="margin-top:12px"><button class="b" type="button" id="kp_send">Email signing link to ' + E(first) + '</button><button class="b alt" type="button" id="kp_back">Back to edit</button><button class="b alt" type="button" id="kp_pdf">Download PDF</button></div><div class="msg" id="kpm" role="status"></div>';
+      $('kf').parentNode.insertBefore(box, $('kf').nextSibling); box.scrollIntoView({ block: 'start' });
+      $('kp_back').onclick = function () { box.remove(); $('kf').hidden = false; };
+      $('kp_pdf').onclick = function () { OW.contractPdf({ text: p.text, owner: { name: '', signed_at: '' }, contractor: { name: '', signed_at: '' }, owner_label: fullName, contractor_label: t.contractor_name }).then(function (b) { OW.download(b, 'DRAFT-septic-agreement-' + c.name.replace(/\W+/g, '-') + '.pdf'); }); };
+      $('kp_send').onclick = function () {
+        var btn = this; btn.disabled = true; $('kpm').className = 'msg'; $('kpm').textContent = 'Sending...';
+        OW.api('/admin/api/contract', { customer_id: c.id, terms: terms }).then(function (j) {
+          btn.disabled = false;
+          if (!j.ok) { $('kpm').className = 'msg err'; $('kpm').textContent = j.error; return; }
+
+        if (!j.ok) { $('kpm').className = 'msg err'; $('kpm').textContent = j.error; return; }
+        LS.set('ow_cn', v('k_contractor')); LS.set('ow_per', per); LS.set('ow_orig', v('k_orig')); LS.set('ow_ca', v('k_caddr')); LS.set('ow_hd_' + (c.county || ''), v('k_health')); LS.set('ow_ha_' + (c.county || ''), v('k_haddr')); LS.set('ow_hc_' + (c.county || ''), v('k_hcon'));
+        OW.toast(j.emailed ? 'Signing link emailed.' : 'Saved, but the email did not send. Use Resend link.'); refresh();
+        });
+      };
+    }
   }
   function reportForm() {
     var today = new Date().toISOString().slice(0, 10);
