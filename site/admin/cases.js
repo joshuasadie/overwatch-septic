@@ -76,7 +76,7 @@
     if (k.owner_due && k.status !== 'Done') flags.push([dueTone(k.owner_due) || 'warn', '!', 'Owner proof of repair due ' + OW.date(k.owner_due)]);
     if (openItems.length) flags.push(['warn', '!', openItems.length + ' open: ' + openItems.map(function (i) { return i.no; }).join(', ')]);
     if (k.due_date && k.status !== 'Done' && k.due_date < today()) flags.push(['bad', '!', 'Case overdue since ' + OW.date(k.due_date)]);
-    var mini = function (list) { return list.map(function (i) { return '<div class="cv-li" data-goitem="' + i.id + '"><span class="cno">' + E(i.no) + '</span><span>' + E(i.title) + '</span><span class="' + (i.open ? 'warn' : 'good') + '" style="font-weight:600">' + E(i.status) + '</span></div>'; }).join('') || '<div class="cv-li mute" style="grid-template-columns:1fr">None</div>'; };
+    var mini = function (list) { return list.map(function (i) { return '<div class="cv-li" data-goitem="' + i.id + '"><span class="cno">' + E(i.no) + '</span><span>' + (i.kind === 'part' && i.qty > 1 ? i.qty + ' × ' : '') + E(i.title) + '</span><span class="' + (i.open ? 'warn' : 'good') + '" style="font-weight:600">' + E(i.status) + '</span></div>'; }).join('') || '<div class="cv-li mute" style="grid-template-columns:1fr">None</div>'; };
     v.innerHTML = '<section class="card cv">' +
       '<div class="cv-top"><div class="row" style="gap:10px;align-items:flex-start"><div class="cv-ico">OW</div><div><small class="mute">Case</small><h2 style="margin:0">' + E(k.title) + '</h2></div></div>' +
       '<div class="cv-acts"><button data-cv="edit">Edit</button>' + (k.status === 'Done' ? '<button data-cv="reopen">Reopen</button>' : '<button data-cv="close">Close Case</button>') + '<button data-cv="email">Email Owner</button><button data-cv="x" aria-label="Close this case view">×</button></div></div>' +
@@ -159,7 +159,7 @@
   function itemForm(kind, it) {
     it = it || {}; var P = 'it_' + (it.id || 'new') + '_';
     var f = kind === 'part'
-      ? fld(P + 'title', 'Part', it.title, 'maxlength="160"') + fld(P + 'vendor', 'Vendor', it.vendor, 'maxlength="120"') + fld(P + 'part_no', 'Part no.', it.part_no, 'maxlength="120"') + fld(P + 'po', 'PO', it.po, 'maxlength="120"') + fld(P + 'cost', 'Cost ($)', it.cost, 'maxlength="30" inputmode="decimal"') + fld(P + 'eta', 'Expected', it.eta, 'type="date"')
+      ? fld(P + 'title', 'Part', it.title, 'maxlength="160"') + fld(P + 'qty', 'Quantity', it.qty || 1, 'type="number" min="1" max="9999" step="1" inputmode="numeric"') + fld(P + 'vendor', 'Vendor', it.vendor, 'maxlength="120"') + fld(P + 'part_no', 'Part no.', it.part_no, 'maxlength="120"') + fld(P + 'po', 'PO', it.po, 'maxlength="120"') + fld(P + 'cost', 'Cost ($)', it.cost, 'maxlength="30" inputmode="decimal"') + fld(P + 'eta', 'Expected', it.eta, 'type="date"')
       : fld(P + 'title', 'What is being returned', it.title, 'maxlength="160"') + fld(P + 'vendor', 'Vendor', it.vendor, 'maxlength="120"') + fld(P + 'rma_no', 'Vendor RMA no.', it.rma_no, 'maxlength="120"') + fld(P + 'tracking', 'Tracking', it.tracking, 'maxlength="120"') + fld(P + 'credit', 'Replacement or credit', it.credit, 'maxlength="60" placeholder="Credit $85 / replacement"') + fld(P + 'eta', 'Expected back', it.eta, 'type="date"');
     return '<form class="cv-item" data-kind="' + kind + '" data-id="' + E(it.id || '') + '" data-p="' + P + '" novalidate><div class="two">' + f + '<div><label for="' + P + 'status">Status</label><select id="' + P + 'status">' + opt(C.meta.item_status[kind], it.status || C.meta.item_status[kind][0]) + '</select></div></div>' +
       '<label for="' + P + 'notes">Notes</label><textarea id="' + P + 'notes" maxlength="1000" style="min-height:50px">' + E(it.notes || '') + '</textarea>' +
@@ -168,13 +168,13 @@
   function itemsTab(b, k, kind, adding) {
     var L = k.items.filter(function (i) { return i.kind === kind; });
     b.innerHTML = (adding ? itemForm(kind) : '') + (L.map(function (i) {
-      return '<details class="cv-g" ' + (C.focus === i.id ? 'open' : '') + '><summary><span class="cno">' + E(i.no) + '</span> <b>' + E(i.title) + '</b> ' + itemPill(i) + '<small class="mute" style="display:block;margin-left:16px">' + E([i.vendor, i.part_no && 'part ' + i.part_no, i.po && 'PO ' + i.po, i.cost && '$' + i.cost, i.rma_no && 'RMA ' + i.rma_no, i.tracking && 'tracking ' + i.tracking, i.credit, i.eta && 'expected ' + OW.date(i.eta)].filter(Boolean).join(' · ')) + '</small></summary>' + itemForm(kind, i) + '</details>';
+      return '<details class="cv-g" ' + (C.focus === i.id ? 'open' : '') + '><summary><span class="cno">' + E(i.no) + '</span> <b>' + (i.kind === 'part' && i.qty > 1 ? i.qty + ' × ' : '') + E(i.title) + '</b> ' + itemPill(i) + '<small class="mute" style="display:block;margin-left:16px">' + E([i.vendor, i.part_no && 'part ' + i.part_no, i.po && 'PO ' + i.po, i.cost && '$' + i.cost, i.rma_no && 'RMA ' + i.rma_no, i.tracking && 'tracking ' + i.tracking, i.credit, i.eta && 'expected ' + OW.date(i.eta)].filter(Boolean).join(' · ')) + '</small></summary>' + itemForm(kind, i) + '</details>';
     }).join('') || (adding ? '' : '<p class="mute">None yet.</p>')) + (adding || k.status === 'Done' ? '' : '<div class="row" style="margin-top:10px"><button class="b alt" data-cv="' + (kind === 'part' ? 'addpart' : 'addrma') + '">' + (kind === 'part' ? '+ Part' : '+ RMA') + '</button></div>');
     C.focus = null;
     b.querySelectorAll('form.cv-item').forEach(function (f) {
       f.onsubmit = function (e) {
         e.preventDefault(); var P = f.getAttribute('data-p'), g = function (n) { var x = document.getElementById(P + n); return x ? x.value : ''; };
-        OW.api('/admin/api/case-item', { id: f.getAttribute('data-id') || undefined, case_id: k.id, kind: f.getAttribute('data-kind'), title: g('title'), vendor: g('vendor'), part_no: g('part_no'), po: g('po'), cost: g('cost'), eta: g('eta'), rma_no: g('rma_no'), tracking: g('tracking'), credit: g('credit'), status: g('status'), notes: g('notes') }).then(function (j) {
+        OW.api('/admin/api/case-item', { id: f.getAttribute('data-id') || undefined, case_id: k.id, kind: f.getAttribute('data-kind'), title: g('title'), qty: g('qty') || undefined, vendor: g('vendor'), part_no: g('part_no'), po: g('po'), cost: g('cost'), eta: g('eta'), rma_no: g('rma_no'), tracking: g('tracking'), credit: g('credit'), status: g('status'), notes: g('notes') }).then(function (j) {
           var m = f.querySelector('.msg'); if (!j.ok) { m.className = 'msg err'; m.textContent = j.error; return; }
           OW.toast(j.no ? j.no + ' added.' : 'Saved.'); openCase(k.id, true); A.refresh(); loadOpen();
         });

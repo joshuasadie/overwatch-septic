@@ -100,6 +100,8 @@ export const SCHEMA = [
   'CREATE INDEX IF NOT EXISTS case_items_case ON case_items (case_id)',
   "CREATE TABLE IF NOT EXISTS case_comments (id TEXT PRIMARY KEY, case_id TEXT NOT NULL, seq INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'note', visibility TEXT NOT NULL DEFAULT 'private', channel TEXT NOT NULL DEFAULT 'overwatch', who TEXT NOT NULL DEFAULT '', at TEXT NOT NULL, body TEXT NOT NULL, minutes INTEGER NOT NULL DEFAULT 0, emailed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)",
   'CREATE INDEX IF NOT EXISTS case_comments_case ON case_comments (case_id, seq)',
+  // quantity on a part (kept beside case_items so the live table needs no ALTER)
+  'CREATE TABLE IF NOT EXISTS case_item_qty (item_id TEXT PRIMARY KEY, qty INTEGER NOT NULL DEFAULT 1)',
   "CREATE TABLE IF NOT EXISTS report_owner_sent (report_id TEXT PRIMARY KEY, sent_at TEXT NOT NULL DEFAULT '')",
   'CREATE TABLE IF NOT EXISTS counties (name TEXT PRIMARY KEY, email TEXT NOT NULL)',
   // County addresses for operator reports, from each county's reply (Oct 2026). Added once; edits and removals in the admin portal stick.

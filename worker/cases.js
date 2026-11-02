@@ -52,7 +52,7 @@ export async function getCase(env, caseId) {
   const r = await env.DB.prepare('SELECT k.*, c.name AS customer_name FROM cases k JOIN customers c ON c.id = k.customer_id WHERE k.id = ?').bind(caseId).first();
   if (!r) return null;
   const k = caseRow(r);
-  k.items = (await env.DB.prepare('SELECT * FROM case_items WHERE case_id = ? ORDER BY kind, num').bind(caseId).all()).results.map(itemRow);
+  k.items = (await env.DB.prepare('SELECT i.*, COALESCE(q.qty, 1) AS qty FROM case_items i LEFT JOIN case_item_qty q ON q.item_id = i.id WHERE i.case_id = ? ORDER BY i.kind, i.num').bind(caseId).all()).results.map(itemRow);
   k.comments = (await env.DB.prepare('SELECT * FROM case_comments WHERE case_id = ? ORDER BY seq DESC').bind(caseId).all()).results;
   k.minutes = k.comments.reduce((s, c) => s + (Number(c.minutes) || 0), 0);
   return k;
@@ -119,6 +119,8 @@ export async function saveComment(env, who, b) {
 export async function saveItem(env, who, b) {
   const now = new Date().toISOString();
   const s = (k, n = 120) => clean(b[k], n);
+  const qty = Math.max(1, Math.min(9999, Math.round(Number(b.qty) || 1)));
+  const setQty = iid => env.DB.prepare('INSERT INTO case_item_qty (item_id, qty) VALUES (?, ?) ON CONFLICT(item_id) DO UPDATE SET qty = excluded.qty').bind(iid, qty).run();
   if (b.id) {
     const cur = await env.DB.prepare('SELECT * FROM case_items WHERE id = ?').bind(String(b.id)).first();
     if (!cur) return { status: 404, error: 'Not found.' };
@@ -126,6 +128,7 @@ export async function saveItem(env, who, b) {
     const title = s('title', 160) || cur.title;
     await env.DB.prepare('UPDATE case_items SET title = ?, vendor = ?, part_no = ?, po = ?, cost = ?, eta = ?, rma_no = ?, tracking = ?, credit = ?, notes = ?, status = ?, updated_at = ? WHERE id = ?')
       .bind(title, s('vendor'), s('part_no'), s('po'), s('cost', 30), dateOr(b.eta), s('rma_no'), s('tracking'), s('credit', 60), s('notes', 1000), status, now, cur.id).run();
+    if (cur.kind === 'part' && b.qty !== undefined) await setQty(cur.id);
     if (status !== cur.status) await event(env, cur.case_id, who, `${itemNo(cur.kind, cur.num)} changed from ${cur.status} to ${status} by ${whoName(who)}`);
     return { ok: true, id: cur.id };
   }
@@ -138,7 +141,8 @@ export async function saveItem(env, who, b) {
   const num = await nextNum(env, kind === 'part' ? 'p' : 'rma'), iid = id();
   await env.DB.prepare('INSERT INTO case_items (id, case_id, kind, num, title, vendor, part_no, po, cost, eta, rma_no, tracking, credit, notes, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .bind(iid, k.id, kind, num, title, s('vendor'), s('part_no'), s('po'), s('cost', 30), dateOr(b.eta), s('rma_no'), s('tracking'), s('credit', 60), s('notes', 1000), status, now, now).run();
-  await event(env, k.id, who, `${itemNo(kind, num)} created by ${whoName(who)}: ${title}`);
+  if (kind === 'part') await setQty(iid);
+  await event(env, k.id, who, `${itemNo(kind, num)} created by ${whoName(who)}: ${kind === 'part' && qty > 1 ? qty + ' × ' : ''}${title}`);
   return { ok: true, id: iid, no: itemNo(kind, num) };
 }
 // After a visit is finished: a case for anything marked "needs repair", with the 48-hour county and 30-day owner deadlines.
@@ -156,6 +160,7 @@ export async function caseFromReport(env, who, report) {
 export async function deleteCasesFor(env, customerId) {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM case_comments WHERE case_id IN (SELECT id FROM cases WHERE customer_id = ?)').bind(customerId),
+    env.DB.prepare('DELETE FROM case_item_qty WHERE item_id IN (SELECT i.id FROM case_items i JOIN cases k ON k.id = i.case_id WHERE k.customer_id = ?)').bind(customerId),
     env.DB.prepare('DELETE FROM case_items WHERE case_id IN (SELECT id FROM cases WHERE customer_id = ?)').bind(customerId),
     env.DB.prepare('DELETE FROM cases WHERE customer_id = ?').bind(customerId),
   ]);
