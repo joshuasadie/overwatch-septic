@@ -84,4 +84,16 @@ ok(j.ok && /^OWS-001\d\d$/.test(j.no) && sent.some(m => m.subject.startsWith('['
 j = await J(await adm('/admin/api/case', { id: k1, status: 'Done' })); ok(j.ok, 'closes once parts and RMAs are done');
 j = await J(await adm('/admin/api/cases')); ok(!j.cases.some(c => c.id === k1), 'closed cases leave the open list');
 await adm('/admin/api/customer-delete', { id: bob }); ok(!(await J(await adm('/admin/api/cases'))).cases.some(c => c.customer_id === bob), "deleting a customer removes their cases");
+// one-time setup: Sean Wilkins cases from the Oct 1 county report
+{ const { SCHEMA } = await import('./worker/lib.js');
+  const before = (await J(await adm('/admin/api/cases'))).cases.length;
+  const sean = await mkC('Sean Wilkins', 'srw134@wilkinshouse.com');
+  const rerun = () => DB.batch(SCHEMA.map(q => DB.prepare(q)));
+  await rerun(); await rerun();
+  const L = (await J(await adm('/admin/api/cases?customer_id=' + sean))).cases;
+  ok(L.length === 2 && L.every(c => /^OWS-001\d\d$/.test(c.no)) && L[0].num !== L[1].num, "Sean's two cases are created once, with the next case numbers");
+  const nx = await J(await adm('/admin/api/case', { customer_id: sean, title: 'after' })); ok(Number(nx.no.slice(4)) === Math.max(...L.map(c => c.num)) + 1, 'the counter moves past them');
+  const k = (await J(await adm('/admin/api/case/' + L.find(c => /County action items/.test(c.title)).id))).case;
+  ok(k.comments.filter(c => c.visibility === 'public' && /^Action item/.test(c.body)).length === 4 && k.comments.some(c => c.visibility === 'private' && /re-measure/.test(c.body)) && k.comments.some(c => c.kind === 'event' && /OWS-001\d\d opened/.test(c.body)), 'action items are public comments, the zone note is private');
+}
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);
