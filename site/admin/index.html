@@ -7,6 +7,7 @@
 <div class="top"><span id="brand"></span><span class="who" id="who">Admin portal</span></div>
 <div id="alerts" style="display:grid;gap:14px"></div>
 <section class="card" id="review" hidden></section>
+<section class="card" id="casesBox"><h2>Open cases <span class="mute" id="casesN"></span></h2><div id="casesF" class="row" style="gap:6px;margin:0 0 6px"></div><ul class="list" id="casesL"><li class="mute">Loading…</li></ul></section>
 <section class="card"><h2>Invoices</h2><div class="tw"><table><thead><tr><th>Customer</th><th>For</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody id="it"></tbody></table></div></section>
 <section class="card"><h2>Customers</h2><div class="tw"><table><thead><tr><th>Customer</th><th>System</th><th>Contract</th><th>Last visit</th></tr></thead><tbody id="ct"></tbody></table></div>
 <div class="row" style="margin-top:10px"><button class="b" id="addC">Add customer</button></div></section>
@@ -33,4 +34,4 @@
 <label class="chk" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="c_test" style="width:auto;min-height:0"> This is a test customer (can be deleted even after signing)</label>
 <div class="row" style="margin-top:10px"><button class="b" type="submit">Save customer</button><button class="b alt" type="button" id="edX">Cancel</button></div><div class="msg" id="cm" role="status"></div></form></section>
 </div>
-<script src="/vendor/pdf-lib.min.js"></script><script src="/inspect-core.js"></script><script src="/inspect-view.js"></script><script src="/ow.js"></script><script src="/admin/admin.js"></script><script src="/admin/inspection.js"></script></body></html>
+<script src="/vendor/pdf-lib.min.js"></script><script src="/inspect-core.js"></script><script src="/inspect-view.js"></script><script src="/ow.js"></script><script src="/admin/admin.js"></script><script src="/admin/inspection.js"></script><script src="/admin/cases.js"></script></body></html>
