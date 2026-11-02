@@ -68,6 +68,9 @@ ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, rule
   ok(ct.annualFrom(250, 'q1s') === 500 && ct.annualFrom(250, '4') === 1000, 'annual fee is the steady yearly total');
   ok(ct.contractText({ ...base }).sections[1].p[0].startsWith('a) The Owner shall pay to the Contractor the sum of $500 per year for periodic'), 'older agreements keep their exact wording'); }
 { const before = (await J(await adm('/admin/api/customer/' + cid))).contracts.length; sent.length = 0;
+  { const ten = Array.from({ length: 10 }, (_, i) => 'Task ' + (i + 1)); const pv10 = await J(await adm('/admin/api/contract-preview', { customer_id: cid, terms: { ...terms, annual_fee: '', inspection_fee: '250', visits: '2', rule_set: '18E', maintenance: ten } }));
+    ok(pv10.ok && pv10.terms.maintenance.length === 10 && JSON.stringify(pv10.text).includes('10. Task 10'), 'all 10 maintenance lines are kept');
+    const many = await adm('/admin/api/contract-preview', { customer_id: cid, terms: { ...terms, annual_fee: '', inspection_fee: '250', visits: '2', rule_set: '18E', maintenance: Array.from({ length: 21 }, (_, i) => 'T' + i) } }); ok(many.status === 400, 'a list over the limit is refused, not cut off'); }
   const pv = await J(await adm('/admin/api/contract-preview', { customer_id: cid, terms: { ...terms, annual_fee: '', inspection_fee: '250', visits: 'q1s', rule_set: '18E' } }));
   ok(pv.ok && pv.text && pv.text.party === 'Operator' && pv.to === 'ann@home.com' && Array.isArray(pv.warnings) && pv.warnings.length > 0, 'preview returns the agreement text, recipient and checks');
   ok(sent.length === 0 && (await J(await adm('/admin/api/customer/' + cid))).contracts.length === before, 'preview sends and saves nothing');

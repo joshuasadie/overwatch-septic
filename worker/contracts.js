@@ -6,6 +6,7 @@ import { fmtPhone } from './inspection.js';
 
 const TOKEN = /^[A-Za-z0-9_-]{20,60}$/;
 export const LINK_DAYS = 14;
+export const MAX_MAINT = 20; // routine maintenance lines in an agreement
 const TERM_KEYS = ['date', 'owner_name', 'owner_address', 'county', 'system_address', 'permit', 'sys_type', 'rules', 'cite', 'contractor_name', 'contractor_address', 'health_dept', 'response_hours', 'annual_fee', 'increase_pct', 'interest_pct', 'repair_days', 'origination_fee', 'inspection_fee', 'visits', 'rule_set', 'health_addr', 'approval_no', 'health_contact', 'permit_issued', 'emergency_fee'];
 
 // The permit as entered in System setup is the source for the agreement; the customer record fills anything left blank there.
@@ -24,7 +25,9 @@ export function normalizeTerms(input, customer, pm) {
   const t = { ...DEFAULT_TERMS, ...permitTerms(pm, customer), date: new Date().toISOString().slice(0, 10) };
   for (const k of ['permit_issued', 'approval_no']) if (!t[k]) delete t[k];
   for (const k of TERM_KEYS) if (input && input[k] !== undefined && input[k] !== null && !((k === 'permit_issued' || k === 'approval_no') && !String(input[k]).trim())) t[k] = clean(input[k], 300);
-  t.maintenance = (Array.isArray(input && input.maintenance) ? input.maintenance : DEFAULT_TERMS.maintenance).map(m => clean(m, 200)).filter(Boolean).slice(0, 8);
+  const all = (Array.isArray(input && input.maintenance) ? input.maintenance : DEFAULT_TERMS.maintenance).map(m => clean(m, 200)).filter(Boolean);
+  if (all.length > MAX_MAINT) t.maint_over = all.length;
+  t.maintenance = all.slice(0, MAX_MAINT);
   return t;
 }
 export function missingTerms(t) { return REQUIRED.filter(k => !String(t[k] ?? '').trim()); }
@@ -56,6 +59,7 @@ export async function buildTerms(env, customer, termsIn) {
   terms.owner_email = customer.email || ''; terms.contractor_email = env.MAIL_TO || '';
   try { const r = await env.DB.prepare('SELECT email FROM counties WHERE name = ?').bind(String(terms.county || '').trim().toLowerCase()).first(); terms.health_email = r ? r.email : ''; } catch { terms.health_email = ''; }
   const op = { name: env.OPERATOR_NAME || '', cert: env.OPERATOR_CERT || '' }; if (op.name && op.cert) { terms.operator_name = op.name; terms.operator_cert = op.cert; }
+  if (terms.maint_over) return { status: 400, error: `The routine maintenance list has ${terms.maint_over} lines. The most an agreement can hold is ${MAX_MAINT}. Combine or remove some.` };
   const miss = missingTerms(terms);
   if (miss.length) return { status: 400, error: 'Please fill in: ' + miss.join(', ') + '.' };
   if (!/^\d+(\.\d{1,2})?$/.test(terms.annual_fee.replace(/,/g, ''))) return { status: 400, error: 'The annual fee must be a number, like 500.' };
