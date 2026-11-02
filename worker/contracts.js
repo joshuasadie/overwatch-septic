@@ -51,6 +51,7 @@ export async function buildTerms(env, customer, termsIn) {
     terms.inspection_fee = per; terms.annual_fee = String(annualFrom(per, terms.visits));
   } else { delete terms.inspection_fee; delete terms.visits; }
   // Rules that govern the agreement: 18E for permits issued on or after January 1, 2024, 18A .1900 for older ones.
+  if (!terms.rule_set) terms.rule_set = '18E'; // the current rules, unless 18A is chosen
   if (terms.rule_set === '18E') { terms.cite = R18E.contract; terms.rules = R18E.rules; }
   else if (terms.rule_set && terms.rule_set !== '18A') return { status: 400, error: 'Choose which rules apply: 18E or 18A.' };
   else if (!terms.rule_set) delete terms.rule_set;
