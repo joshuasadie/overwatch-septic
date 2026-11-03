@@ -86,7 +86,9 @@ j = await J(await call('/api/contract/' + t1)); ok(j.contract.locked === false &
 
 // refund during the hold stops release
 const rep = async (date, amount) => { const x = await J(await adm('/admin/api/report', { customer_id: cid, visit_date: date, readings: { pump_min: 4.2, sludge_in: 9 }, checks: [{ label: 'Alarm', status: 'pass' }] })); return { id: x.id, fin: await J(await adm('/admin/api/report-finish', { id: x.id, amount })) }; };
-const rA = await rep('2026-10-20', '250'); ok(rA.fin.ok && rA.fin.invoice, 'report finished: $250 invoice');
+sent.length = 0; const rA = await rep('2026-10-20', '250'); ok(rA.fin.ok && rA.fin.invoice, 'report finished: $250 invoice');
+{ const cp = emailsTo('joshua@overwatchseptic.com').find(m => /^\[Copy\] Invoice: \$250\.00 for your septic visit \(sent to /.test(m.subject)); ok(cp && /What they received/.test(cp.text) && /Pay here:/.test(cp.text), 'you get a copy of the invoice email'); }
+{ sent.length = 0; await runDaily(env, new Date(`${addDays(etDate(), 1)}T16:00:00Z`)); ok(emailsTo('joshua@overwatchseptic.com').some(m => /^\[Copy\] Reminder: your septic invoice/.test(m.subject)), 'you get a copy of each reminder'); }
 j = await J(await me()); ok(j.reports.find(x => x.id === rA.id).locked === true && !j.reports.find(x => x.id === rA.id).readings, 'portal: report is locked, no readings leaked');
 ok((await me('/portal/api/reports/' + rA.id + '/pdf')).status === 404, 'locked report PDF refused');
 ok((await adm('/admin/api/report-notify', { id: rA.id })).status === 400, 'admin cannot email a held report');
