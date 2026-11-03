@@ -108,8 +108,9 @@ await adm('/admin/api/customer-delete', { id: bob }); ok(!(await J(await adm('/a
   await rerun(); await rerun();
   const L = (await J(await adm('/admin/api/cases?customer_id=' + sean))).cases;
   ok(L.length === 2 && L.every(c => /^OWS-001\d\d$/.test(c.no)) && L[0].num !== L[1].num, "Sean's two cases are created once, with the next case numbers");
-  const nx = await J(await adm('/admin/api/case', { customer_id: sean, title: 'after' })); ok(Number(nx.no.slice(4)) === Math.max(...L.map(c => c.num)) + 1, 'the counter moves past them');
+  const nx = await J(await adm('/admin/api/case', { customer_id: sean, contact_id: (await peopleOf(sean))[0].id, title: 'after' })); ok(Number(nx.no.slice(4)) === Math.max(...L.map(c => c.num)) + 1, 'the counter moves past them');
   const k = (await J(await adm('/admin/api/case/' + L.find(c => /County action items/.test(c.title)).id))).case;
   ok(k.comments.filter(c => c.visibility === 'public' && /^Action item/.test(c.body)).length === 4 && k.comments.some(c => c.visibility === 'private' && /re-measure/.test(c.body)) && k.comments.some(c => c.kind === 'event' && /OWS-001\d\d opened/.test(c.body)), 'action items are public comments, the zone note is private');
+  ok(L.every(c => c.contact === 'Sean Wilkins' && c.contact_id) && (await peopleOf(sean)).some(p => p.name === 'Stacy L. Wilkins' && p.role === 'Co-owner'), 'Sean is the contact on both; Stacy is added as co-owner');
 }
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);
