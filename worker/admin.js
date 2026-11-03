@@ -3,7 +3,7 @@ import { reply, clean, id, EMAIL, siteOrigin, sendMail, readJson, originOk, veri
 import { createInvoice, markPaid, releaseInvoice, releaseReport, sendCountyReport, sendNotice, noticeDrafts, toCents, etDate, daysBetween } from './billing.js';
 import { operatorOf, systemInfo, createInspection, saveSystem, attachInspections, uploadPhoto, servePhoto, deleteInspectionFiles } from './inspection.js';
 import { createContract, previewContract, resendContract, voidContract, countersign, publicView } from './contracts.js';
-import { listCases, getCase, saveCase, saveComment, saveItem, caseFromReport, deleteCasesFor, CASE_STATUS, CASE_TYPES, CHANNELS, ITEM_STATUS } from './cases.js';
+import { listCases, getCase, saveCase, saveComment, saveItem, caseFromReport, deleteCasesFor, CASE_STATUS, CASE_TYPES, CHANNELS, ITEM_STATUS, peopleOf, savePerson, addPrimaryContact, PERSON_ROLES } from './cases.js';
 
 export const READINGS = { pump_min: 'Pump run time (minutes per cycle)', sludge_in: 'Sludge depth (inches in tank)', water_gpd: 'Water use (gallons per day)' };
 const CHECK_STATUS = ['pass', 'repair', 'na'];
@@ -92,6 +92,7 @@ export async function adminApi(request, env, path) {
     const cid = id();
     await env.DB.batch([env.DB.prepare('INSERT INTO customers (id, created_at, name, email, phone, address, county, sys_type, permit, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(cid, new Date().toISOString(), f.name, f.email, f.phone, f.address, f.county, f.sys_type, f.permit, f.notes), audit(env, email, 'customer-added', cid, f.name)]);
     if (j.body.test) await setTest(env, cid, true);
+    await addPrimaryContact(env, cid, f);
     return reply({ ok: true, id: cid });
   }
   m = /^\/admin\/api\/customer\/([a-f0-9]{20})$/.exec(path);
@@ -110,7 +111,7 @@ export async function adminApi(request, env, path) {
         const k = si.id ? await env.DB.prepare('SELECT c.*, x.repair_prefs FROM contacts c LEFT JOIN contact_extra x ON x.contact_id = c.id WHERE c.id = ?').bind(si.id).first() : null;
         installer = { id: si.id || '', name: k ? k.name : si.name, company: k ? k.company : '', phone: k ? k.phone : '', email: k ? k.email : '', repair_prefs: k ? (k.repair_prefs || '') : '', date: si.date || '' };
       } }
-    return reply({ ok: true, customer: c, installer, contracts, reports, invoices: await invoiceRows(env, 'i.customer_id = ?', [c.id]), cases: await listCases(env, c.id) });
+    return reply({ ok: true, customer: c, installer, contracts, reports, invoices: await invoiceRows(env, 'i.customer_id = ?', [c.id]), cases: await listCases(env, c.id), people: await peopleOf(env, c.id), person_roles: PERSON_ROLES });
   }
   if (path === '/admin/api/customer-delete' && method === 'POST') {
     const j = await readJson(request); if (j.res) return j.res;
@@ -247,6 +248,7 @@ export async function adminApi(request, env, path) {
   if (m && method === 'GET') { const k = await getCase(env, m[1]); return k ? reply({ ok: true, case: k, meta: { status: CASE_STATUS, types: CASE_TYPES, channels: CHANNELS, item_status: ITEM_STATUS } }) : reply({ ok: false, error: 'Not found.' }, 404); }
   if (path === '/admin/api/case' && method === 'POST') { const j = await readJson(request, 16384); if (j.res) return j.res; return out(await saveCase(env, email, j.body)); }
   if (path === '/admin/api/case-comment' && method === 'POST') { const j = await readJson(request, 32768); if (j.res) return j.res; return out(await saveComment(env, email, j.body)); }
+  if (path === '/admin/api/customer-contact' && method === 'POST') { const j = await readJson(request, 8192); if (j.res) return j.res; return out(await savePerson(env, email, j.body)); }
   if (path === '/admin/api/case-item' && method === 'POST') { const j = await readJson(request, 16384); if (j.res) return j.res; return out(await saveItem(env, email, j.body)); }
   if (path === '/admin/api/invoices' && method === 'GET') return reply({ ok: true, invoices: await invoiceRows(env, "i.status = 'open' OR i.released_at = '' OR i.notice_state != 'none'", []) });
   m = /^\/admin\/api\/invoice-(waive|paid|pause|release|notice|final)$/.exec(path);

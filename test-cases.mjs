@@ -28,11 +28,26 @@ const J = async r => r.json();
 // ---- cases: numbering, parts and RMAs, comments with time, closing rules, auto-case from a visit, portal view
 const mkC = async (name, email) => (await J(await adm('/admin/api/customer', { name, email, address: '1 Main St, Moncure, NC', county: 'Chatham', sys_type: 'Vd' }))).id;
 const ann = await mkC('Ann Smith', 'ann@home.com'), bob = await mkC('Bob Jones', 'bob@home.com');
-let j = await J(await adm('/admin/api/case', { customer_id: ann, title: 'Zone 3 pressure low', type: 'County action item', due_date: '2026-11-06', description: 'From county report' }));
+const peopleOf = async cid => (await J(await adm('/admin/api/customer/' + cid))).people;
+let ppl = await peopleOf(ann); ok(ppl.length === 1 && ppl[0].primary && ppl[0].name === 'Ann Smith' && ppl[0].email === 'ann@home.com', 'a new customer gets a primary contact');
+const annC = ppl[0].id, bobC = (await peopleOf(bob))[0].id;
+let jp = await J(await adm('/admin/api/customer-contact', { customer_id: ann, name: 'Stacy Smith', role: 'Co-owner', phone: '919-555-0123', address: 'PO Box 9, Pittsboro, NC' }));
+ok(jp.ok, 'add a contact with an optional address'); const stacy = jp.id;
+ok((await adm('/admin/api/customer-contact', { customer_id: ann, name: '' })).status === 400, 'a contact needs a name');
+ok((await adm('/admin/api/case', { customer_id: ann, title: 'No contact' })).status === 400, 'a case needs a contact');
+ok((await adm('/admin/api/case', { customer_id: ann, title: 'Wrong account', contact_id: bobC })).status === 400, "a case can't use another account's contact");
+let j = await J(await adm('/admin/api/case', { customer_id: ann, contact_id: stacy, title: 'Zone 3 pressure low', type: 'County action item', due_date: '2026-11-06', description: 'From county report' }));
 ok(j.ok && j.no === 'OWS-00101', 'first case is OWS-00101');
 const k1 = j.id;
-j = await J(await adm('/admin/api/case', { customer_id: bob, title: 'Callback' })); ok(j.no === 'OWS-00102', 'numbers count up across customers');
-ok((await adm('/admin/api/case', { customer_id: ann, title: '' })).status === 400, 'a case needs a title');
+{ const kk = (await J(await adm('/admin/api/case/' + k1))).case; ok(kk.person && kk.person.name === 'Stacy Smith' && kk.contact === 'Stacy Smith' && kk.comments.some(c => /opened by .* for Stacy Smith/.test(c.body)), 'the case is opened in the contact\'s name');
+  await adm('/admin/api/case', { id: k1, due_date: '' }); ok((await J(await adm('/admin/api/case/' + k1))).case.due_date === '', 'a due date can be removed');
+  await adm('/admin/api/case', { id: k1, due_date: '2026-11-06' });
+  ok((await adm('/admin/api/customer-contact', { id: stacy, remove: true })).status === 409, "a contact on a case can't be removed");
+  await adm('/admin/api/customer-contact', { id: stacy, name: 'Stacy L. Smith', role: 'Co-owner', primary: true }); const pp = await peopleOf(ann);
+  ok(pp[0].name === 'Stacy L. Smith' && pp[0].primary && pp.filter(x => x.primary).length === 1 && (await J(await adm('/admin/api/case/' + k1))).case.contact === 'Stacy L. Smith', 'one primary at a time; renaming updates the case'); 
+  await adm('/admin/api/customer-contact', { id: annC, name: 'Ann Smith', role: 'Owner', email: 'ann@home.com', primary: true }); }
+j = await J(await adm('/admin/api/case', { customer_id: bob, contact_id: bobC, title: 'Callback' })); ok(j.no === 'OWS-00102', 'numbers count up across customers');
+ok((await adm('/admin/api/case', { customer_id: ann, contact_id: annC, title: '' })).status === 400, 'a case needs a title');
 j = await J(await adm('/admin/api/case-item', { case_id: k1, kind: 'part', title: 'Pressure regulator', qty: 2, vendor: 'Perc-Rite', eta: '2026-11-05', status: 'Ordered' }));
 ok(j.ok && j.no === 'P-000101', 'first part is P-000101'); const p1 = j.id;
 { let kk = (await J(await adm('/admin/api/case/' + k1))).case; ok(kk.items.find(i => i.id === p1).qty === 2 && kk.comments.some(c => /P-000101 created by .*: 2 × Pressure regulator/.test(c.body)), 'a part keeps its quantity');
@@ -80,6 +95,7 @@ ok((await bobP('/portal/api/case-comment', { method: 'POST', body: JSON.stringif
 k = (await J(await adm('/admin/api/case/' + k1))).case; ok(k.comments[0].channel === 'portal' && k.comments[0].visibility === 'public' && k.comments[0].who === 'Ann Smith', 'portal reply shows as public, from customer');
 sent.length = 0; j = await J(await annP('/portal/api/case', { method: 'POST', body: JSON.stringify({ title: 'Alarm going off', body: 'Beeping since this morning.' }) }));
 ok(j.ok && /^OWS-001\d\d$/.test(j.no) && sent.some(m => m.subject.startsWith('[' + j.no + '] New request from Ann Smith')), 'customer can open a new request; you are alerted');
+ok((await J(await adm('/admin/api/case/' + j.id))).case.person.name === 'Ann Smith', 'a portal request is opened in the name of the contact who signed in');
 // closing once items are done; customer delete removes cases
 j = await J(await adm('/admin/api/case', { id: k1, status: 'Done' })); ok(j.ok, 'closes once parts and RMAs are done');
 j = await J(await adm('/admin/api/cases')); ok(!j.cases.some(c => c.id === k1), 'closed cases leave the open list');

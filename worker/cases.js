@@ -33,15 +33,62 @@ const event = (env, caseId, who, body) => addComment(env, caseId, { kind: 'event
 const whoName = who => (String(who || '').split('@')[0] || 'Overwatch').replace(/^./, ch => ch.toUpperCase());
 
 function caseRow(r) {
-  return { id: r.id, num: r.num, no: caseNo(r.num), customer_id: r.customer_id, customer_name: r.customer_name, title: r.title, type: r.type, status: r.status, due_date: r.due_date, county_due: r.county_due, county_done: r.county_done, owner_due: r.owner_due, source: r.source, source_ref: r.source_ref, contact: r.contact, description: r.description, created_at: r.created_at, updated_at: r.updated_at, closed_at: r.closed_at };
+  return { id: r.id, num: r.num, no: caseNo(r.num), customer_id: r.customer_id, customer_name: r.customer_name, title: r.title, type: r.type, status: r.status, due_date: r.due_date, county_due: r.county_due, county_done: r.county_done, owner_due: r.owner_due, source: r.source, source_ref: r.source_ref, contact: r.contact, contact_id: r.contact_id || '', description: r.description, created_at: r.created_at, updated_at: r.updated_at, closed_at: r.closed_at };
 }
 function itemRow(r) { return { ...r, no: itemNo(r.kind, r.num), open: itemOpen(r) }; }
+
+// ---- people on a customer account
+export const PERSON_ROLES = ['Owner', 'Co-owner', 'Occupant / tenant', 'Property manager', 'Other'];
+const personRow = p => ({ id: p.id, customer_id: p.customer_id, name: p.name, role: p.role, email: p.email, phone: p.phone, address: p.address, notes: p.notes, primary: !!p.is_primary });
+export async function peopleOf(env, customerId) {
+  return (await env.DB.prepare('SELECT * FROM customer_contacts WHERE customer_id = ? ORDER BY is_primary DESC, name').bind(customerId).all()).results.map(personRow);
+}
+export async function addPrimaryContact(env, customerId, f) {
+  const now = new Date().toISOString();
+  await env.DB.prepare("INSERT INTO customer_contacts (id, customer_id, name, role, email, phone, address, notes, is_primary, created_at, updated_at) VALUES (?, ?, ?, 'Owner', ?, ?, '', '', 1, ?, ?)").bind(id(), customerId, f.name, f.email || '', f.phone || '', now, now).run();
+}
+const primaryOf = async (env, customerId) => env.DB.prepare('SELECT * FROM customer_contacts WHERE customer_id = ? ORDER BY is_primary DESC, created_at LIMIT 1').bind(customerId).first();
+export async function savePerson(env, who, b) {
+  const now = new Date().toISOString();
+  if (b.id && b.remove) {
+    const cur = await env.DB.prepare('SELECT * FROM customer_contacts WHERE id = ?').bind(String(b.id)).first();
+    if (!cur) return { status: 404, error: 'Not found.' };
+    if (await env.DB.prepare('SELECT 1 AS x FROM case_contact WHERE contact_id = ?').bind(cur.id).first()) return { status: 409, error: `${cur.name} is the contact on a case. Change the case's contact first.` };
+    if ((await env.DB.prepare('SELECT COUNT(*) AS n FROM customer_contacts WHERE customer_id = ?').bind(cur.customer_id).first()).n <= 1) return { status: 409, error: 'An account needs at least one contact.' };
+    await env.DB.prepare('DELETE FROM customer_contacts WHERE id = ?').bind(cur.id).run();
+    if (cur.is_primary) { const p = await primaryOf(env, cur.customer_id); if (p) await env.DB.prepare('UPDATE customer_contacts SET is_primary = 1 WHERE id = ?').bind(p.id).run(); }
+    return { ok: true };
+  }
+  const f = { name: clean(b.name, 100), role: PERSON_ROLES.includes(b.role) ? b.role : 'Other', email: clean(b.email, 254).toLowerCase(), phone: clean(b.phone, 40), address: clean(b.address, 200), notes: clean(b.notes, 1000), primary: !!b.primary };
+  if (!f.name) return { error: 'Enter a name.' };
+  if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) return { error: 'That email address does not look right.' };
+  let pid, cust;
+  if (b.id) {
+    const cur = await env.DB.prepare('SELECT * FROM customer_contacts WHERE id = ?').bind(String(b.id)).first();
+    if (!cur) return { status: 404, error: 'Not found.' };
+    pid = cur.id; cust = cur.customer_id;
+    await env.DB.prepare('UPDATE customer_contacts SET name = ?, role = ?, email = ?, phone = ?, address = ?, notes = ?, updated_at = ? WHERE id = ?').bind(f.name, f.role, f.email, f.phone, f.address, f.notes, now, pid).run();
+    await env.DB.prepare('UPDATE cases SET contact = ? WHERE id IN (SELECT case_id FROM case_contact WHERE contact_id = ?)').bind(f.name, pid).run();
+  } else {
+    const c = await env.DB.prepare('SELECT id FROM customers WHERE id = ?').bind(String(b.customer_id || '')).first();
+    if (!c) return { status: 404, error: 'Customer not found.' };
+    pid = id(); cust = c.id;
+    await env.DB.prepare('INSERT INTO customer_contacts (id, customer_id, name, role, email, phone, address, notes, is_primary, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)').bind(pid, cust, f.name, f.role, f.email, f.phone, f.address, f.notes, now, now).run();
+  }
+  if (f.primary) await env.DB.batch([env.DB.prepare('UPDATE customer_contacts SET is_primary = 0 WHERE customer_id = ?').bind(cust), env.DB.prepare('UPDATE customer_contacts SET is_primary = 1 WHERE id = ?').bind(pid)]);
+  return { ok: true, id: pid };
+}
+async function personFor(env, customerId, contactId) {
+  const p = contactId ? await env.DB.prepare('SELECT * FROM customer_contacts WHERE id = ? AND customer_id = ?').bind(String(contactId), customerId).first() : null;
+  return p;
+}
+const linkContact = (env, caseId, contactId) => env.DB.prepare('INSERT INTO case_contact (case_id, contact_id) VALUES (?, ?) ON CONFLICT(case_id) DO UPDATE SET contact_id = excluded.contact_id').bind(caseId, contactId).run();
 
 // ---- admin
 export async function listCases(env, customerId) {
   const q = customerId
-    ? env.DB.prepare('SELECT k.*, c.name AS customer_name FROM cases k JOIN customers c ON c.id = k.customer_id WHERE k.customer_id = ? ORDER BY (k.status = \'Done\'), k.num DESC').bind(customerId)
-    : env.DB.prepare("SELECT k.*, c.name AS customer_name FROM cases k JOIN customers c ON c.id = k.customer_id WHERE k.status != 'Done' ORDER BY CASE WHEN k.due_date = '' THEN 1 ELSE 0 END, k.due_date, k.num");
+    ? env.DB.prepare('SELECT k.*, c.name AS customer_name, cc.contact_id FROM cases k JOIN customers c ON c.id = k.customer_id LEFT JOIN case_contact cc ON cc.case_id = k.id WHERE k.customer_id = ? ORDER BY (k.status = \'Done\'), k.num DESC').bind(customerId)
+    : env.DB.prepare("SELECT k.*, c.name AS customer_name, cc.contact_id FROM cases k JOIN customers c ON c.id = k.customer_id LEFT JOIN case_contact cc ON cc.case_id = k.id WHERE k.status != 'Done' ORDER BY CASE WHEN k.due_date = '' THEN 1 ELSE 0 END, k.due_date, k.num");
   const rows = (await q.all()).results.map(caseRow);
   if (!rows.length) return rows;
   const items = (await env.DB.prepare(`SELECT case_id, kind, num, status FROM case_items WHERE case_id IN (${rows.map(() => '?').join(',')})`).bind(...rows.map(r => r.id)).all()).results;
@@ -49,9 +96,11 @@ export async function listCases(env, customerId) {
   return rows;
 }
 export async function getCase(env, caseId) {
-  const r = await env.DB.prepare('SELECT k.*, c.name AS customer_name FROM cases k JOIN customers c ON c.id = k.customer_id WHERE k.id = ?').bind(caseId).first();
+  const r = await env.DB.prepare('SELECT k.*, c.name AS customer_name, cc.contact_id FROM cases k JOIN customers c ON c.id = k.customer_id LEFT JOIN case_contact cc ON cc.case_id = k.id WHERE k.id = ?').bind(caseId).first();
   if (!r) return null;
   const k = caseRow(r);
+  k.person = r.contact_id ? (await env.DB.prepare('SELECT * FROM customer_contacts WHERE id = ?').bind(r.contact_id).first() || null) : null;
+  if (k.person) k.person = personRow(k.person);
   k.items = (await env.DB.prepare('SELECT i.*, COALESCE(q.qty, 1) AS qty FROM case_items i LEFT JOIN case_item_qty q ON q.item_id = i.id WHERE i.case_id = ? ORDER BY i.kind, i.num').bind(caseId).all()).results.map(itemRow);
   k.comments = (await env.DB.prepare('SELECT * FROM case_comments WHERE case_id = ? ORDER BY seq DESC').bind(caseId).all()).results;
   k.minutes = k.comments.reduce((s, c) => s + (Number(c.minutes) || 0), 0);
@@ -78,6 +127,12 @@ export async function saveCase(env, who, b) {
     const cur = await env.DB.prepare('SELECT * FROM cases WHERE id = ?').bind(String(b.id)).first();
     if (!cur) return { status: 404, error: 'Not found.' };
     const { f, error } = caseFields(b, cur); if (error) return { error };
+    if (b.contact_id !== undefined) {
+      const p = await personFor(env, cur.customer_id, b.contact_id); if (!p) return { error: 'Choose a contact from this account.' };
+      const was = await env.DB.prepare('SELECT contact_id FROM case_contact WHERE case_id = ?').bind(cur.id).first();
+      f.contact = p.name; await linkContact(env, cur.id, p.id);
+      if (!was || was.contact_id !== p.id) await event(env, cur.id, who, `Contact set to ${p.name} by ${whoName(who)}`);
+    }
     if (f.status === 'Done' && cur.status !== 'Done') {
       const open = (await env.DB.prepare('SELECT kind, num, status FROM case_items WHERE case_id = ?').bind(cur.id).all()).results.filter(itemOpen);
       if (open.length) return { status: 409, error: `Can't close yet: ${open.map(i => itemNo(i.kind, i.num)).join(' and ')} ${open.length > 1 ? 'are' : 'is'} open.` };
@@ -91,13 +146,17 @@ export async function saveCase(env, who, b) {
   const c = await env.DB.prepare('SELECT id FROM customers WHERE id = ?').bind(String(b.customer_id || '')).first();
   if (!c) return { status: 404, error: 'Customer not found.' };
   const { f, error } = caseFields(b); if (error) return { error };
-  return createCase(env, who, c.id, { ...f, source: clean(b.source, 40) || 'Manual', source_ref: clean(b.source_ref, 60) });
+  const p = await personFor(env, c.id, b.contact_id); if (!p) return { error: 'Choose the contact this case is opened for.' };
+  return createCase(env, who, c.id, { ...f, contact: p.name, contact_id: p.id, source: clean(b.source, 40) || 'Manual', source_ref: clean(b.source_ref, 60) });
 }
 export async function createCase(env, who, customerId, f) {
   const now = new Date().toISOString(), cid = id(), num = await nextNum(env, 'ows');
   await env.DB.prepare('INSERT INTO cases (id, num, customer_id, title, type, status, due_date, county_due, county_done, owner_due, source, source_ref, contact, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .bind(cid, num, customerId, f.title, f.type || 'Repair follow-up', f.status || 'Open', f.due_date || '', f.county_due || '', f.county_done || '', f.owner_due || '', f.source || '', f.source_ref || '', f.contact || '', f.description || '', now, now).run();
-  await event(env, cid, who, `${caseNo(num)} opened by ${whoName(who)}${f.source && f.source !== 'Manual' ? ' from ' + f.source.toLowerCase() : ''}`);
+  let person = f.contact_id ? await personFor(env, customerId, f.contact_id) : null;
+  if (!person) person = await primaryOf(env, customerId);
+  if (person) { await linkContact(env, cid, person.id); await env.DB.prepare('UPDATE cases SET contact = ? WHERE id = ?').bind(person.name, cid).run(); }
+  await event(env, cid, who, `${caseNo(num)} opened by ${whoName(who)}${person ? ' for ' + person.name : ''}${f.source && f.source !== 'Manual' ? ' from ' + f.source.toLowerCase() : ''}`);
   return { ok: true, id: cid, no: caseNo(num) };
 }
 export async function saveComment(env, who, b) {
@@ -162,7 +221,9 @@ export async function deleteCasesFor(env, customerId) {
     env.DB.prepare('DELETE FROM case_comments WHERE case_id IN (SELECT id FROM cases WHERE customer_id = ?)').bind(customerId),
     env.DB.prepare('DELETE FROM case_item_qty WHERE item_id IN (SELECT i.id FROM case_items i JOIN cases k ON k.id = i.case_id WHERE k.customer_id = ?)').bind(customerId),
     env.DB.prepare('DELETE FROM case_items WHERE case_id IN (SELECT id FROM cases WHERE customer_id = ?)').bind(customerId),
+    env.DB.prepare('DELETE FROM case_contact WHERE case_id IN (SELECT id FROM cases WHERE customer_id = ?)').bind(customerId),
     env.DB.prepare('DELETE FROM cases WHERE customer_id = ?').bind(customerId),
+    env.DB.prepare('DELETE FROM customer_contacts WHERE customer_id = ?').bind(customerId),
   ]);
 }
 
@@ -181,7 +242,8 @@ export async function portalComment(env, customer, b) {
   const k = await env.DB.prepare('SELECT * FROM cases WHERE id = ? AND customer_id = ?').bind(String(b.case_id || ''), customer.id).first();
   if (!k) return { status: 404, error: 'Not found.' };
   const body = clean(b.body, 4000); if (!body) return { error: 'Write a message first.' };
-  await addComment(env, k.id, { visibility: 'public', channel: 'portal', who: customer.name, body });
+  const me = await env.DB.prepare('SELECT name FROM customer_contacts WHERE customer_id = ? AND lower(email) = lower(?)').bind(customer.id, customer.email).first();
+  await addComment(env, k.id, { visibility: 'public', channel: 'portal', who: me ? me.name : customer.name, body });
   if (env.MAIL_TO) await sendMail(env, env.MAIL_TO, `[${caseNo(k.num)}] New message from ${customer.name}`, [`${customer.name} wrote on ${caseNo(k.num)}, ${k.title}:`, '', body, '', `Open the admin portal to reply: ${siteOrigin(env)}/admin/`].join('\n'), customer.email);
   return { ok: true };
 }
@@ -189,8 +251,9 @@ export async function portalRequest(env, customer, b) {
   const title = clean(b.title, 160), body = clean(b.body, 4000);
   if (!title) return { error: 'Give your request a short title.' };
   if (!body) return { error: 'Tell us what is going on.' };
-  const r = await createCase(env, customer.name, customer.id, { title, type: 'Owner request', status: 'Open', source: 'Portal', contact: customer.name });
-  await addComment(env, r.id, { visibility: 'public', channel: 'portal', who: customer.name, body });
+  const p = await env.DB.prepare('SELECT * FROM customer_contacts WHERE customer_id = ? AND lower(email) = lower(?)').bind(customer.id, customer.email).first() || await primaryOf(env, customer.id);
+  const r = await createCase(env, p ? p.name : customer.name, customer.id, { title, type: 'Owner request', status: 'Open', source: 'Portal', contact_id: p ? p.id : '' });
+  await addComment(env, r.id, { visibility: 'public', channel: 'portal', who: p ? p.name : customer.name, body });
   if (env.MAIL_TO) await sendMail(env, env.MAIL_TO, `[${r.no}] New request from ${customer.name}: ${title}`, [`${customer.name} opened ${r.no} in the customer portal.`, '', body, '', `Open the admin portal to reply: ${siteOrigin(env)}/admin/`].join('\n'), customer.email);
   return { ok: true, id: r.id, no: r.no };
 }

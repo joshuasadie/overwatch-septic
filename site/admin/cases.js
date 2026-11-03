@@ -13,6 +13,7 @@
   var itemPill = function (it) { return '<span class="pill" style="color:' + (it.open ? 'var(--warn)' : 'var(--good)') + '">' + E(it.status) + '</span>'; };
   var opt = function (list, v) { return list.map(function (x) { return '<option' + (x === v ? ' selected' : '') + '>' + E(x) + '</option>'; }).join(''); };
   var fld = function (id, label, v, extra) { return '<div><label for="' + id + '">' + label + '</label><input id="' + id + '" value="' + E(v || '') + '" ' + (extra || '') + '></div>'; };
+  var dateFld = function (id, label, v) { return '<div><label for="' + id + '">' + label + '</label><span class="row" style="gap:6px;flex-wrap:nowrap"><input id="' + id + '" type="date" value="' + E(v || '') + '"><button type="button" class="b alt sm2" data-clear="' + id + '">Clear</button></span></div>'; };
   function msg(id, text, bad) { var m = $(id); if (m) { m.className = 'msg' + (bad ? ' err' : ''); m.textContent = text || ''; } }
 
   // ---- the open-cases list on the home page
@@ -33,25 +34,52 @@
   }
 
   // ---- a customer's cases (left card on the customer page)
+  var people = function () { return (A.S.d && A.S.d.people) || []; };
+  var personOpts = function (sel) { var P = people(); return P.map(function (p) { return '<option value="' + p.id + '"' + (p.id === sel ? ' selected' : '') + '>' + E(p.name) + (p.primary ? ' (primary)' : '') + '</option>'; }).join(''); };
   A.casesList = function (d) {
-    var L = d.cases || [];
-    return '<h3 style="margin:16px 0 4px">Cases</h3><ul class="list">' + (L.map(function (k) {
-      return '<li class="pickcase" data-case="' + k.id + '" style="cursor:pointer"><span><span class="cno">' + E(k.no) + '</span> <b>' + E(k.title) + '</b><small>' + E(k.type) + (k.due_date && k.status !== 'Done' ? ' · due ' + E(OW.date(k.due_date)) : '') + (k.open_items.length ? ' · ' + E(k.open_items.join(', ')) + ' open' : '') + '</small></span>' + pill(k.status) + '</li>';
+    var L = d.cases || [], P = d.people || [], em = (d.customer.email || '').toLowerCase();
+    return '<h3 style="margin:16px 0 4px">Contacts</h3><ul class="list">' + (P.map(function (p) {
+      return '<li><span><b>' + E(p.name) + '</b>' + (p.primary ? ' <span class="cv-prim">Primary</span>' : '') + '<small>' + E([p.role, p.email, p.phone, p.address, p.notes].filter(Boolean).join(' · ')) + (p.email && p.email.toLowerCase() === em ? ' · portal sign-in' : '') + '</small></span><button class="b alt sm2" data-pp="' + p.id + '">Edit</button></li>';
+    }).join('') || '<li class="mute">None yet.</li>') + '</ul><div class="row" style="margin-top:8px"><button class="b alt" id="ppNew">+ Add contact</button></div><div id="ppBox"></div>' +
+      '<h3 style="margin:16px 0 4px">Cases</h3><ul class="list">' + (L.map(function (k) {
+      return '<li class="pickcase" data-case="' + k.id + '" style="cursor:pointer"><span><span class="cno">' + E(k.no) + '</span> <b>' + E(k.title) + '</b><small>' + E(k.type) + (k.contact ? ' · Contact: ' + E(k.contact) : '') + (k.due_date && k.status !== 'Done' ? ' · due ' + E(OW.date(k.due_date)) : '') + (k.open_items.length ? ' · ' + E(k.open_items.join(', ')) + ' open' : '') + '</small></span>' + pill(k.status) + '</li>';
     }).join('') || '<li class="mute">None yet.</li>') + '</ul><div class="row" style="margin-top:8px"><button class="b alt" id="caseNew">New case</button></div>';
   };
+  function personForm(p, after) {
+    p = p || {}; var box = $('ppBox'); if (!box) return;
+    var roles = (A.S.d && A.S.d.person_roles) || ['Owner', 'Co-owner', 'Occupant / tenant', 'Property manager', 'Other'];
+    box.innerHTML = '<form id="ppf" class="cv-comp" novalidate style="margin-top:10px"><b style="font-size:14px">' + (p.id ? 'Edit contact' : 'Add contact') + '</b><div class="two">' + fld('pp_name', 'Name', p.name, 'maxlength="100"') +
+      '<div><label for="pp_role">Role</label><select id="pp_role">' + opt(roles, p.role || 'Owner') + '</select></div>' + fld('pp_email', 'Email', p.email, 'type="email" maxlength="254"') + fld('pp_phone', 'Phone', p.phone, 'maxlength="40"') + '</div>' +
+      '<label for="pp_addr">Address <span class="mute" style="font-weight:400">(optional; blank uses the account address)</span></label><input id="pp_addr" maxlength="200" value="' + E(p.address || '') + '">' +
+      '<label for="pp_notes">Notes</label><input id="pp_notes" maxlength="1000" value="' + E(p.notes || '') + '">' +
+      '<label class="cv-chk" style="margin-top:8px"><input type="checkbox" id="pp_prim"' + (p.primary ? ' checked' : '') + '> Primary contact (new cases default to this person)</label>' +
+      '<div class="row" style="margin-top:10px"><button class="b" type="submit">Save contact</button><button class="b alt" type="button" id="ppX">Cancel</button>' + (p.id && !p.primary ? '<button class="b danger" type="button" id="ppDel">Remove</button>' : '') + '</div><div class="msg" id="ppm" role="status"></div></form>';
+    $('pp_name').focus();
+    $('ppX').onclick = function () { box.innerHTML = ''; };
+    if ($('ppDel')) $('ppDel').onclick = function () { if (!confirm('Remove ' + p.name + '?')) return; OW.api('/admin/api/customer-contact', { id: p.id, remove: true }).then(function (j) { if (!j.ok) return msg('ppm', j.error, true); OW.toast('Contact removed.'); A.refresh(); }); };
+    $('ppf').onsubmit = function (e) {
+      e.preventDefault();
+      OW.api('/admin/api/customer-contact', { id: p.id || undefined, customer_id: A.S.d.customer.id, name: $('pp_name').value, role: $('pp_role').value, email: $('pp_email').value, phone: $('pp_phone').value, address: $('pp_addr').value, notes: $('pp_notes').value, primary: $('pp_prim').checked }).then(function (j) {
+        if (!j.ok) return msg('ppm', j.error, true);
+        OW.toast('Contact saved.'); box.innerHTML = '';
+        OW.api('/admin/api/customer/' + A.S.d.customer.id).then(function (x) { if (x.ok) { A.S.d.people = x.people; if (after) after(j.id); else A.refresh(); } });
+      });
+    };
+  }
   A.afterDetail = function () { if (C.cur && A.S.d && C.cur.customer_id === A.S.d.customer.id) openCase(C.cur.id, true); };
 
   function newCase() {
     var v = $('caseView'); if (!v) return;
     v.innerHTML = '<section class="card"><h2>New case for ' + E(A.S.d.customer.name) + '</h2><form id="ncf" novalidate><div class="two">' + fld('nc_title', 'Title', '', 'maxlength="160" placeholder="Zone 3 pressure low"') +
-      '<div><label for="nc_type">Type</label><select id="nc_type">' + opt(C.meta ? C.meta.types : ['Repair follow-up'], 'Repair follow-up') + '</select></div>' + fld('nc_due', 'Due date', '', 'type="date"') + fld('nc_contact', 'Contact', '', 'maxlength="100" placeholder="Stacy Wilkins"') +
+      '<div><label for="nc_type">Type</label><select id="nc_type">' + opt(C.meta ? C.meta.types : ['Repair follow-up'], 'Repair follow-up') + '</select></div>' + '<div><label for="nc_contact">Contact (opened in their name)</label><select id="nc_contact">' + personOpts((people().filter(function (p) { return p.primary; })[0] || {}).id) + '<option value="+">+ New contact…</option></select></div>' + fld('nc_due', 'Due date <span class="mute" style="font-weight:400">(optional)</span>', '', 'type="date"') +
       '</div><label for="nc_desc">Description</label><textarea id="nc_desc" maxlength="4000" placeholder="What the problem is and where it came from"></textarea>' +
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Open case</button><button class="b alt" type="button" id="ncX">Cancel</button></div><div class="msg" id="ncm" role="status"></div></form></section>';
     v.scrollIntoView({ behavior: 'smooth' }); $('nc_title').focus();
     $('ncX').onclick = function () { v.innerHTML = ''; };
+    $('nc_contact').onchange = function () { if ($('nc_contact').value !== '+') return; $('nc_contact').value = (people().filter(function (p) { return p.primary; })[0] || {}).id || ''; personForm(null, function (pid) { $('nc_contact').innerHTML = personOpts(pid) + '<option value="+">+ New contact…</option>'; $('nc_contact').value = pid; }); $('ppBox').scrollIntoView({ behavior: 'smooth' }); };
     $('ncf').onsubmit = function (e) {
       e.preventDefault();
-      OW.api('/admin/api/case', { customer_id: A.S.d.customer.id, title: $('nc_title').value, type: $('nc_type').value, due_date: $('nc_due').value, contact: $('nc_contact').value, description: $('nc_desc').value }).then(function (j) {
+      OW.api('/admin/api/case', { customer_id: A.S.d.customer.id, title: $('nc_title').value, type: $('nc_type').value, due_date: $('nc_due').value, contact_id: $('nc_contact').value, description: $('nc_desc').value }).then(function (j) {
         if (!j.ok) return msg('ncm', j.error, true);
         OW.toast(j.no + ' opened.'); C.tab = 'comments'; openCase(j.id); A.refresh(); loadOpen();
       });
@@ -80,7 +108,7 @@
     v.innerHTML = '<section class="card cv">' +
       '<div class="cv-top"><div class="row" style="gap:10px;align-items:flex-start"><div class="cv-ico">OW</div><div><small class="mute">Case</small><h2 style="margin:0">' + E(k.title) + '</h2></div></div>' +
       '<div class="cv-acts"><button data-cv="edit">Edit</button>' + (k.status === 'Done' ? '<button data-cv="reopen">Reopen</button>' : '<button data-cv="close">Close Case</button>') + '<button data-cv="email">Email Owner</button><button data-cv="x" aria-label="Close this case view">×</button></div></div>' +
-      '<div class="cv-hl"><div><small>Case Number</small><b class="cno" style="font-size:15px">' + E(k.no) + '</b></div><div><small>Account</small><b>' + E(k.customer_name) + '</b></div>' + (k.contact ? '<div><small>Contact</small><b>' + E(k.contact) + '</b></div>' : '') +
+      '<div class="cv-hl"><div><small>Case Number</small><b class="cno" style="font-size:15px">' + E(k.no) + '</b></div><div><small>Account</small><b>' + E(k.customer_name) + '</b></div>' + (k.contact ? '<div><small>Contact</small><b>' + E(k.contact) + '</b>' + (k.person && (k.person.phone || k.person.email) ? '<small style="font-size:12.5px">' + E([k.person.phone, k.person.email].filter(Boolean).join(' · ')) + '</small>' : '') + '</div>' : '') +
       '<div><small>System</small><b>' + E(cu.sys_type ? 'Type ' + cu.sys_type : '—') + '</b></div>' + (cu.permit ? '<div><small>Permit</small><b>' + E(cu.permit) + '</b></div>' : '') + '<div><small>Case Owner</small><b>' + E(me()) + '</b></div></div>' +
       (flags.length ? '<div class="cv-flags">' + flags.map(function (f) { return '<div><span class="cv-dot ' + f[0] + '">' + (f[0] === 'good' && f[1] === '!' ? 'i' : f[1]) + '</span>' + E(f[2]) + '</div>'; }).join('') + '</div>' : '') + '</section>' +
       '<div class="cv-cols">' +
@@ -104,11 +132,11 @@
     commentsTab(b, k);
   }
   function commentsTab(b, k) {
-    var cu = A.S.d && A.S.d.customer || {}, people = [me(), cu.name, k.contact].filter(Boolean);
+    var cu = A.S.d && A.S.d.customer || {}, names = [me()].concat(people().map(function (p) { return p.name; })).filter(Boolean);
     b.innerHTML = (k.status === 'Done' ? '' : '<form id="ccf" class="cv-comp" novalidate><b style="font-size:14px">New comment</b><div class="cv-f">' +
       '<div><label>Visibility</label><div class="cv-seg" role="group" aria-label="Visibility"><button type="button" data-vis="public" class="on">Public</button><button type="button" data-vis="private">Private</button></div></div>' +
       '<div><label for="cc_ch">Type</label><select id="cc_ch">' + ['overwatch', 'phone_in', 'phone_out', 'customer'].map(function (c) { return '<option value="' + c + '">' + CH[c] + '</option>'; }).join('') + '</select></div>' +
-      '<div><label for="cc_who">Who</label><input id="cc_who" list="cc_people" value="' + E(me()) + '" maxlength="100" style="width:150px"><datalist id="cc_people">' + people.map(function (p) { return '<option value="' + E(p) + '">'; }).join('') + '</datalist></div>' +
+      '<div><label for="cc_who">Who</label><input id="cc_who" list="cc_people" value="' + E(me()) + '" maxlength="100" style="width:150px"><datalist id="cc_people">' + names.map(function (p) { return '<option value="' + E(p) + '">'; }).join('') + '</datalist></div>' +
       '<div><label for="cc_at">Date and time</label><input id="cc_at" type="datetime-local" value="' + localNow() + '"></div></div>' +
       '<label for="cc_body" class="sr">Comment</label><textarea id="cc_body" maxlength="8000" placeholder="Comment…" style="min-height:70px"></textarea>' +
       '<div class="cv-f"><div><label>Time spent (private)</label><span class="row" style="gap:4px"><input id="cc_h" inputmode="numeric" value="0" style="width:50px" aria-label="Hours"> h <input id="cc_m" inputmode="numeric" value="0" style="width:56px" aria-label="Minutes"> min</span></div>' +
@@ -145,13 +173,13 @@
   }
   function detailsTab(b, k) {
     b.innerHTML = '<form id="cdf" novalidate><div class="two">' + fld('cd_title', 'Title', k.title, 'maxlength="160"') + '<div><label for="cd_type">Type</label><select id="cd_type">' + opt(C.meta.types, k.type) + '</select></div>' +
-      fld('cd_due', 'Due date', k.due_date, 'type="date"') + fld('cd_contact', 'Contact', k.contact, 'maxlength="100"') +
-      fld('cd_cdue', 'County notice due', k.county_due, 'type="date"') + fld('cd_cdone', 'County notified on', k.county_done, 'type="date"') + fld('cd_odue', 'Owner proof of repair due', k.owner_due, 'type="date"') + '</div>' +
+      dateFld('cd_due', 'Due date (optional)', k.due_date) + '<div><label for="cd_contact">Contact</label><select id="cd_contact">' + personOpts(k.contact_id) + '</select></div>' +
+      dateFld('cd_cdue', 'County notice due', k.county_due) + dateFld('cd_cdone', 'County notified on', k.county_done) + dateFld('cd_odue', 'Owner proof of repair due', k.owner_due) + '</div>' +
       '<label for="cd_desc">Description</label><textarea id="cd_desc" maxlength="4000" style="min-height:100px">' + E(k.description) + '</textarea>' +
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Save details</button></div><div class="msg" id="cdm" role="status"></div></form>';
     $('cdf').onsubmit = function (e) {
       e.preventDefault();
-      OW.api('/admin/api/case', { id: k.id, title: $('cd_title').value, type: $('cd_type').value, due_date: $('cd_due').value, contact: $('cd_contact').value, county_due: $('cd_cdue').value, county_done: $('cd_cdone').value, owner_due: $('cd_odue').value, description: $('cd_desc').value }).then(function (j) {
+      OW.api('/admin/api/case', { id: k.id, title: $('cd_title').value, type: $('cd_type').value, due_date: $('cd_due').value, contact_id: $('cd_contact').value || undefined, county_due: $('cd_cdue').value, county_done: $('cd_cdone').value, owner_due: $('cd_odue').value, description: $('cd_desc').value }).then(function (j) {
         if (!j.ok) return msg('cdm', j.error, true); OW.toast('Case saved.'); openCase(k.id, true); A.refresh(); loadOpen();
       });
     };
@@ -195,6 +223,9 @@
     var pk = t.closest('.pickcase');
     if (pk) { var id = pk.getAttribute('data-case'), cid = pk.getAttribute('data-cid'); C.tab = 'comments'; if (cid && (!A.S.d || A.S.d.customer.id !== cid)) { C.cur = { id: id, customer_id: cid }; return void A.select(cid); } return void openCase(id); }
     if (t.id === 'caseNew') return void newCase();
+    if (t.id === 'ppNew') return void personForm(null);
+    var ppb = t.closest('[data-pp]'); if (ppb) { var pp = people().filter(function (x) { return x.id === ppb.getAttribute('data-pp'); })[0]; return void personForm(pp); }
+    var clr = t.closest('[data-clear]'); if (clr) { var inp = $(clr.getAttribute('data-clear')); if (inp) inp.value = ''; return; }
     var tb = t.closest('[data-tab]'); if (tb && C.cur) { C.tab = tb.getAttribute('data-tab'); $('caseView').querySelectorAll('[data-tab]').forEach(function (x) { x.classList.toggle('on', x === tb); }); return void drawTab(); }
     var gi = t.closest('[data-goitem]'); if (gi && C.cur) { var it = C.cur.items.filter(function (x) { return x.id === gi.getAttribute('data-goitem'); })[0]; if (it) { C.tab = it.kind; C.focus = it.id; draw(); } return; }
     var a = t.closest('[data-cv]'); if (!a || !C.cur) return;
