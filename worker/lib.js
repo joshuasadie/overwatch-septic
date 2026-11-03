@@ -102,6 +102,12 @@ export const SCHEMA = [
   'CREATE INDEX IF NOT EXISTS case_comments_case ON case_comments (case_id, seq)',
   // quantity on a part (kept beside case_items so the live table needs no ALTER)
   'CREATE TABLE IF NOT EXISTS case_item_qty (item_id TEXT PRIMARY KEY, qty INTEGER NOT NULL DEFAULT 1)',
+  // people on a customer account (cases are opened in a contact's name)
+  "CREATE TABLE IF NOT EXISTS customer_contacts (id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'Owner', email TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', is_primary INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+  'CREATE INDEX IF NOT EXISTS customer_contacts_customer ON customer_contacts (customer_id)',
+  'CREATE TABLE IF NOT EXISTS case_contact (case_id TEXT PRIMARY KEY, contact_id TEXT NOT NULL)',
+  // every account has a primary contact: existing customers get one from their own name, email and phone
+  "INSERT INTO customer_contacts (id, customer_id, name, role, email, phone, address, notes, is_primary, created_at, updated_at) SELECT lower(hex(randomblob(10))), c.id, c.name, 'Owner', c.email, c.phone, '', '', 1, c.created_at, c.created_at FROM customers c WHERE NOT EXISTS (SELECT 1 FROM customer_contacts x WHERE x.customer_id = c.id)",
   "CREATE TABLE IF NOT EXISTS report_owner_sent (report_id TEXT PRIMARY KEY, sent_at TEXT NOT NULL DEFAULT '')",
   'CREATE TABLE IF NOT EXISTS counties (name TEXT PRIMARY KEY, email TEXT NOT NULL)',
   // County addresses for operator reports, from each county's reply (Oct 2026). Added once; edits and removals in the admin portal stick.
