@@ -56,6 +56,8 @@ sent.length = 0; ok((await adm('/admin/api/contract-sign', { id: kid, name: 'Jos
 let list = await invs(); const i1 = list[0];
 ok(list.length === 1 && i1.kind === 'origination' && i1.amount_cents === 10000 && i1.status === 'open', 'origination invoice created for $100');
 ok(emailsTo('ann@home.com').length === 1 && emailsTo('ann@home.com')[0].text.includes('/pay/' + i1.id) && !/portal.*signed copy.*now/.test(emailsTo('ann@home.com')[0].text), 'customer gets the invoice, not the signed copy');
+{ const k0 = (await J(await adm('/admin/api/customer/' + cid))).contracts[0]; ok(k0.signed && !k0.signed.paid, 'Send signed copy waits for payment');
+  ok((await adm('/admin/api/contract-send-signed', { id: kid, to: ['ann@home.com'], pdf: btoa('%PDF-1.4' + 'x'.repeat(300)) })).status === 409, 'send refused while unpaid'); }
 j = await J(await call('/api/contract/' + t1)); ok(j.contract.locked === true && j.contract.text === null && j.contract.status === 'complete', 'signing link no longer shows the completed copy while unpaid');
 
 // customer portal
@@ -83,6 +85,16 @@ await runDaily(env, new Date(`${expectRelease}T16:00:00Z`));
 j = await J(await me()); ok(!j.contracts[0].locked && j.contracts[0].text && j.contracts[0].text.title, 'released on the release day: customer can read the signed agreement');
 ok(emailsTo('ann@home.com').some(m => /signed agreement is available/.test(m.subject)), 'customer told it is available');
 j = await J(await call('/api/contract/' + t1)); ok(j.contract.locked === false && j.contract.text, 'signing link shows the copy after release');
+// Send signed copy, once paid
+{ const cty0 = (await J(await adm('/admin/api/counties'))).counties || []; await adm('/admin/api/county', { name: 'Chatham County', email: 'eh@chatham.gov' });
+  const k1 = (await J(await adm('/admin/api/customer/' + cid))).contracts.find(x => x.id === kid); ok(k1.signed.paid && k1.signed.options.some(o => o.kind === 'county' && o.email === 'eh@chatham.gov') && k1.signed.options.some(o => o.kind === 'you'), 'once paid: county, you and the customer offered');
+  const pdf = btoa('%PDF-1.4\n' + 'x'.repeat(400)); sent.length = 0;
+  ok((await adm('/admin/api/contract-send-signed', { id: kid, to: ['stranger@x.com'], pdf })).status === 400, 'only listed people can be picked');
+  const js = await J(await adm('/admin/api/contract-send-signed', { id: kid, to: ['eh@chatham.gov', 'joshua@overwatchseptic.com', 'ann@home.com'], pdf }));
+  const ce = emailsTo('eh@chatham.gov')[0], ae = emailsTo('ann@home.com')[0], ye = emailsTo('joshua@overwatchseptic.com').find(m => /^\[Copy\] Signed O&M agreement/.test(m.subject));
+  ok(js.ok && js.sent.length === 3 && ce && /signed Maintenance and Inspection Agreement/.test(ce.text) && ce.attachments[0].content === pdf && /\.pdf$/.test(ce.attachments[0].filename) && ae && ae.attachments.length === 1 && ye, 'signed PDF emailed to the county, the customer and you');
+  ok((await J(await adm('/admin/api/customer/' + cid))).contracts.find(x => x.id === kid).signed.sends.length === 1, 'the send is recorded');
+  await adm('/admin/api/county', { name: 'chatham', remove: true }); for (const x of cty0) await adm('/admin/api/county', { name: x.name, email: x.email }); sent.length = 0; }
 
 // refund during the hold stops release
 const rep = async (date, amount) => { const x = await J(await adm('/admin/api/report', { customer_id: cid, visit_date: date, readings: { pump_min: 4.2, sludge_in: 9 }, checks: [{ label: 'Alarm', status: 'pass' }] })); return { id: x.id, fin: await J(await adm('/admin/api/report-finish', { id: x.id, amount })) }; };
@@ -127,7 +139,7 @@ const rE = await rep('2026-10-24', '250'); const ie = rE.fin.invoice; sent.lengt
 let count = 0;
 for (let d = 1; d <= 14; d++) { await runDaily(env, at(d)); }
 const rem = emailsTo('ann@home.com').filter(m => /Reminder: your septic invoice/.test(m.subject)); ok(rem.length === 7, 'seven daily reminders on days 1 to 7 (got ' + rem.length + ')');
-await runDaily(env, at(14)); ok(emailsTo('ann@home.com').length === 7, 'no emails on days 8 to 14');
+await runDaily(env, at(14)); ok(emailsTo('ann@home.com').filter(m => !/inspection report/.test(m.subject)).length === 7, 'no payment emails on days 8 to 14 (a report copy may go by day 25)');
 await runDaily(env, at(15)); await runDaily(env, at(15)); ok(emailsTo('ann@home.com').filter(m => /due on/.test(m.subject)).length === 1, 'one plain reminder on day 15, not repeated');
 for (let d = 16; d <= 29; d++) await runDaily(env, at(d)); ok((await invs()).find(x => x.id === ie).notice_state === 'none', 'nothing happens before day 30');
 sent.length = 0; await runDaily(env, at(30));
@@ -179,4 +191,5 @@ const saved = env.STRIPE_SECRET_KEY; delete env.STRIPE_SECRET_KEY; r = await cal
   await runDaily(env, new Date(`${addBusinessDays(today, 3)}T16:00:00Z`));
   ok(!emailsTo('ann@home.com').some(m => m.subject === `Your septic inspection report, ${visit}`), 'on payment, an owner who already has the report is not sent it again');
   ok(!emailsTo('eh@chatham.gov').some(m => m.text.includes(visit)), 'the county is not sent a second copy on payment'); }
+
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);
