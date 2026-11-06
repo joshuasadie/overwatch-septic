@@ -106,6 +106,8 @@ export const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS customer_contacts (id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'Owner', email TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', is_primary INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
   'CREATE INDEX IF NOT EXISTS customer_contacts_customer ON customer_contacts (customer_id)',
   'CREATE TABLE IF NOT EXISTS case_contact (case_id TEXT PRIMARY KEY, contact_id TEXT NOT NULL)',
+  // when a signed agreement was sent, and to whom (the Send signed copy button)
+  "CREATE TABLE IF NOT EXISTS contract_sends (id TEXT PRIMARY KEY, contract_id TEXT NOT NULL, sent_at TEXT NOT NULL, who TEXT NOT NULL DEFAULT '', recipients TEXT NOT NULL DEFAULT '[]')",
   // every account has a primary contact: existing customers get one from their own name, email and phone
   "INSERT INTO customer_contacts (id, customer_id, name, role, email, phone, address, notes, is_primary, created_at, updated_at) SELECT lower(hex(randomblob(10))), c.id, c.name, 'Owner', c.email, c.phone, '', '', 1, c.created_at, c.created_at FROM customers c WHERE NOT EXISTS (SELECT 1 FROM customer_contacts x WHERE x.customer_id = c.id)",
   "CREATE TABLE IF NOT EXISTS report_owner_sent (report_id TEXT PRIMARY KEY, sent_at TEXT NOT NULL DEFAULT '')",

@@ -167,3 +167,49 @@ export async function countersign(env, who, cid, name) {
 
 export const contractForPortal = publicView;
 export { publicView };
+
+// ---- Send signed copy: once the origination fee is paid (or waived, or there was none), email the signed PDF
+// to the county, you, the customer and any other account contact you pick.
+const PAID = new Set(['paid', 'waived']);
+export async function signedSendInfo(env, contractId, customer) {
+  const inv = await env.DB.prepare("SELECT status FROM invoices WHERE kind = 'origination' AND ref_id = ? ORDER BY created_at DESC").bind(contractId).first();
+  const paid = !inv || PAID.has(inv.status);
+  const county = await env.DB.prepare('SELECT email FROM counties WHERE name = ?').bind(String(customer.county || '').trim().toLowerCase()).first();
+  const people = (await env.DB.prepare("SELECT name, email FROM customer_contacts WHERE customer_id = ? AND email != '' ORDER BY is_primary DESC, name").bind(customer.id).all()).results;
+  const opts = [];
+  if (county && county.email) opts.push({ kind: 'county', label: `${customer.county} County`, email: county.email, on: true });
+  if (env.MAIL_TO) opts.push({ kind: 'you', label: 'You', email: env.MAIL_TO, on: true });
+  const seen = new Set(opts.map(o => o.email.toLowerCase()));
+  const add = (label, email, on) => { if (email && !seen.has(email.toLowerCase())) { seen.add(email.toLowerCase()); opts.push({ kind: 'customer', label, email, on }); } };
+  add(customer.name, customer.email, true);
+  for (const p of people) add(p.name, p.email, false);
+  const sends = (await env.DB.prepare('SELECT sent_at, recipients FROM contract_sends WHERE contract_id = ? ORDER BY sent_at DESC').bind(contractId).all()).results.map(r => ({ sent_at: r.sent_at, recipients: JSON.parse(r.recipients || '[]') }));
+  return { paid, invoice_status: inv ? inv.status : 'none', options: opts, sends };
+}
+export async function sendSigned(env, who, b) {
+  const c = await env.DB.prepare('SELECT * FROM contracts WHERE id = ?').bind(String(b.id || '')).first();
+  if (!c) return { status: 404, error: 'Not found.' };
+  if (c.status !== 'complete') return { status: 400, error: 'Only a fully signed agreement can be sent.' };
+  const customer = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(c.customer_id).first();
+  const info = await signedSendInfo(env, c.id, customer);
+  if (!info.paid) return { status: 409, error: 'Available once the origination fee is paid.' };
+  const want = new Set((Array.isArray(b.to) ? b.to : []).map(x => String(x).toLowerCase()));
+  const to = info.options.filter(o => want.has(o.email.toLowerCase()));
+  if (!to.length) return { error: 'Choose at least one person to send it to.' };
+  const pdf = String(b.pdf || '');
+  if (!/^[A-Za-z0-9+/=]+$/.test(pdf) || pdf.length < 200 || pdf.length > 6e6 || !atob(pdf.slice(0, 8)).startsWith('%PDF')) return { error: 'The signed PDF could not be made. Try again.' };
+  const t = JSON.parse(c.terms), addr = t.system_address || customer.address;
+  const permit = t.permit ? `Operation Permit Number ${t.permit}` : t.permit_issued ? `the Operation Permit issued ${(d => `${d.month} ${d.day.replace(/\D+$/, '')}, ${d.year}`)(dateParts(t.permit_issued))}` : 'the Operation Permit';
+  const fname = `Signed-agreement-${customer.name.replace(/[^A-Za-z0-9]+/g, '-').replace(/-+$/, '')}.pdf`, att = [{ filename: fname, content: pdf }];
+  const subject = `Signed O&M agreement: ${addr}`;
+  const body = o => o.kind === 'county'
+    ? [`${customer.county} County Environmental Health,`, '', `Attached is the signed Maintenance and Inspection Agreement between ${t.owner_name || customer.name} and ${t.contractor_name || 'Overwatch Septic, LLC'} for the ${t.sys_type ? 'Type ' + t.sys_type + ' ' : ''}system at ${addr}, as required by ${permit}.`, '', 'Please file it with the system record. Reply to this email with any questions.', '', 'Overwatch Septic, LLC']
+    : o.kind === 'you'
+      ? [`Signed agreement for ${customer.name}, sent ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })} to: ${to.map(x => x.label + ' <' + x.email + '>').join(', ')}.`]
+      : [`Hello ${o.label},`, '', `Attached is your fully signed Maintenance and Inspection Agreement with Overwatch Septic for ${addr}. ${to.some(x => x.kind === 'county') ? `A copy has also been sent to ${customer.county} County Environmental Health. ` : ''}Please keep it with your septic records.`, '', 'Overwatch Septic, LLC'];
+  const sent = [];
+  for (const o of to) if (await sendMail(env, o.email, o.kind === 'you' ? `[Copy] ${subject}` : subject, body(o).join('\n'), env.MAIL_TO, { attachments: att })) sent.push({ label: o.label, email: o.email });
+  if (!sent.length) return { status: 502, error: 'The email did not send. Try again.' };
+  await env.DB.prepare('INSERT INTO contract_sends (id, contract_id, sent_at, who, recipients) VALUES (?, ?, ?, ?, ?)').bind(id(), c.id, new Date().toISOString(), String(who || ''), JSON.stringify(sent)).run();
+  return { ok: true, sent };
+}

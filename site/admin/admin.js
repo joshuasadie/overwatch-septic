@@ -124,8 +124,8 @@
         if (x.status === 'sent') btns += '<button class="b alt" data-act="resend" data-id="' + x.id + '">Resend link</button>';
         if (x.status === 'owner_signed') btns += '<button class="b" data-act="cs" data-id="' + x.id + '">Sign now</button>';
         if (x.status !== 'complete' && x.status !== 'void') btns += '<button class="b danger" data-act="void" data-id="' + x.id + '">Cancel</button>';
-        if (x.status === 'complete') btns += '<button class="b alt" data-act="pdf" data-id="' + x.id + '">PDF</button>';
-        return '<li><span><b>' + E(x.text && /^MAINTENANCE AND/.test(x.text.title) ? 'Maintenance and Inspection Agreement' : 'Inspection and Maintenance Agreement') + '</b><small>Sent ' + E(OW.date(x.created_at)) + (x.owner.signed_at ? ' &middot; customer signed ' + E(OW.date(x.owner.signed_at)) : '') + (x.contractor.signed_at ? ' &middot; you signed ' + E(OW.date(x.contractor.signed_at)) : '') + '</small></span><span class="row">' + OW.pill(x.status) + btns + '</span></li>';
+        if (x.status === 'complete') btns += '<button class="b alt" data-act="pdf" data-id="' + x.id + '">PDF</button>' + (x.signed ? '<button class="b' + (x.signed.paid ? '' : ' alt') + '" data-act="sendsigned" data-id="' + x.id + '"' + (x.signed.paid ? '' : ' disabled title="Available once the origination fee is paid."') + '>Send signed copy</button>' : '');
+        return '<li><span><b>' + E(x.text && /^MAINTENANCE AND/.test(x.text.title) ? 'Maintenance and Inspection Agreement' : 'Inspection and Maintenance Agreement') + '</b><small>Sent ' + E(OW.date(x.created_at)) + (x.owner.signed_at ? ' &middot; customer signed ' + E(OW.date(x.owner.signed_at)) : '') + (x.contractor.signed_at ? ' &middot; you signed ' + E(OW.date(x.contractor.signed_at)) : '') + '</small>' + (x.signed ? (x.signed.sends.length ? '<small class="good">Signed copy sent ' + E(OW.date(x.signed.sends[0].sent_at)) + ' to ' + E(x.signed.sends[0].recipients.map(function (q) { return q.label; }).join(', ')) + '</small>' : (x.signed.paid ? '' : '<small>Send signed copy: available once the origination fee is paid.</small>')) : '') + '</span><span class="row">' + OW.pill(x.status) + btns + '</span></li>';
       }).join('') || '<li class="mute">None yet.</li>') + '</ul>' +
       '<h3 style="margin:16px 0 4px">Reports</h3><ul class="list">' + (d.reports.map(function (r) {
         return '<li><span><b>' + (r.kind === 'inspection' ? 'Inspection report, ' : 'Visit report, ') + E(OW.date(r.visit_date)) + '</b><small>' + (r.kind === 'upload' ? 'Uploaded PDF' : r.kind === 'inspection' ? E(r.insp ? r.insp.data.status : 'Inspection') + (r.insp && r.insp.calc.pump_now ? ' &middot; time to pump' : '') : 'Entered in form') + (r.notes ? ' &middot; ' + E(r.notes.slice(0, 60)) : '') + (r.state === 'held' ? '' : r.county_sent_at ? ' &middot; county copy sent' : ' &middot; county copy not sent') + '</small></span><span class="row">' + (r.state === 'held' ? '<span class="pill warn">Held until paid</span>' : (r.county_sent_at ? '' : '<button class="b alt" data-county-send="' + r.id + '">Send county copy</button>')) + '' + (r.kind === 'inspection' && r.insp ? '<button class="b alt" data-rep="view" data-id="' + r.id + '">View</button><button class="b alt" data-rep="pdf" data-id="' + r.id + '">Homeowner PDF</button><button class="b alt" data-rep="cpdf" data-id="' + r.id + '">County PDF</button>' : '<button class="b alt" data-rep="pdf" data-id="' + r.id + '">PDF</button>') + '<button class="b alt" data-rep="mail" data-id="' + r.id + '">Email customer</button><button class="b danger" data-rep="del" data-id="' + r.id + '">Delete</button></span></li>';
@@ -243,6 +243,31 @@
       };
     }
   }
+  function sendSignedForm(x) {
+    var sg = x.signed, c = S.d.customer;
+    if (!sg || !sg.paid) return OW.toast('Available once the origination fee is paid.');
+    $('panel').innerHTML = '<h2>Send the signed agreement</h2><p class="mute" style="margin:0 0 8px">The signed PDF is attached to one email to each person checked.</p>' +
+      sg.options.map(function (o, i) { return '<label class="cv-chk" style="margin:6px 0"><input type="checkbox" data-sto="' + E(o.email) + '"' + (o.on ? ' checked' : '') + '> <b>' + E(o.label) + '</b> &middot; ' + E(o.email) + '</label>'; }).join('') +
+      (sg.options.some(function (o) { return o.kind === 'county'; }) ? '' : '<p class="bad" style="font-size:14px">No email saved for ' + E(c.county || 'this') + ' County. Add it under Counties to include the county.</p>') +
+      (sg.sends.length ? '<p class="mute" style="font-size:14px">Last sent ' + E(OW.date(sg.sends[0].sent_at)) + ' to ' + E(sg.sends[0].recipients.map(function (q) { return q.label; }).join(', ')) + '.</p>' : '') +
+      '<div class="row" style="margin-top:10px"><button class="b" id="ssGo">Send</button><button class="b alt" id="ssX">Cancel</button></div><div class="msg" id="ssm" role="status"></div>';
+    $('panel').scrollIntoView({ behavior: 'smooth' });
+    $('ssX').onclick = function () { $('panel').innerHTML = '<h2>Next step</h2><p class="mute">Choose Send contract or New inspection.</p>'; };
+    $('ssGo').onclick = function () {
+      var to = [].slice.call($('panel').querySelectorAll('[data-sto]')).filter(function (b) { return b.checked; }).map(function (b) { return b.getAttribute('data-sto'); });
+      var m = $('ssm'); if (!to.length) { m.className = 'msg err'; m.textContent = 'Choose at least one person.'; return; }
+      $('ssGo').disabled = true; m.className = 'msg'; m.textContent = 'Making the PDF…';
+      OW.contractPdf(x).then(function (bytes) {
+        var u = new Uint8Array(bytes), bin = ''; for (var i = 0; i < u.length; i += 0x8000) bin += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+        m.textContent = 'Sending…';
+        return OW.api('/admin/api/contract-send-signed', { id: x.id, to: to, pdf: btoa(bin) });
+      }).then(function (j) {
+        $('ssGo').disabled = false;
+        if (!j.ok) { m.className = 'msg err'; m.textContent = j.error; return; }
+        OW.toast('Signed copy sent to ' + j.sent.map(function (q) { return q.label; }).join(', ') + '.'); refresh();
+      }).catch(function () { $('ssGo').disabled = false; m.className = 'msg err'; m.textContent = 'The PDF could not be made. Try again.'; });
+    };
+  }
   function reportForm() {
     var today = new Date().toISOString().slice(0, 10);
     $('panel').innerHTML = '<h2>Upload a report PDF</h2><p class="mute" style="margin:0 0 4px">For an older report or one made in another tool. It is stored with the customer, not graphed. For a new visit, use New inspection.</p><form id="rf" novalidate><label for="r_date">Visit date</label><input id="r_date" type="date" value="' + today + '">' +
@@ -308,6 +333,7 @@
       var id = a.getAttribute('data-id'), x = S.d.contracts.filter(function (k) { return k.id === id; })[0], act = a.getAttribute('data-act');
       if (act === 'view') return void viewContract(x);
       if (act === 'cs') return void countersign(x);
+      if (act === 'sendsigned') return void sendSignedForm(x);
       if (act === 'pdf') return void OW.contractPdf(x).then(function (b) { OW.download(b, 'septic-agreement-' + S.d.customer.name.replace(/\W+/g, '-') + '.pdf'); });
       if (act === 'resend') return void OW.api('/admin/api/contract-resend', { id: id }).then(function (j) { j.ok ? OW.toast(j.emailed ? 'New link emailed.' : 'Link made, but the email did not send.') : fail(j); refresh(); });
       if (act === 'void' && confirm('Cancel this agreement? The customer can no longer sign it.')) return void OW.api('/admin/api/contract-void', { id: id }).then(function (j) { j.ok ? OW.toast('Cancelled.') : fail(j); refresh(); });
