@@ -4,7 +4,8 @@ import { clean, id, siteOrigin, sendMail } from './lib.js';
 
 // The tables live in SCHEMA in lib.js (counters, cases, case_items, case_comments).
 
-export const CASE_STATUS = ['Open', 'Waiting on owner', 'Waiting on vendor', 'Waiting on county', 'Done'];
+export const CASE_STATUS = ['Open', 'Waiting on owner', 'Waiting on vendor', 'Waiting on county', 'Done', 'Duplicate'];
+export const CLOSED = new Set(['Done', 'Duplicate']);
 export const CASE_TYPES = ['Repair follow-up', 'County action item', 'Owner request', 'Callback', 'Permit condition', 'Other'];
 export const CHANNELS = { overwatch: 'From Overwatch', phone_in: 'Phone call incoming', phone_out: 'Phone call outgoing', customer: 'From customer', portal: 'From customer · portal' };
 export const ITEM_STATUS = { part: ['Needed', 'Ordered', 'Received', 'Installed', 'Cancelled'], rma: ['Requested', 'Approved', 'Shipped', 'Replacement received', 'Credited', 'Cancelled'] };
@@ -87,12 +88,14 @@ const linkContact = (env, caseId, contactId) => env.DB.prepare('INSERT INTO case
 // ---- admin
 export async function listCases(env, customerId) {
   const q = customerId
-    ? env.DB.prepare('SELECT k.*, c.name AS customer_name, cc.contact_id FROM cases k JOIN customers c ON c.id = k.customer_id LEFT JOIN case_contact cc ON cc.case_id = k.id WHERE k.customer_id = ? ORDER BY (k.status = \'Done\'), k.num DESC').bind(customerId)
-    : env.DB.prepare("SELECT k.*, c.name AS customer_name, cc.contact_id FROM cases k JOIN customers c ON c.id = k.customer_id LEFT JOIN case_contact cc ON cc.case_id = k.id WHERE k.status != 'Done' ORDER BY CASE WHEN k.due_date = '' THEN 1 ELSE 0 END, k.due_date, k.num");
+    ? env.DB.prepare('SELECT k.*, c.name AS customer_name, cc.contact_id FROM cases k JOIN customers c ON c.id = k.customer_id LEFT JOIN case_contact cc ON cc.case_id = k.id WHERE k.customer_id = ? ORDER BY (k.status IN (\'Done\', \'Duplicate\')), k.num DESC').bind(customerId)
+    : env.DB.prepare("SELECT k.*, c.name AS customer_name, cc.contact_id FROM cases k JOIN customers c ON c.id = k.customer_id LEFT JOIN case_contact cc ON cc.case_id = k.id WHERE k.status NOT IN ('Done', 'Duplicate') ORDER BY CASE WHEN k.due_date = '' THEN 1 ELSE 0 END, k.due_date, k.num");
   const rows = (await q.all()).results.map(caseRow);
   if (!rows.length) return rows;
   const items = (await env.DB.prepare(`SELECT case_id, kind, num, status FROM case_items WHERE case_id IN (${rows.map(() => '?').join(',')})`).bind(...rows.map(r => r.id)).all()).results;
   for (const r of rows) { const mine = items.filter(i => i.case_id === r.id); r.open_items = mine.filter(itemOpen).map(i => itemNo(i.kind, i.num)); }
+  const dups = (await env.DB.prepare(`SELECT d.case_id, k.num FROM case_dup d JOIN cases k ON k.id = d.dup_of WHERE d.case_id IN (${rows.map(() => '?').join(',')})`).bind(...rows.map(r => r.id)).all()).results;
+  for (const r of rows) { const d = dups.find(x => x.case_id === r.id); r.dup_of_no = d ? caseNo(d.num) : ''; }
   return rows;
 }
 export async function getCase(env, caseId) {
@@ -104,6 +107,9 @@ export async function getCase(env, caseId) {
   k.items = (await env.DB.prepare('SELECT i.*, COALESCE(q.qty, 1) AS qty FROM case_items i LEFT JOIN case_item_qty q ON q.item_id = i.id WHERE i.case_id = ? ORDER BY i.kind, i.num').bind(caseId).all()).results.map(itemRow);
   k.comments = (await env.DB.prepare('SELECT * FROM case_comments WHERE case_id = ? ORDER BY seq DESC').bind(caseId).all()).results;
   k.minutes = k.comments.reduce((s, c) => s + (Number(c.minutes) || 0), 0);
+  const d = await env.DB.prepare('SELECT k.id, k.num, k.title FROM case_dup x JOIN cases k ON k.id = x.dup_of WHERE x.case_id = ?').bind(caseId).first();
+  k.dup_of = d ? { id: d.id, no: caseNo(d.num), title: d.title } : null;
+  k.duplicates = (await env.DB.prepare('SELECT k.id, k.num, k.title, k.status FROM case_dup x JOIN cases k ON k.id = x.case_id WHERE x.dup_of = ? ORDER BY k.num').bind(caseId).all()).results.map(r => ({ id: r.id, no: caseNo(r.num), title: r.title, status: r.status }));
   return k;
 }
 function caseFields(b, cur = {}) {
@@ -133,13 +139,33 @@ export async function saveCase(env, who, b) {
       f.contact = p.name; await linkContact(env, cur.id, p.id);
       if (!was || was.contact_id !== p.id) await event(env, cur.id, who, `Contact set to ${p.name} by ${whoName(who)}`);
     }
-    if (f.status === 'Done' && cur.status !== 'Done') {
+    if (CLOSED.has(f.status) && f.status !== cur.status) {
       const open = (await env.DB.prepare('SELECT kind, num, status FROM case_items WHERE case_id = ?').bind(cur.id).all()).results.filter(itemOpen);
-      if (open.length) return { status: 409, error: `Can't close yet: ${open.map(i => itemNo(i.kind, i.num)).join(' and ')} ${open.length > 1 ? 'are' : 'is'} open.` };
+      if (open.length) return { status: 409, error: `Can't ${f.status === 'Duplicate' ? 'mark it a duplicate' : 'close'} yet: ${open.map(i => itemNo(i.kind, i.num)).join(' and ')} ${open.length > 1 ? 'are' : 'is'} open.` };
+    }
+    let target = null;
+    if (f.status === 'Duplicate' && cur.status !== 'Duplicate') {
+      const m = /(\d{1,6})\s*$/.exec(String(b.dup_of || ''));
+      target = m ? await env.DB.prepare('SELECT * FROM cases WHERE num = ? AND customer_id = ?').bind(Number(m[1]), cur.customer_id).first() : null;
+      if (!target) return { error: 'Enter the number of another case on this account, like OWS-00103.' };
+      if (target.id === cur.id) return { error: 'A case cannot be a duplicate of itself.' };
+      if (target.status === 'Duplicate') return { error: `${caseNo(target.num)} is itself a duplicate. Point to the case that carries on.` };
     }
     await env.DB.prepare('UPDATE cases SET title = ?, type = ?, status = ?, due_date = ?, county_due = ?, county_done = ?, owner_due = ?, contact = ?, description = ?, updated_at = ?, closed_at = ? WHERE id = ?')
-      .bind(f.title, f.type, f.status, f.due_date, f.county_due, f.county_done, f.owner_due, f.contact, f.description, now, f.status === 'Done' ? (cur.closed_at || now) : '', cur.id).run();
-    if (f.status !== cur.status) await event(env, cur.id, who, `Status changed from ${cur.status} to ${f.status} by ${whoName(who)}`);
+      .bind(f.title, f.type, f.status, f.due_date, f.county_due, f.county_done, f.owner_due, f.contact, f.description, now, CLOSED.has(f.status) ? (cur.closed_at || now) : '', cur.id).run();
+    if (target) {
+      await env.DB.prepare('INSERT INTO case_dup (case_id, dup_of) VALUES (?, ?) ON CONFLICT(case_id) DO UPDATE SET dup_of = excluded.dup_of').bind(cur.id, target.id).run();
+      await event(env, cur.id, who, `Status changed from ${cur.status} to Duplicate of ${caseNo(target.num)} by ${whoName(who)}`);
+      await addComment(env, cur.id, { visibility: 'public', channel: 'overwatch', who: whoName(who), body: `This request was opened twice by mistake. It is a duplicate of ${caseNo(target.num)}, ${target.title}. All updates continue on ${caseNo(target.num)}.` });
+      await event(env, target.id, who, `${caseNo(cur.num)} marked as a duplicate of this case by ${whoName(who)}`);
+    } else if (f.status !== cur.status) {
+      if (cur.status === 'Duplicate') {
+        const was = await env.DB.prepare('SELECT k.id, k.num FROM case_dup x JOIN cases k ON k.id = x.dup_of WHERE x.case_id = ?').bind(cur.id).first();
+        await env.DB.prepare('DELETE FROM case_dup WHERE case_id = ?').bind(cur.id).run();
+        if (was) await event(env, was.id, who, `${caseNo(cur.num)} is no longer a duplicate of this case (changed by ${whoName(who)})`);
+      }
+      await event(env, cur.id, who, `Status changed from ${cur.status} to ${f.status} by ${whoName(who)}`);
+    }
     if (f.county_done && !cur.county_done) await event(env, cur.id, who, `County notified (${f.county_done}), recorded by ${whoName(who)}`);
     return { ok: true, id: cur.id };
   }
@@ -194,7 +220,7 @@ export async function saveItem(env, who, b) {
   const kind = b.kind === 'rma' ? 'rma' : 'part';
   const k = await env.DB.prepare('SELECT id, status FROM cases WHERE id = ?').bind(String(b.case_id || '')).first();
   if (!k) return { status: 404, error: 'Case not found.' };
-  if (k.status === 'Done') return { error: 'This case is closed. Reopen it first.' };
+  if (CLOSED.has(k.status)) return { error: 'This case is closed. Change its status to reopen it first.' };
   const title = s('title', 160); if (!title) return { error: kind === 'part' ? 'Name the part.' : 'Name what is being returned.' };
   const status = ITEM_STATUS[kind].includes(b.status) ? b.status : ITEM_STATUS[kind][0];
   const num = await nextNum(env, kind === 'part' ? 'p' : 'rma'), iid = id();
@@ -222,6 +248,7 @@ export async function deleteCasesFor(env, customerId) {
     env.DB.prepare('DELETE FROM case_item_qty WHERE item_id IN (SELECT i.id FROM case_items i JOIN cases k ON k.id = i.case_id WHERE k.customer_id = ?)').bind(customerId),
     env.DB.prepare('DELETE FROM case_items WHERE case_id IN (SELECT id FROM cases WHERE customer_id = ?)').bind(customerId),
     env.DB.prepare('DELETE FROM case_contact WHERE case_id IN (SELECT id FROM cases WHERE customer_id = ?)').bind(customerId),
+    env.DB.prepare('DELETE FROM case_dup WHERE case_id IN (SELECT id FROM cases WHERE customer_id = ?)').bind(customerId),
     env.DB.prepare('DELETE FROM cases WHERE customer_id = ?').bind(customerId),
     env.DB.prepare('DELETE FROM customer_contacts WHERE customer_id = ?').bind(customerId),
   ]);
@@ -229,18 +256,19 @@ export async function deleteCasesFor(env, customerId) {
 
 // ---- customer portal: own cases, exact status, public comments only
 export async function portalCases(env, customerId) {
-  const rows = (await env.DB.prepare('SELECT * FROM cases WHERE customer_id = ? ORDER BY (status = \'Done\'), num DESC').bind(customerId).all()).results;
+  const rows = (await env.DB.prepare('SELECT k.*, t.id AS dup_id, t.num AS dup_num FROM cases k LEFT JOIN case_dup x ON x.case_id = k.id LEFT JOIN cases t ON t.id = x.dup_of AND t.customer_id = k.customer_id WHERE k.customer_id = ? ORDER BY (k.status IN (\'Done\', \'Duplicate\')), k.num DESC').bind(customerId).all()).results;
   const out = [];
   for (const r of rows) {
     const comments = (await env.DB.prepare("SELECT seq, channel, who, at, body FROM case_comments WHERE case_id = ? AND kind = 'note' AND visibility = 'public' ORDER BY seq DESC").bind(r.id).all()).results
       .map(c => ({ seq: c.seq, from: c.channel === 'portal' || c.channel === 'customer' ? 'you' : 'overwatch', who: c.who, at: c.at, body: c.body, how: c.channel === 'phone_in' || c.channel === 'phone_out' ? 'Phone call' : '' }));
-    out.push({ id: r.id, no: caseNo(r.num), title: r.title, status: r.status, created_at: r.created_at, updated_at: r.updated_at, closed_at: r.closed_at, comments });
+    out.push({ id: r.id, no: caseNo(r.num), title: r.title, status: r.status, created_at: r.created_at, updated_at: r.updated_at, closed_at: r.closed_at, dup_of: r.dup_id ? { id: r.dup_id, no: caseNo(r.dup_num) } : null, comments });
   }
   return out;
 }
 export async function portalComment(env, customer, b) {
   const k = await env.DB.prepare('SELECT * FROM cases WHERE id = ? AND customer_id = ?').bind(String(b.case_id || ''), customer.id).first();
   if (!k) return { status: 404, error: 'Not found.' };
+  if (k.status === 'Duplicate') return { status: 409, error: 'This request is a duplicate. Please write on the request it points to.' };
   const body = clean(b.body, 4000); if (!body) return { error: 'Write a message first.' };
   const me = await env.DB.prepare('SELECT name FROM customer_contacts WHERE customer_id = ? AND lower(email) = lower(?)').bind(customer.id, customer.email).first();
   await addComment(env, k.id, { visibility: 'public', channel: 'portal', who: me ? me.name : customer.name, body });

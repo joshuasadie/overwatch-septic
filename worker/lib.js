@@ -106,6 +106,8 @@ export const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS customer_contacts (id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'Owner', email TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', is_primary INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
   'CREATE INDEX IF NOT EXISTS customer_contacts_customer ON customer_contacts (customer_id)',
   'CREATE TABLE IF NOT EXISTS case_contact (case_id TEXT PRIMARY KEY, contact_id TEXT NOT NULL)',
+  // a case marked Duplicate points at the case that carries on (same account)
+  'CREATE TABLE IF NOT EXISTS case_dup (case_id TEXT PRIMARY KEY, dup_of TEXT NOT NULL)',
   // when a signed agreement was sent, and to whom (the Send signed copy button)
   "CREATE TABLE IF NOT EXISTS contract_sends (id TEXT PRIMARY KEY, contract_id TEXT NOT NULL, sent_at TEXT NOT NULL, who TEXT NOT NULL DEFAULT '', recipients TEXT NOT NULL DEFAULT '[]')",
   // every account has a primary contact: existing customers get one from their own name, email and phone

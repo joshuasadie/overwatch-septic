@@ -96,6 +96,27 @@ k = (await J(await adm('/admin/api/case/' + k1))).case; ok(k.comments[0].channel
 sent.length = 0; j = await J(await annP('/portal/api/case', { method: 'POST', body: JSON.stringify({ title: 'Alarm going off', body: 'Beeping since this morning.' }) }));
 ok(j.ok && /^OWS-001\d\d$/.test(j.no) && sent.some(m => m.subject.startsWith('[' + j.no + '] New request from Ann Smith')), 'customer can open a new request; you are alerted');
 ok((await J(await adm('/admin/api/case/' + j.id))).case.person.name === 'Ann Smith', 'a portal request is opened in the name of the contact who signed in');
+// duplicates
+{ const a1 = await J(await adm('/admin/api/case', { customer_id: ann, contact_id: annC, title: 'Broken lids and missing pump support block' }));
+  const a2 = await J(await adm('/admin/api/case', { customer_id: ann, contact_id: annC, title: 'Broken lids' }));
+  const bo = await J(await adm('/admin/api/case', { customer_id: bob, contact_id: bobC, title: 'Bob thing' }));
+  ok((await adm('/admin/api/case', { id: a2.id, status: 'Duplicate', dup_of: bo.no })).status === 400, "can't point to another account's case");
+  ok((await adm('/admin/api/case', { id: a2.id, status: 'Duplicate', dup_of: a2.no })).status === 400, "can't be a duplicate of itself");
+  const pt = await J(await adm('/admin/api/case-item', { case_id: a2.id, kind: 'part', title: 'Lid' }));
+  let jd = await J(await adm('/admin/api/case', { id: a2.id, status: 'Duplicate', dup_of: a1.no })); ok(!jd.ok && /mark it a duplicate yet/.test(jd.error), 'open parts block marking a duplicate');
+  await adm('/admin/api/case-item', { id: pt.id, status: 'Cancelled' });
+  jd = await J(await adm('/admin/api/case', { id: a2.id, status: 'Duplicate', dup_of: a1.no.slice(4) })); ok(jd.ok, 'marked duplicate (number alone works)');
+  let d2 = (await J(await adm('/admin/api/case/' + a2.id))).case, d1 = (await J(await adm('/admin/api/case/' + a1.id))).case;
+  ok(d2.dup_of && d2.dup_of.id === a1.id && d2.comments.some(c => c.visibility === 'public' && c.body.includes('duplicate of ' + a1.no + ', Broken lids and missing pump support block')) && d2.closed_at, 'duplicate links, adds the public explanation, and counts as closed');
+  ok(d1.duplicates.length === 1 && d1.duplicates[0].id === a2.id && d1.comments.some(c => c.kind === 'event' && c.body.includes(a2.no + ' marked as a duplicate')), 'the other case lists it and logs it');
+  ok(!(await J(await adm('/admin/api/cases'))).cases.some(c => c.id === a2.id), 'duplicates leave the open list');
+  ok((await adm('/admin/api/case-item', { case_id: a2.id, kind: 'part', title: 'x' })).status === 400, 'no new parts on a duplicate');
+  ok((await adm('/admin/api/case', { id: a1.id, status: 'Duplicate', dup_of: a2.no })).status === 400, "can't point to a case that is itself a duplicate");
+  const pc2 = (await J(await annP('/portal/api/cases'))).cases.find(c => c.id === a2.id);
+  ok(pc2.status === 'Duplicate' && pc2.dup_of.no === a1.no && pc2.comments.some(c => /opened twice by mistake/.test(c.body)), 'customer sees the duplicate, the link and the explanation');
+  ok((await annP('/portal/api/case-comment', { method: 'POST', body: JSON.stringify({ case_id: a2.id, body: 'hi' }) })).status === 409, 'customer is pointed to the real case instead of replying on a duplicate');
+  jd = await J(await adm('/admin/api/case', { id: a2.id, status: 'Open' })); d2 = (await J(await adm('/admin/api/case/' + a2.id))).case; d1 = (await J(await adm('/admin/api/case/' + a1.id))).case;
+  ok(jd.ok && !d2.dup_of && d2.closed_at === '' && d1.duplicates.length === 0 && d1.comments.some(c => /no longer a duplicate/.test(c.body)), 'changing the status to Open undoes the duplicate'); }
 // closing once items are done; customer delete removes cases
 j = await J(await adm('/admin/api/case', { id: k1, status: 'Done' })); ok(j.ok, 'closes once parts and RMAs are done');
 j = await J(await adm('/admin/api/cases')); ok(!j.cases.some(c => c.id === k1), 'closed cases leave the open list');
