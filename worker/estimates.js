@@ -20,12 +20,16 @@ const today = () => new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10)
 export function priceLines(raw) {
   const lines = (Array.isArray(raw) ? raw : []).slice(0, 40).map(l => {
     const type = TYPES.includes(l && l.type) ? l.type : 'other';
-    const o = { type, desc: clean(l.desc, 240), qty: r2(num(l.qty, 10000)) || (type === 'free' ? 1 : 0) };
-    if (type === 'part') { o.cost = r2(num(l.cost)); o.markup = r2(num(l.markup, 1000)); o.unit = r2(o.cost * (1 + o.markup / 100)); }
-    else if (type === 'labor') { o.rate = r2(num(l.rate)); o.unit = o.rate; }
-    else if (type === 'other') o.unit = r2(num(l.unit));
+    // A blank cost, rate, price or quantity means "not known yet": the line shows as Pending and is left out of the total.
+    const blank = v => v === '' || v == null || (typeof v === 'string' && !v.trim());
+    const o = { type, desc: clean(l.desc, 240), qty: blank(l.qty) && type !== 'free' ? '' : r2(num(l.qty, 10000)) || (type === 'free' ? 1 : 0) };
+    let pend = o.qty === '';
+    if (type === 'part') { o.markup = r2(num(l.markup, 1000)); if (blank(l.cost)) { o.cost = ''; pend = true; } else o.cost = r2(num(l.cost)); o.unit = pend && o.cost === '' ? 0 : r2(o.cost * (1 + o.markup / 100)); }
+    else if (type === 'labor') { if (blank(l.rate)) { o.rate = ''; pend = true; } else o.rate = r2(num(l.rate)); o.unit = o.rate === '' ? 0 : o.rate; }
+    else if (type === 'other') { if (blank(l.unit)) { o.unit = 0; pend = true; } else o.unit = r2(num(l.unit)); }
     else o.unit = 0;
-    o.amount = r2(o.qty * o.unit);
+    if (pend) o.pending = true;
+    o.amount = pend ? 0 : r2(o.qty * o.unit);
     return o;
   }).filter(l => l.desc);
   return lines;
@@ -34,7 +38,7 @@ export function totals(lines, taxOn, taxRate) {
   const sub = r2(lines.reduce((s, l) => s + l.amount, 0));
   const parts = r2(lines.filter(l => l.type === 'part').reduce((s, l) => s + l.amount, 0));
   const tax = taxOn ? r2(parts * num(taxRate, 20) / 100) : 0;
-  return { subtotal: sub, tax, total: r2(sub + tax) };
+  return { subtotal: sub, tax, total: r2(sub + tax), pending: lines.filter(l => l.pending).length };
 }
 async function nextNum(env) { const r = await env.DB.prepare("UPDATE counters SET next = next + 1 WHERE name = 'est' RETURNING next").first(); return Number(r.next) - 1; }
 const hasContract = async (env, customerId) => !!(await env.DB.prepare("SELECT 1 AS x FROM contracts WHERE customer_id = ? AND status = 'complete'").bind(customerId).first());
@@ -45,7 +49,7 @@ export async function estimateDefaults(env, customerId) {
 function row(e, full) {
   const lines = JSON.parse(e.lines || '[]');
   const out = { id: e.id, num: e.num, no: estNo(e.num), customer_id: e.customer_id, customer_name: e.customer_name, contact_id: e.contact_id, contact_name: e.contact_name || '', case_id: e.case_id, case_no: e.case_num ? `OWS-${pad(e.case_num)}` : '', title: e.title, status: e.status, valid_until: e.valid_until, notes: e.notes, tax_on: !!e.tax_on, tax_rate: e.tax_rate, created_at: e.created_at, sent_at: e.sent_at, accepted_at: e.accepted_at, accepted_name: e.accepted_name, declined_at: e.declined_at, decline_reason: e.decline_reason, invoice_id: e.invoice_id, expired: e.status === 'sent' && e.valid_until && e.valid_until < today() };
-  out.lines = full ? lines : lines.map(l => ({ type: l.type, desc: l.desc, qty: l.qty, unit: l.unit, amount: l.amount }));
+  out.lines = full ? lines : lines.map(l => ({ type: l.type, desc: l.desc, qty: l.qty, unit: l.unit, amount: l.amount, pending: !!l.pending }));
   Object.assign(out, totals(lines, !!e.tax_on, e.tax_rate));
   return out;
 }
@@ -100,7 +104,7 @@ export async function sendEstimate(env, who, b) {
   const p = e.contact_id ? await env.DB.prepare('SELECT name, email FROM customer_contacts WHERE id = ?').bind(e.contact_id).first() : null;
   const to = (p && p.email) || c.email, name = (p && p.name) || c.name, t = row(e, false);
   const subject = `Estimate ${t.no}: ${e.title}`;
-  const text = [`Hello ${name},`, '', `Here is estimate ${t.no} from Overwatch Septic for ${e.title}. The total is $${t.total.toFixed(2)}${e.valid_until ? `, and it is good until ${e.valid_until}` : ''}.`, '', `To read it, and to accept or decline it, sign in to your customer portal: ${siteOrigin(env)}/login/`, '', 'Nothing is done without your approval. If you have a question, reply to this email.', '', 'Overwatch Septic, LLC'].join('\n');
+  const text = [`Hello ${name},`, '', `Here is estimate ${t.no} from Overwatch Septic for ${e.title}. The total is $${t.total.toFixed(2)}${t.pending ? `, plus ${t.pending} item${t.pending > 1 ? 's' : ''} still to be priced` : ''}${e.valid_until ? `, and it is good until ${e.valid_until}` : ''}.`, '', `To read it, and to accept or decline it, sign in to your customer portal: ${siteOrigin(env)}/login/`, '', 'Nothing is done without your approval. If you have a question, reply to this email.', '', 'Overwatch Septic, LLC'].join('\n');
   const ok = await sendMail(env, to, subject, text, env.MAIL_TO);
   if (!ok) return { status: 502, error: 'The email did not send. Try again.' };
   if (env.MAIL_TO && to.toLowerCase() !== String(env.MAIL_TO).toLowerCase()) await sendMail(env, env.MAIL_TO, `[Copy] ${subject} (sent to ${name})`, [`Sent to ${name} <${to}>.`, '', '----- What they received -----', '', text].join('\n'));

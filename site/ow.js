@@ -125,8 +125,8 @@
     return '<div class="estdoc"><div class="estdoc-h"><div><b style="font-size:17px">' + E(OW.EST_FROM[0]) + '</b><br>' + E(OW.EST_FROM[1]) + '<br>' + E([OW.CONTACT.phone, OW.CONTACT.email].filter(Boolean).join(' · ')) + '</div><div style="text-align:right"><b style="font-size:17px">ESTIMATE</b><br>' + E(e.no) + '<br>' + E(OW.date(e.sent_at || e.created_at)) + (e.valid_until ? '<br>Valid until ' + E(OW.date(e.valid_until)) : '') + '</div></div>' +
       '<p style="margin:12px 0 4px"><b>For:</b> ' + E(cust.name) + (cust.address ? ', ' + E(cust.address) : '') + '</p>' + (e.title ? '<p style="margin:0 0 8px"><b>Work:</b> ' + E(e.title) + (e.case_no ? ' <span class="mute">(' + E(e.case_no) + ')</span>' : '') + '</p>' : '') +
       '<div class="tw"><table class="esttab"><thead><tr><th>Description</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th></tr></thead><tbody>' +
-      e.lines.map(function (l) { return '<tr><td>' + (l.type === 'labor' ? 'Labor: ' : '') + E(l.desc) + '</td><td class="r">' + E(l.qty) + (l.type === 'labor' ? ' h' : '') + '</td><td class="r">' + d2(l.unit) + '</td><td class="r">' + (l.type === 'free' ? 'No charge' : d2(l.amount)) + '</td></tr>'; }).join('') +
-      '</tbody></table></div><div class="esttot">' + (e.tax ? '<div><span>Subtotal</span><span>' + d2(e.subtotal) + '</span></div><div><span>Sales tax on parts (' + E(e.tax_rate) + '%)</span><span>' + d2(e.tax) + '</span></div>' : '') + '<div><b>Total</b><b>' + d2(e.total) + '</b></div></div>' +
+      e.lines.map(function (l) { return '<tr><td>' + (l.type === 'labor' ? 'Labor: ' : '') + E(l.desc) + '</td><td class="r">' + (l.qty === '' ? '—' : E(l.qty) + (l.type === 'labor' ? ' h' : '')) + '</td><td class="r">' + (l.pending && !l.unit ? 'Pending' : d2(l.unit)) + '</td><td class="r">' + (l.type === 'free' ? 'No charge' : l.pending ? 'Pending' : d2(l.amount)) + '</td></tr>'; }).join('') +
+      '</tbody></table></div><div class="esttot">' + (e.tax ? '<div><span>Subtotal</span><span>' + d2(e.subtotal) + '</span></div><div><span>Sales tax on parts (' + E(e.tax_rate) + '%)</span><span>' + d2(e.tax) + '</span></div>' : '') + '<div><b>Total' + (e.pending ? ' so far' : '') + '</b><b>' + d2(e.total) + '</b></div>' + (e.pending ? '<p class="mute" style="font-size:13px;margin:2px 0 0;text-align:right">Items marked Pending are not priced yet and are not in this total.</p>' : '') + '</div>' +
       (e.notes ? '<p class="mute" style="white-space:pre-wrap;font-size:14px;margin:12px 0 0">' + E(e.notes) + '</p>' : '') +
       (e.accepted_at ? '<p class="good" style="margin:10px 0 0"><b>Accepted</b> by ' + E(e.accepted_name) + ' on ' + E(new Date(e.accepted_at).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' })) + '</p>' : '') + '</div>';
   };
@@ -139,10 +139,11 @@
       if (e.title) L.text('Work: ' + e.title + (e.case_no ? ' (' + e.case_no + ')' : ''), { after: 8 });
       var R = [350, 420, 500];
       L.row(['Description', 'Qty', 'Price', 'Total'], { bold: true, right: R }); L.rule();
-      e.lines.forEach(function (l) { L.row([(l.type === 'labor' ? 'Labor: ' : '') + l.desc, l.qty + (l.type === 'labor' ? ' h' : ''), d2(l.unit), l.type === 'free' ? 'No charge' : d2(l.amount)], { right: R }); });
+      e.lines.forEach(function (l) { L.row([(l.type === 'labor' ? 'Labor: ' : '') + l.desc, l.qty === '' ? '-' : l.qty + (l.type === 'labor' ? ' h' : ''), l.pending && !l.unit ? 'Pending' : d2(l.unit), l.type === 'free' ? 'No charge' : l.pending ? 'Pending' : d2(l.amount)], { right: R }); });
       L.rule();
       if (e.tax) { L.row(['Subtotal', '', '', d2(e.subtotal)], { right: R }); L.row(['Sales tax on parts (' + e.tax_rate + '%)', '', '', d2(e.tax)], { right: R }); }
-      L.row(['Total', '', '', d2(e.total)], { bold: true, size: 12, right: R });
+      L.row([e.pending ? 'Total so far' : 'Total', '', '', d2(e.total)], { bold: true, size: 12, right: R });
+      if (e.pending) L.text('Items marked Pending are not priced yet and are not in this total.', { size: 9, italic: true });
       if (e.notes) { L.gap(8); L.text(e.notes, { size: 10 }); }
       if (e.accepted_at) { L.gap(6); L.text('Accepted by ' + e.accepted_name + ' on ' + new Date(e.accepted_at).toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' in the customer portal.', { italic: true, size: 10 }); }
       else { L.gap(14); L.text('Accepted by: ______________________________    Date: ______________', { size: 10 }); }

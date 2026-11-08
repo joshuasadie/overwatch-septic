@@ -133,5 +133,9 @@ await adm('/admin/api/customer-delete', { id: bob }); ok(!(await J(await adm('/a
   const k = (await J(await adm('/admin/api/case/' + L.find(c => /County action items/.test(c.title)).id))).case;
   ok(k.comments.filter(c => c.visibility === 'public' && /^Action item/.test(c.body)).length === 4 && k.comments.some(c => c.visibility === 'private' && /re-measure/.test(c.body)) && k.comments.some(c => c.kind === 'event' && /OWS-001\d\d opened/.test(c.body)), 'action items are public comments, the zone note is private');
   ok(L.every(c => c.contact === 'Sean Wilkins' && c.contact_id) && (await peopleOf(sean)).some(p => p.name === 'Stacy L. Wilkins' && p.role === 'Co-owner'), 'Sean is the contact on both; Stacy is added as co-owner');
+  const es = (await J(await adm('/admin/api/customer/' + sean))).estimates;
+  ok(es.length === 1 && es[0].status === 'draft' && es[0].title === 'Repairs from Oct 1 county report' && es[0].case_id === L.find(c => /Broken lids/.test(c.title)).id && es[0].contact_name === 'Sean Wilkins' && es[0].total === 735.15 && es[0].pending === 3 && es[0].lines.length === 13, "Sean's draft estimate is created once, linked to the lids case, not sent");
+  const ne = await J(await adm('/admin/api/estimate', { customer_id: sean, title: 'next', lines: [{ type: 'other', desc: 'x', qty: 1, unit: 1 }] })); ok(Number(ne.no.slice(4)) === es[0].num + 1, 'the estimate counter moves past it');
+  ok(!sent.some(m => /EST-/.test(m.subject)), 'nothing was emailed');
 }
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);

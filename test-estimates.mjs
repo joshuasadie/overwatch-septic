@@ -89,4 +89,10 @@ j = await J(await adm('/admin/api/estimate', { customer_id: ann, title: 'Old', v
 ok((await post(annP, '/portal/api/estimate-accept', { id: j.id, name: 'Ann Smith' })).status === 409, "an expired estimate can't be accepted");
 j = await J(await adm('/admin/api/estimate', { customer_id: ann, title: 'Q', lines })); await adm('/admin/api/estimate-send', { id: j.id });
 ok((await J(await post(annP, '/portal/api/estimate-question', { id: j.id, body: 'How long?' }))).ok && (await J(await adm('/admin/api/estimate/' + j.id))).estimate.case_no, 'a question on an unlinked estimate opens a case and links it');
+// pending: a blank cost or hours is left out of the total and shown as Pending
+j = await J(await adm('/admin/api/estimate', { customer_id: ann, title: 'Pend', lines: [{ type: 'part', desc: 'Lid', qty: 2, cost: 45, markup: 30 }, { type: 'part', desc: 'Control part', qty: 1, cost: '', markup: 30 }, { type: 'labor', desc: 'Fill soil', qty: '', rate: 150 }] }));
+e = (await J(await adm('/admin/api/estimate/' + j.id))).estimate;
+ok(e.total === 117 && e.pending === 2 && e.lines[1].pending && e.lines[1].cost === '' && e.lines[2].qty === '' && e.lines[2].pending, 'blank cost or hours is pending and left out of the total');
+sent.length = 0; await adm('/admin/api/estimate-send', { id: j.id }); ok(sent.some(m => /plus 2 items still to be priced/.test(m.text)), 'the email says items are still to be priced');
+pe = (await J(await annP('/portal/api/estimates'))).estimates.find(x => x.id === j.id); ok(pe.pending === 2 && pe.lines[1].pending && !('cost' in pe.lines[1]), 'the portal shows pending, still without cost');
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);
