@@ -80,6 +80,6 @@
   }
   document.addEventListener('click', function (e) {
     var o = e.target.closest('[data-est]'); if (o) { e.preventDefault(); return open(o.getAttribute('data-est')); }
-    var n = e.target.closest('[data-est-new]'); if (n) { e.preventDefault(); A.newEstimate(n.getAttribute('data-case') || ''); }
+    var n = e.target.closest('[data-est-new]'); if (n) { e.preventDefault(); A.newEstimate(n.getAttribute('data-est-case') || ''); }
   });
 })();

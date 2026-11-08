@@ -9,7 +9,8 @@
   var localNow = function () { var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
   var me = function () { var o = A.cfg && A.cfg.operator; return (o && o.name ? String(o.name).split(' ')[0] : '') || 'Overwatch'; };
   var dueTone = function (d, done) { if (!d || done) return ''; return d < today() ? 'bad' : (d <= new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10) ? 'warn' : 'good'); };
-  var pill = function (s) { var c = s === 'Done' ? 'var(--good)' : s === 'Open' ? 'var(--ink)' : 'var(--warn)'; return '<span class="pill" style="color:' + c + '">' + E(s) + '</span>'; };
+  var closed = function (s) { return s === 'Done' || s === 'Duplicate'; };
+  var pill = function (s) { var c = s === 'Done' ? 'var(--good)' : s === 'Duplicate' ? 'var(--mute)' : s === 'Open' ? 'var(--ink)' : 'var(--warn)'; return '<span class="pill" style="color:' + c + '">' + E(s) + '</span>'; };
   var itemPill = function (it) { return '<span class="pill" style="color:' + (it.open ? 'var(--warn)' : 'var(--good)') + '">' + E(it.status) + '</span>'; };
   var opt = function (list, v) { return list.map(function (x) { return '<option' + (x === v ? ' selected' : '') + '>' + E(x) + '</option>'; }).join(''); };
   var fld = function (id, label, v, extra) { return '<div><label for="' + id + '">' + label + '</label><input id="' + id + '" value="' + E(v || '') + '" ' + (extra || '') + '></div>'; };
@@ -22,7 +23,7 @@
   }
   function drawOpen() {
     var L = C.open, t = today(), over = L.filter(function (k) { return k.due_date && k.due_date < t; });
-    var groups = [['All', L.length], ['Overdue', over.length]].concat((C.meta ? C.meta.status : []).filter(function (s) { return s !== 'Done'; }).map(function (s) { return [s, L.filter(function (k) { return k.status === s; }).length]; }));
+    var groups = [['All', L.length], ['Overdue', over.length]].concat((C.meta ? C.meta.status : []).filter(function (s) { return !closed(s); }).map(function (s) { return [s, L.filter(function (k) { return k.status === s; }).length]; }));
     $('casesN').textContent = L.length ? '(' + L.length + ')' : '';
     $('casesF').innerHTML = groups.filter(function (g) { return g[0] === 'All' || g[1]; }).map(function (g) { return '<button class="b' + (C.filter === g[0] ? '' : ' alt') + '" data-cf="' + E(g[0]) + '" style="padding:3px 10px;font-size:13px">' + E(g[0]) + ' ' + g[1] + '</button>'; }).join('');
     var show = L.filter(function (k) { return C.filter === 'All' || (C.filter === 'Overdue' ? k.due_date && k.due_date < t : k.status === C.filter); });
@@ -42,7 +43,7 @@
       return '<li><span><b>' + E(p.name) + '</b>' + (p.primary ? ' <span class="cv-prim">Primary</span>' : '') + '<small>' + E([p.role, p.email, p.phone, p.address, p.notes].filter(Boolean).join(' · ')) + (p.email && p.email.toLowerCase() === em ? ' · portal sign-in' : '') + '</small></span><button class="b alt sm2" data-pp="' + p.id + '">Edit</button></li>';
     }).join('') || '<li class="mute">None yet.</li>') + '</ul><div class="row" style="margin-top:8px"><button class="b alt" id="ppNew">+ Add contact</button></div><div id="ppBox"></div>' +
       '<h3 style="margin:16px 0 4px">Cases</h3><ul class="list">' + (L.map(function (k) {
-      return '<li class="pickcase" data-case="' + k.id + '" style="cursor:pointer"><span><span class="cno">' + E(k.no) + '</span> <b>' + E(k.title) + '</b><small>' + E(k.type) + (k.contact ? ' · Contact: ' + E(k.contact) : '') + (k.due_date && k.status !== 'Done' ? ' · due ' + E(OW.date(k.due_date)) : '') + (k.open_items.length ? ' · ' + E(k.open_items.join(', ')) + ' open' : '') + '</small></span>' + pill(k.status) + '</li>';
+      return '<li class="pickcase" data-case="' + k.id + '" style="cursor:pointer"><span><span class="cno">' + E(k.no) + '</span> <b>' + E(k.title) + '</b><small>' + E(k.type) + (k.contact ? ' · Contact: ' + E(k.contact) : '') + (k.dup_of_no ? ' · duplicate of ' + E(k.dup_of_no) : '') + (k.due_date && !closed(k.status) ? ' · due ' + E(OW.date(k.due_date)) : '') + (k.open_items.length ? ' · ' + E(k.open_items.join(', ')) + ' open' : '') + '</small></span>' + pill(k.status) + '</li>';
     }).join('') || '<li class="mute">None yet.</li>') + '</ul><div class="row" style="margin-top:8px"><button class="b alt" id="caseNew">New case</button></div>';
   };
   function personForm(p, after) {
@@ -101,13 +102,13 @@
     var flags = [];
     if (k.county_done) flags.push(['good', '✓', 'County notified ' + OW.date(k.county_done)]);
     else if (k.county_due) flags.push([dueTone(k.county_due) || 'warn', '!', 'County notice due ' + OW.date(k.county_due)]);
-    if (k.owner_due && k.status !== 'Done') flags.push([dueTone(k.owner_due) || 'warn', '!', 'Owner proof of repair due ' + OW.date(k.owner_due)]);
+    if (k.owner_due && !closed(k.status)) flags.push([dueTone(k.owner_due) || 'warn', '!', 'Owner proof of repair due ' + OW.date(k.owner_due)]);
     if (openItems.length) flags.push(['warn', '!', openItems.length + ' open: ' + openItems.map(function (i) { return i.no; }).join(', ')]);
-    if (k.due_date && k.status !== 'Done' && k.due_date < today()) flags.push(['bad', '!', 'Case overdue since ' + OW.date(k.due_date)]);
+    if (k.due_date && !closed(k.status) && k.due_date < today()) flags.push(['bad', '!', 'Case overdue since ' + OW.date(k.due_date)]);
     var mini = function (list) { return list.map(function (i) { return '<div class="cv-li" data-goitem="' + i.id + '"><span class="cno">' + E(i.no) + '</span><span>' + (i.kind === 'part' && i.qty > 1 ? i.qty + ' × ' : '') + E(i.title) + '</span><span class="' + (i.open ? 'warn' : 'good') + '" style="font-weight:600">' + E(i.status) + '</span></div>'; }).join('') || '<div class="cv-li mute" style="grid-template-columns:1fr">None</div>'; };
     v.innerHTML = '<section class="card cv">' +
       '<div class="cv-top"><div class="row" style="gap:10px;align-items:flex-start"><div class="cv-ico">OW</div><div><small class="mute">Case</small><h2 style="margin:0">' + E(k.title) + '</h2></div></div>' +
-      '<div class="cv-acts"><button data-cv="edit">Edit</button>' + (k.status === 'Done' ? '<button data-cv="reopen">Reopen</button>' : '<button data-cv="close">Close Case</button>') + '<button data-cv="email">Email Owner</button><button data-cv="x" aria-label="Close this case view">×</button></div></div>' +
+      '<div class="cv-acts"><button data-cv="edit">Edit</button>' + (closed(k.status) ? '<button data-cv="reopen">Reopen</button>' : '<button data-cv="close">Close Case</button>') + '<button data-cv="email">Email Owner</button><button data-cv="x" aria-label="Close this case view">×</button></div></div>' +
       '<div class="cv-hl"><div><small>Case Number</small><b class="cno" style="font-size:15px">' + E(k.no) + '</b></div><div><small>Account</small><b>' + E(k.customer_name) + '</b></div>' + (k.contact ? '<div><small>Contact</small><b>' + E(k.contact) + '</b>' + (k.person && (k.person.phone || k.person.email) ? '<small style="font-size:12.5px">' + E([k.person.phone, k.person.email].filter(Boolean).join(' · ')) + '</small>' : '') + '</div>' : '') +
       '<div><small>System</small><b>' + E(cu.sys_type ? 'Type ' + cu.sys_type : '—') + '</b></div>' + (cu.permit ? '<div><small>Permit</small><b>' + E(cu.permit) + '</b></div>' : '') + '<div><small>Case Owner</small><b>' + E(me()) + '</b></div></div>' +
       (flags.length ? '<div class="cv-flags">' + flags.map(function (f) { return '<div><span class="cv-dot ' + f[0] + '">' + (f[0] === 'good' && f[1] === '!' ? 'i' : f[1]) + '</span>' + E(f[2]) + '</div>'; }).join('') + '</div>' : '') + '</section>' +
@@ -117,9 +118,10 @@
         '<details class="cv-g" open><summary>RMAs (' + rmas.length + ')</summary>' + mini(rmas) + '</details>' +
         '<details class="cv-g" open><summary>Time (' + hm(k.minutes) + ')</summary>' + (timed.map(function (c) { return '<div class="cv-li"><span>#' + c.seq + '</span><span>' + E(c.body.slice(0, 40)) + '</span><span>' + hm(c.minutes) + '</span></div>'; }).join('') || '<div class="cv-li mute" style="grid-template-columns:1fr">No time yet. Add it on a comment.</div>') + '</details>' +
         (function () { var es = ((A.S.d && A.S.d.estimates) || []).filter(function (x) { return x.case_id === k.id && x.status !== 'void'; }); return '<details class="cv-g" open><summary>Estimates (' + es.length + ')</summary>' + (es.map(function (x) { return '<div class="cv-li" data-est="' + x.id + '" style="cursor:pointer"><span class="cno">' + E(x.no) + '</span><span>' + OW.d2(x.total) + '</span><span style="font-weight:600">' + E(x.status.charAt(0).toUpperCase() + x.status.slice(1)) + '</span></div>'; }).join('') || '<div class="cv-li mute" style="grid-template-columns:1fr">No estimates.</div>') + '</details>'; })() +
-        (k.status === 'Done' ? '' : '<div class="row" style="margin-top:8px"><button class="b alt sm2" data-cv="addpart">+ Part</button><button class="b alt sm2" data-cv="addrma">+ RMA</button><button class="b alt sm2" type="button" data-est-new="1" data-case="' + k.id + '">+ Estimate</button></div>') + '</section>' +
+        ((k.duplicates || []).length || k.dup_of ? '<details class="cv-g" open><summary>Related cases (' + ((k.duplicates || []).length + (k.dup_of ? 1 : 0)) + ')</summary>' + (k.dup_of ? '<div class="cv-li pickcase" data-case="' + k.dup_of.id + '" style="cursor:pointer"><span class="cno">' + E(k.dup_of.no) + '</span><span>' + E(k.dup_of.title) + '</span><span class="mute">Carries on</span></div>' : '') + (k.duplicates || []).map(function (x) { return '<div class="cv-li pickcase" data-case="' + x.id + '" style="cursor:pointer"><span class="cno">' + E(x.no) + '</span><span>' + E(x.title) + '</span><span class="mute">' + E(x.status) + '</span></div>'; }).join('') + '</details>' : '') +
+        (closed(k.status) ? '' : '<div class="row" style="margin-top:8px"><button class="b alt sm2" data-cv="addpart">+ Part</button><button class="b alt sm2" data-cv="addrma">+ RMA</button><button class="b alt sm2" type="button" data-est-new="1" data-est-case="' + k.id + '">+ Estimate</button></div>') + '</section>' +
       '<section class="card"><div class="cv-tabs">' + [['comments', 'Comments'], ['details', 'Details'], ['part', 'Parts'], ['rma', 'RMA']].map(function (t) { return '<button data-tab="' + t[0] + '" class="' + (C.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '</div><div id="cvBody"></div></section>' +
-      '<div><section class="card"><div class="cv-kv"><div style="grid-column:1/-1"><small>Status</small><select id="cvStatus" style="width:100%">' + opt(C.meta.status, k.status) + '</select></div><div><small>Type</small><b>' + E(k.type) + '</b></div>' +
+      '<div><section class="card"><div class="cv-kv"><div style="grid-column:1/-1"><small>Status</small><select id="cvStatus" style="width:100%">' + opt(C.meta.status, k.status) + '</select>' + (k.dup_of ? '<small style="margin-top:4px">Duplicate of <a href="#" class="pickcase" data-case="' + k.dup_of.id + '" style="color:var(--brz)">' + E(k.dup_of.no) + '</a></small>' : '') + '<div id="cvDup" hidden style="margin-top:6px"><small>Duplicate of (case number)</small><div class="row" style="gap:6px;flex-wrap:nowrap"><input id="cvDupNo" placeholder="OWS-00103" style="width:100%"><button class="b sm2" type="button" id="cvDupGo">Mark duplicate</button></div><small class="mute">Must be another case on this account.</small></div></div><div><small>Type</small><b>' + E(k.type) + '</b></div>' +
         '<div><small>Due</small><b>' + E(k.due_date ? OW.date(k.due_date) : '—') + '</b></div><div><small>Opened</small><b>' + E(OW.date(k.created_at)) + '</b></div>' +
         '<div><small>Started from</small><b>' + E(k.source || 'Manual') + '</b></div><div><small>Visible to customer</small><b>Yes</b></div></div><div class="msg" id="cvsm" role="status"></div></section>' +
         '<section class="card" style="margin-top:14px"><h3 style="margin:0 0 6px">Description</h3><p style="margin:0;font-size:14.5px;white-space:pre-wrap">' + (E(k.description) || '<span class="mute">None.</span>') + '</p></section></div>' +
@@ -134,7 +136,7 @@
   }
   function commentsTab(b, k) {
     var cu = A.S.d && A.S.d.customer || {}, names = [me()].concat(people().map(function (p) { return p.name; })).filter(Boolean);
-    b.innerHTML = (k.status === 'Done' ? '' : '<form id="ccf" class="cv-comp" novalidate><b style="font-size:14px">New comment</b><div class="cv-f">' +
+    b.innerHTML = (closed(k.status) ? '' : '<form id="ccf" class="cv-comp" novalidate><b style="font-size:14px">New comment</b><div class="cv-f">' +
       '<div><label>Visibility</label><div class="cv-seg" role="group" aria-label="Visibility"><button type="button" data-vis="public" class="on">Public</button><button type="button" data-vis="private">Private</button></div></div>' +
       '<div><label for="cc_ch">Type</label><select id="cc_ch">' + ['overwatch', 'phone_in', 'phone_out', 'customer'].map(function (c) { return '<option value="' + c + '">' + CH[c] + '</option>'; }).join('') + '</select></div>' +
       '<div><label for="cc_who">Who</label><input id="cc_who" list="cc_people" value="' + E(me()) + '" maxlength="100" style="width:150px"><datalist id="cc_people">' + names.map(function (p) { return '<option value="' + E(p) + '">'; }).join('') + '</datalist></div>' +
@@ -198,7 +200,7 @@
     var L = k.items.filter(function (i) { return i.kind === kind; });
     b.innerHTML = (adding ? itemForm(kind) : '') + (L.map(function (i) {
       return '<details class="cv-g" ' + (C.focus === i.id ? 'open' : '') + '><summary><span class="cno">' + E(i.no) + '</span> <b>' + (i.kind === 'part' && i.qty > 1 ? i.qty + ' × ' : '') + E(i.title) + '</b> ' + itemPill(i) + '<small class="mute" style="display:block;margin-left:16px">' + E([i.vendor, i.part_no && 'part ' + i.part_no, i.po && 'PO ' + i.po, i.cost && '$' + i.cost, i.rma_no && 'RMA ' + i.rma_no, i.tracking && 'tracking ' + i.tracking, i.credit, i.eta && 'expected ' + OW.date(i.eta)].filter(Boolean).join(' · ')) + '</small></summary>' + itemForm(kind, i) + '</details>';
-    }).join('') || (adding ? '' : '<p class="mute">None yet.</p>')) + (adding || k.status === 'Done' ? '' : '<div class="row" style="margin-top:10px"><button class="b alt" data-cv="' + (kind === 'part' ? 'addpart' : 'addrma') + '">' + (kind === 'part' ? '+ Part' : '+ RMA') + '</button></div>');
+    }).join('') || (adding ? '' : '<p class="mute">None yet.</p>')) + (adding || closed(k.status) ? '' : '<div class="row" style="margin-top:10px"><button class="b alt" data-cv="' + (kind === 'part' ? 'addpart' : 'addrma') + '">' + (kind === 'part' ? '+ Part' : '+ RMA') + '</button></div>');
     C.focus = null;
     b.querySelectorAll('form.cv-item').forEach(function (f) {
       f.onsubmit = function (e) {
@@ -210,19 +212,25 @@
       };
     });
   }
-  function setStatus(s) {
-    OW.api('/admin/api/case', { id: C.cur.id, status: s }).then(function (j) {
+  function setStatus(s, dup) {
+    OW.api('/admin/api/case', { id: C.cur.id, status: s, dup_of: dup }).then(function (j) {
       if (!j.ok) { msg('cvsm', j.error, true); if ($('cvStatus')) $('cvStatus').value = C.cur.status; return; }
-      OW.toast(s === 'Done' ? C.cur.no + ' closed.' : 'Status: ' + s); openCase(C.cur.id, true); A.refresh(); loadOpen();
+      OW.toast(s === 'Done' ? C.cur.no + ' closed.' : s === 'Duplicate' ? C.cur.no + ' marked as a duplicate.' : 'Status: ' + s); openCase(C.cur.id, true); A.refresh(); loadOpen();
     });
   }
 
-  document.addEventListener('change', function (e) { if (e.target.id === 'cvStatus') setStatus(e.target.value); });
+  document.addEventListener('change', function (e) {
+    if (e.target.id !== 'cvStatus') return;
+    if (e.target.value === 'Duplicate') { $('cvDup').hidden = false; $('cvDupNo').focus(); return; }
+    if ($('cvDup')) $('cvDup').hidden = true;
+    setStatus(e.target.value);
+  });
   document.addEventListener('click', function (e) {
     var t = e.target;
     var cf = t.closest('[data-cf]'); if (cf) { C.filter = cf.getAttribute('data-cf'); return void drawOpen(); }
     var pk = t.closest('.pickcase');
-    if (pk) { var id = pk.getAttribute('data-case'), cid = pk.getAttribute('data-cid'); C.tab = 'comments'; if (cid && (!A.S.d || A.S.d.customer.id !== cid)) { C.cur = { id: id, customer_id: cid }; return void A.select(cid); } return void openCase(id); }
+    if (pk) { e.preventDefault(); var id = pk.getAttribute('data-case'), cid = pk.getAttribute('data-cid'); C.tab = 'comments'; if (cid && (!A.S.d || A.S.d.customer.id !== cid)) { C.cur = { id: id, customer_id: cid }; return void A.select(cid); } return void openCase(id); }
+    if (t.id === 'cvDupGo') return void setStatus('Duplicate', $('cvDupNo').value);
     if (t.id === 'caseNew') return void newCase();
     if (t.id === 'ppNew') return void personForm(null);
     var ppb = t.closest('[data-pp]'); if (ppb) { var pp = people().filter(function (x) { return x.id === ppb.getAttribute('data-pp'); })[0]; return void personForm(pp); }
