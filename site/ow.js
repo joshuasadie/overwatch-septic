@@ -12,7 +12,7 @@
   };
   var tt; OW.toast = function (m) { var t = document.getElementById('toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); } t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(function () { t.hidden = true; }, 3500); };
   OW.money = function (c) { return '$' + (c / 100).toFixed(2); };
-  OW.invFor = function (i) { return i.kind === 'origination' ? 'Origination fee' : 'Visit ' + OW.date(i.visit_date); };
+  OW.invFor = function (i) { return i.kind === 'origination' ? 'Origination fee' : i.kind === 'repair' ? 'Repair' + (i.est_no ? ', ' + i.est_no : '') : 'Visit ' + OW.date(i.visit_date); };
   OW.STATUS = { terminated: ['Cancelled for nonpayment', 'bad'], sent: ['Waiting on customer', 'warn'], owner_signed: ['Needs your signature', 'warn'], complete: ['Signed', 'good'], void: ['Cancelled', 'mute'], none: ['Not sent', 'bad'] };
   OW.pill = function (s, forCustomer) { var x = OW.STATUS[s] || OW.STATUS.none; var label = x[0]; if (forCustomer) label = { sent: 'Needs your signature', owner_signed: 'Signed by you, waiting on us', complete: 'Signed', terminated: 'Cancelled for nonpayment', void: 'Cancelled' }[s] || label; return '<span class="pill ' + x[1] + '">' + OW.esc(label) + '</span>'; };
   OW.LOGO = '<svg width="40" height="40" viewBox="0 0 100 100" fill="none" stroke="var(--brz)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="50" cy="50" r="47" fill="var(--slate)"/><g stroke="var(--onslate)"><path d="M30 23 50 11 70 23Z"/><path d="M38 23V34M62 23V34"/><path d="M38 34 31 62M62 34 69 62M36 54 64 40M64 54 36 40" stroke-width="2.2"/></g><path d="M40 29Q50 21 60 29Q50 37 40 29Z" stroke-width="2"/><circle cx="50" cy="29" r="2.4" fill="var(--brz)" stroke="none"/><rect x="26" y="62" width="48" height="12" rx="6"/><path d="M42 62v-3M58 62v-3M16 68h10M74 68h10M30 81h40M36 87h28M41 93h18" stroke-width="2.2"/></svg>';
@@ -87,6 +87,15 @@
           y -= o.after == null ? 5 : o.after;
         },
         gap: function (n) { y -= n; },
+        // A table row: the first cell wraps in its width, the rest are right-aligned at their right edges.
+        row: function (cells, o) {
+          o = o || {}; var font = o.bold ? fb : f, size = o.size || 10, lead = size * 1.35, w0 = o.w0 || 290, words = L.safe(cells[0]).split(/\s+/), line = '', lines = [];
+          words.forEach(function (w) { var t = line ? line + ' ' + w : w; if (font.widthOfTextAtSize(t, size) > w0 && line) { lines.push(line); line = w; } else line = t; }); if (line) lines.push(line);
+          L.need(lead * lines.length + 4);
+          lines.forEach(function (ln, i) { page.drawText(ln, { x: M, y: y - size - i * lead, size: size, font: font, color: PDFLib.rgb(0.1, 0.1, 0.1) }); });
+          (o.right || []).forEach(function (rx, i) { var t = L.safe(cells[i + 1] == null ? '' : cells[i + 1]); page.drawText(t, { x: M + rx - font.widthOfTextAtSize(t, size), y: y - size, size: size, font: font, color: PDFLib.rgb(0.1, 0.1, 0.1) }); });
+          y -= lead * lines.length + 4;
+        },
         image: function (bytes) { return doc.embedJpg(bytes).then(function (img) { var sc = Math.min(250 / img.width, 180 / img.height, 1), w = img.width * sc, h = img.height * sc; L.need(h + 8); page.drawImage(img, { x: M, y: y - h, width: w, height: h }); y -= h + 8; }); },
         letterhead: function (lines) {
           var h = 48, tx = M + (L.logo ? h + 10 : 0);
@@ -107,6 +116,39 @@
       return fetch('/logo-pdf.png', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.arrayBuffer() : null; }).then(function (b) { return b ? doc.embedPng(b) : null; }).catch(function () { return null; }).then(function (img) { L.logo = img; return L; });
     });
   }
+  // ---- estimates: the customer's copy (prices only)
+  function d2(n) { return '$' + Number(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  OW.d2 = d2;
+  OW.EST_FROM = ['Overwatch Septic, LLC', '374 Hubert Herndon Rd, Chapel Hill, NC 27516'];
+  OW.estimateHtml = function (e, cust) {
+    var E = OW.esc;
+    return '<div class="estdoc"><div class="estdoc-h"><div><b style="font-size:17px">' + E(OW.EST_FROM[0]) + '</b><br>' + E(OW.EST_FROM[1]) + '<br>' + E([OW.CONTACT.phone, OW.CONTACT.email].filter(Boolean).join(' · ')) + '</div><div style="text-align:right"><b style="font-size:17px">ESTIMATE</b><br>' + E(e.no) + '<br>' + E(OW.date(e.sent_at || e.created_at)) + (e.valid_until ? '<br>Valid until ' + E(OW.date(e.valid_until)) : '') + '</div></div>' +
+      '<p style="margin:12px 0 4px"><b>For:</b> ' + E(cust.name) + (cust.address ? ', ' + E(cust.address) : '') + '</p>' + (e.title ? '<p style="margin:0 0 8px"><b>Work:</b> ' + E(e.title) + (e.case_no ? ' <span class="mute">(' + E(e.case_no) + ')</span>' : '') + '</p>' : '') +
+      '<div class="tw"><table class="esttab"><thead><tr><th>Description</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th></tr></thead><tbody>' +
+      e.lines.map(function (l) { return '<tr><td>' + (l.type === 'labor' ? 'Labor: ' : '') + E(l.desc) + '</td><td class="r">' + E(l.qty) + (l.type === 'labor' ? ' h' : '') + '</td><td class="r">' + d2(l.unit) + '</td><td class="r">' + (l.type === 'free' ? 'No charge' : d2(l.amount)) + '</td></tr>'; }).join('') +
+      '</tbody></table></div><div class="esttot">' + (e.tax ? '<div><span>Subtotal</span><span>' + d2(e.subtotal) + '</span></div><div><span>Sales tax on parts (' + E(e.tax_rate) + '%)</span><span>' + d2(e.tax) + '</span></div>' : '') + '<div><b>Total</b><b>' + d2(e.total) + '</b></div></div>' +
+      (e.notes ? '<p class="mute" style="white-space:pre-wrap;font-size:14px;margin:12px 0 0">' + E(e.notes) + '</p>' : '') +
+      (e.accepted_at ? '<p class="good" style="margin:10px 0 0"><b>Accepted</b> by ' + E(e.accepted_name) + ' on ' + E(new Date(e.accepted_at).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' })) + '</p>' : '') + '</div>';
+  };
+  OW.estimatePdf = function (e, cust) {
+    return layout(window.PDFLib, 'Estimate ' + e.no).then(function (L) {
+      L.letterhead([OW.EST_FROM[1], OW.CONTACT.phone, OW.CONTACT.email]);
+      L.text('ESTIMATE ' + e.no, { bold: true, size: 15, center: true, after: 8 });
+      L.text('Date: ' + OW.date(e.sent_at || e.created_at) + (e.valid_until ? '    Valid until: ' + OW.date(e.valid_until) : ''), {});
+      L.text('For: ' + cust.name + (cust.address ? ', ' + cust.address : ''), {});
+      if (e.title) L.text('Work: ' + e.title + (e.case_no ? ' (' + e.case_no + ')' : ''), { after: 8 });
+      var R = [350, 420, 500];
+      L.row(['Description', 'Qty', 'Price', 'Total'], { bold: true, right: R }); L.rule();
+      e.lines.forEach(function (l) { L.row([(l.type === 'labor' ? 'Labor: ' : '') + l.desc, l.qty + (l.type === 'labor' ? ' h' : ''), d2(l.unit), l.type === 'free' ? 'No charge' : d2(l.amount)], { right: R }); });
+      L.rule();
+      if (e.tax) { L.row(['Subtotal', '', '', d2(e.subtotal)], { right: R }); L.row(['Sales tax on parts (' + e.tax_rate + '%)', '', '', d2(e.tax)], { right: R }); }
+      L.row(['Total', '', '', d2(e.total)], { bold: true, size: 12, right: R });
+      if (e.notes) { L.gap(8); L.text(e.notes, { size: 10 }); }
+      if (e.accepted_at) { L.gap(6); L.text('Accepted by ' + e.accepted_name + ' on ' + new Date(e.accepted_at).toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' in the customer portal.', { italic: true, size: 10 }); }
+      else { L.gap(14); L.text('Accepted by: ______________________________    Date: ______________', { size: 10 }); }
+      return L.save();
+    });
+  };
   OW.contractPdf = function (c) {
     var t = c.text;
     return layout(window.PDFLib, t.title).then(function (L) {

@@ -4,6 +4,7 @@
   var when = function (iso) { return iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''; };
   var pill = function (s) { return '<span class="pill" style="color:' + (s === 'Done' ? 'var(--good)' : s === 'Open' ? 'var(--ink)' : 'var(--warn)') + '">' + E(s) + '</span>'; };
   function load() { return OW.api('/portal/api/cases').then(function (j) { if (!j.ok) return; L = j.cases; draw(); }); }
+  window.OWP = window.OWP || {}; window.OWP.reloadCases = load;
   function draw() {
     var box = $('reqs'); if (!box) return;
     var k = L.filter(function (x) { return x.id === openId; })[0];
