@@ -91,7 +91,7 @@ table.lat td input{min-width:62px;padding:6px 7px}.x{border:0;background:transpa
 @media(max-width:900px){.cv-cols{grid-template-columns:1fr}.cv-flags{grid-template-columns:1fr}}
 .cv-prim{color:var(--brz);font-weight:700;font-size:12px;border:1px solid var(--brz);border-radius:4px;padding:0 5px;margin-left:4px}
 /* estimates */
-.estdoc{border:1px solid var(--line);border-radius:8px;padding:16px;background:var(--card,#fff)}.estdoc-h{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:14px;line-height:1.5}
+.estdoc{border:1px solid var(--line);border-radius:8px;padding:16px;background:var(--paper);color:var(--ink)}.estdoc-h{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:14px;line-height:1.5}
 .esttab td,.esttab th{padding:6px 6px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}.esttab .r{text-align:right;white-space:nowrap}
 .esttot{margin:8px 0 0 auto;max-width:300px}.esttot div{display:flex;justify-content:space-between;padding:3px 0}
 .estlines td{padding:4px 4px;vertical-align:top;border-bottom:1px solid var(--line)}.estlines input,.estlines select{min-height:34px;padding:4px 6px;font-size:14px}.estlines .n{width:64px}.estlines .r{text-align:right;white-space:nowrap}
