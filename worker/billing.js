@@ -40,8 +40,10 @@ async function billMail(env, to, name, subject, text) {
   if (ok && env.MAIL_TO && to.toLowerCase() !== String(env.MAIL_TO).toLowerCase()) await sendMail(env, env.MAIL_TO, `[Copy] ${subject} (sent to ${name})`, [`Sent to ${name} <${to}> on ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}.`, '', '----- What they received -----', '', text].join('\n'));
   return ok;
 }
-export const label = (inv, ref) => inv.kind === 'origination' ? 'origination fee for your Inspection and Maintenance Agreement' : `septic visit on ${niceDate(ref || inv.created_date)}`;
-async function refDate(env, inv) { if (inv.kind !== 'visit') return ''; const r = await env.DB.prepare('SELECT visit_date FROM reports WHERE id = ?').bind(inv.ref_id).first(); return r ? r.visit_date : ''; }
+export const label = (inv, ref) => inv.kind === 'origination' ? 'origination fee for your Inspection and Maintenance Agreement' : inv.kind === 'repair' ? `repair work${ref ? ', ' + ref : ''}` : `septic visit on ${niceDate(ref || inv.created_date)}`;
+async function refDate(env, inv) {
+  if (inv.kind === 'repair') { const e = await env.DB.prepare('SELECT num, title FROM estimates WHERE id = ?').bind(inv.ref_id).first(); return e ? `estimate EST-${String(e.num).padStart(5, '0')} (${e.title})` : ''; }
+  if (inv.kind !== 'visit') return ''; const r = await env.DB.prepare('SELECT visit_date FROM reports WHERE id = ?').bind(inv.ref_id).first(); return r ? r.visit_date : ''; }
 const payLink = (env, inv) => `${siteOrigin(env)}/pay/${inv.id}`;
 const getCounty = async (env, name) => { const r = await env.DB.prepare('SELECT email FROM counties WHERE name = ?').bind(String(name || '').trim().toLowerCase()).first(); return r ? r.email : ''; };
 
@@ -52,8 +54,8 @@ export async function createInvoice(env, who, customer, kind, refId, cents, now 
   await audit(env, who, 'invoice-created', iid, `${customer.name} ${kind} ${money(cents)}`);
   const inv = { id: iid, kind, created_date: date, amount_cents: cents, ref_id: refId };
   const what = label(inv, await refDate(env, inv));
-  const note = kind === 'origination' ? 'Your signed agreement will be available in your customer portal once payment has cleared.' : 'Your visit report will be available in your customer portal once payment has cleared.';
-  const emailed = await billMail(env, customer.email, customer.name, `Invoice: ${money(cents)} for your septic ${kind === 'origination' ? 'agreement' : 'visit'}`, [`Hello ${customer.name},`, '', `Your invoice for the ${what} is ${money(cents)}.`, '', `Pay here: ${payLink(env, inv)}`, '', note, 'Payment is confirmed about three business days after you pay.', '', 'Overwatch Septic, LLC'].join('\n'));
+  const note = kind === 'origination' ? 'Your signed agreement will be available in your customer portal once payment has cleared.' : kind === 'repair' ? 'Thank you for approving this work.' : 'Your visit report will be available in your customer portal once payment has cleared.';
+  const emailed = await billMail(env, customer.email, customer.name, `Invoice: ${money(cents)} for your septic ${kind === 'origination' ? 'agreement' : kind === 'repair' ? 'repair work' : 'visit'}`, [`Hello ${customer.name},`, '', `Your invoice for the ${what} is ${money(cents)}.`, '', `Pay here: ${payLink(env, inv)}`, '', note, 'Payment is confirmed about three business days after you pay.', '', 'Overwatch Septic, LLC'].join('\n'));
   return { id: iid, emailed };
 }
 
@@ -63,7 +65,7 @@ export async function checkoutUrl(env, inv, customer) {
   const o = siteOrigin(env), body = new URLSearchParams({
     mode: 'payment', client_reference_id: inv.id, customer_email: customer.email, success_url: `${o}/pay/done/?ok=1`, cancel_url: `${o}/pay/done/?ok=0`,
     'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': 'usd', 'line_items[0][price_data][unit_amount]': String(inv.amount_cents),
-    'line_items[0][price_data][product_data][name]': inv.kind === 'origination' ? 'Origination fee: Inspection and Maintenance Agreement' : 'Septic inspection and maintenance visit',
+    'line_items[0][price_data][product_data][name]': inv.kind === 'origination' ? 'Origination fee: Inspection and Maintenance Agreement' : inv.kind === 'repair' ? 'Septic repair work' : 'Septic inspection and maintenance visit',
     'metadata[invoice_id]': inv.id, 'payment_intent_data[metadata][invoice_id]': inv.id,
   });
   try {
@@ -137,7 +139,7 @@ export async function markPaid(env, inv, who, now = new Date()) {
   await audit(env, who, 'invoice-paid', inv.id, money(inv.amount_cents));
   const c = await env.DB.prepare('SELECT name, email FROM customers WHERE id = ?').bind(inv.customer_id).first();
   const what = label(inv, await refDate(env, inv));
-  await billMail(env, c.email, c.name, 'Payment received. Thank you', [`Hello ${c.name},`, '', `We received your payment of ${money(inv.amount_cents)} for the ${what}.`, `It is released after the payment has cleared, on ${niceDate(rel)}. We will email you when it is available in your customer portal.`, '', 'Overwatch Septic, LLC'].join('\n'));
+  await billMail(env, c.email, c.name, 'Payment received. Thank you', [`Hello ${c.name},`, '', `We received your payment of ${money(inv.amount_cents)} for the ${what}.`, inv.kind === 'repair' ? 'Thank you for your business.' : `It is released after the payment has cleared, on ${niceDate(rel)}. We will email you when it is available in your customer portal.`, '', 'Overwatch Septic, LLC'].join('\n'));
   if (inv.notice_state === 'sent' || inv.notice_state === 'final_drafted' || inv.notice_state === 'drafted') await alertOwner(env, 'Paid after notice', `${c.name} paid ${money(inv.amount_cents)} after the unpaid sequence reached "${inv.notice_state}". If a notice already went to the county, you may want to tell them the agreement continues.`);
   return true;
 }
@@ -151,7 +153,7 @@ export async function releaseInvoice(env, inv, who, now = new Date()) {
   const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(inv.customer_id).first();
   if (inv.kind === 'origination') {
     await sendMail(env, c.email, 'Your signed agreement is available', [`Hello ${c.name},`, '', 'Your fully signed Inspection and Maintenance Agreement is now available. Sign in to your customer portal to read and download it:', '', `${siteOrigin(env)}/login/`, '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
-  } else await releaseReport(env, inv.ref_id, c, nowIso);
+  } else if (inv.kind !== 'repair') await releaseReport(env, inv.ref_id, c, nowIso);
   return true;
 }
 export async function releaseReport(env, reportId, customer, nowIso = new Date().toISOString()) {
@@ -258,7 +260,12 @@ export async function runDaily(env, now = new Date()) {
     if (!c) continue;
     const what = label(inv, await refDate(env, inv)), link = payLink(env, inv), amt = money(inv.amount_cents);
     const remind = async (subject, lines, set) => { await billMail(env, c.email, c.name, subject, [`Hello ${c.name},`, '', ...lines, '', `Pay here: ${link}`, '', 'If you already paid, or have a question, reply to this email.', '', 'Overwatch Septic, LLC'].join('\n')); await env.DB.prepare(`UPDATE invoices SET ${set}, last_reminder_date = ? WHERE id = ?`).bind(today, inv.id).run(); acted++; };
-    if (inv.notice_state === 'none') {
+    if (inv.kind === 'repair') {
+      // Repair invoices are not agreement fees: no termination notice. Remind, and tell Josh at 30 days.
+      if (inv.notice_state === 'none' && age >= 30) { await env.DB.prepare("UPDATE invoices SET notice_state = 'alerted' WHERE id = ?").bind(inv.id).run(); await alertOwner(env, 'Repair invoice unpaid 30 days', `${c.name}'s ${amt} invoice for the ${what} is unpaid 30 days. No notice goes to the county for repair work. Follow up with the customer.`); acted++; }
+      else if (inv.notice_state === 'none' && age >= 15 && !inv.d15_sent) await remind(`Your invoice is past due (${amt})`, [`Your invoice of ${amt} for the ${what} has not been paid yet.`], 'd15_sent = 1');
+      else if (inv.notice_state === 'none' && age >= 1 && age <= 7 && inv.last_reminder_date !== today && inv.reminders < 7) await remind(`Reminder: your septic invoice (${amt})`, [`Your invoice of ${amt} for the ${what} has not been paid yet.`], 'reminders = reminders + 1');
+    } else if (inv.notice_state === 'none') {
       if (age >= 30) { await env.DB.prepare("UPDATE invoices SET notice_state = 'drafted' WHERE id = ?").bind(inv.id).run(); await alertOwner(env, 'Notice ready for your OK', `${c.name}'s ${amt} invoice is unpaid 30 days. The notice of intent to terminate is drafted for the owner and the county. Review and send it in the admin portal. Your agreement requires written notice by certified mail, so print the letter and mail it too.`); acted++; }
       else if (age >= 15 && !inv.d15_sent) await remind(`Your invoice is due on ${niceDate(addDays(inv.created_date, 30))}`, [`Your invoice of ${amt} for the ${what} has not been paid. If it is still unpaid thirty days after billing, on ${niceDate(addDays(inv.created_date, 30))}, we will send a written notice that your agreement may be terminated, with a copy to your county health department.`], 'd15_sent = 1');
       else if (age >= 1 && age <= 7 && inv.last_reminder_date !== today && inv.reminders < 7) await remind(`Reminder: your septic invoice (${amt})`, [`Your invoice of ${amt} for the ${what} has not been paid yet.`, inv.kind === 'origination' ? 'Your signed agreement is available after payment clears.' : 'Your visit report is available after payment clears.'], 'reminders = reminders + 1');

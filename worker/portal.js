@@ -4,6 +4,7 @@ import { reply, clean, sha, rand, isoIn, siteOrigin, originOk, getCookie, sendMa
 import { publicView, signAsOwner } from './contracts.js';
 import { checkoutUrl, reportLocked, etDate } from './billing.js';
 import { portalCases, portalComment, portalRequest } from './cases.js';
+import { portalEstimates, portalRespond, portalQuestion } from './estimates.js';
 
 const COOKIE = '__Host-ow_session', LINK_MIN = 15, SESSION_DAYS = 30;
 const sessionCookie = (v, maxAge) => `${COOKIE}=${v}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
@@ -85,9 +86,13 @@ export async function portalApi(request, env, path) {
     const reports = (await env.DB.prepare('SELECT id, visit_date, kind, readings, checks, notes, pdf_key FROM reports WHERE customer_id = ? ORDER BY visit_date DESC').bind(c.id).all()).results.map(r => states.has(r.id) && !states.get(r.id) ? { id: r.id, visit_date: r.visit_date, locked: true } : { id: r.id, visit_date: r.visit_date, kind: r.kind, readings: JSON.parse(r.readings), checks: JSON.parse(r.checks), notes: r.notes, has_pdf: !!r.pdf_key });
     await attachInspections(env, reports, true);
     const today = etDate();
-    const invoices = inv.filter(i => i.status === 'open' || !i.released_at).map(i => ({ id: i.id, kind: i.kind, amount_cents: i.amount_cents, status: i.status, created_date: i.created_date, release_date: i.release_date, flag: i.flag, notice_state: i.notice_state, term_date: i.term_date, visit_date: i.kind === 'visit' ? (reports.find(r => r.id === i.ref_id) || {}).visit_date || '' : '', overdue_days: Math.max(0, Math.round((new Date(today + 'T12:00:00Z') - new Date(i.created_date + 'T12:00:00Z')) / 864e5)) }));
+    const estNos = new Map((await env.DB.prepare('SELECT id, num FROM estimates WHERE customer_id = ?').bind(c.id).all()).results.map(e => [e.id, 'EST-' + String(e.num).padStart(5, '0')]));
+    const invoices = inv.filter(i => i.status === 'open' || !i.released_at).map(i => ({ id: i.id, kind: i.kind, amount_cents: i.amount_cents, status: i.status, created_date: i.created_date, release_date: i.release_date, flag: i.flag, notice_state: i.notice_state, term_date: i.term_date, visit_date: i.kind === 'visit' ? (reports.find(r => r.id === i.ref_id) || {}).visit_date || '' : '', est_no: i.kind === 'repair' ? estNos.get(i.ref_id) || '' : '', overdue_days: Math.max(0, Math.round((new Date(today + 'T12:00:00Z') - new Date(i.created_date + 'T12:00:00Z')) / 864e5)) }));
     return reply({ ok: true, customer: { name: c.name, email: c.email, address: c.address, sys_type: c.sys_type, county: c.county, permit: c.permit }, operator: operatorOf(env), contracts, reports, invoices, stripe: !!env.STRIPE_SECRET_KEY });
   }
+  if (path === '/portal/api/estimates' && method === 'GET') return reply({ ok: true, estimates: await portalEstimates(env, c.id), customer: { name: c.name, address: c.address } });
+  const m0 = /^\/portal\/api\/estimate-(accept|decline|question)$/.exec(path);
+  if (m0 && method === 'POST') { const j = await readJson(request, 8192); if (j.res) return j.res; const r = m0[1] === 'question' ? await portalQuestion(env, c, j.body) : await portalRespond(env, c, j.body, m0[1] === 'accept'); return r.error ? reply({ ok: false, error: r.error }, r.status || 400) : reply(r); }
   if (path === '/portal/api/cases' && method === 'GET') return reply({ ok: true, cases: await portalCases(env, c.id) });
   if (path === '/portal/api/case-comment' && method === 'POST') { const j = await readJson(request, 8192); if (j.res) return j.res; const r = await portalComment(env, c, j.body); return r.error ? reply({ ok: false, error: r.error }, r.status || 400) : reply(r); }
   if (path === '/portal/api/case' && method === 'POST') { const j = await readJson(request, 8192); if (j.res) return j.res; const r = await portalRequest(env, c, j.body); return r.error ? reply({ ok: false, error: r.error }, r.status || 400) : reply(r); }

@@ -3,6 +3,7 @@ import { reply, clean, id, EMAIL, siteOrigin, sendMail, readJson, originOk, veri
 import { createInvoice, markPaid, releaseInvoice, releaseReport, sendCountyReport, sendNotice, noticeDrafts, toCents, etDate, daysBetween } from './billing.js';
 import { operatorOf, systemInfo, createInspection, saveSystem, attachInspections, uploadPhoto, servePhoto, deleteInspectionFiles } from './inspection.js';
 import { createContract, previewContract, resendContract, voidContract, countersign, publicView, signedSendInfo, sendSigned } from './contracts.js';
+import { listEstimates, getEstimate, saveEstimate, sendEstimate, voidEstimate, invoiceEstimate, estimateDefaults } from './estimates.js';
 import { listCases, getCase, saveCase, saveComment, saveItem, caseFromReport, deleteCasesFor, CASE_STATUS, CASE_TYPES, CHANNELS, ITEM_STATUS, peopleOf, savePerson, addPrimaryContact, PERSON_ROLES } from './cases.js';
 
 export const READINGS = { pump_min: 'Pump run time (minutes per cycle)', sludge_in: 'Sludge depth (inches in tank)', water_gpd: 'Water use (gallons per day)' };
@@ -23,9 +24,9 @@ const out = r => r.error ? reply({ ok: false, error: r.error }, r.status || 400)
 
 
 async function invoiceRows(env, where, bind) {
-  const rows = (await env.DB.prepare(`SELECT i.*, c.name AS customer_name, c.county AS customer_county, r.visit_date AS visit_date FROM invoices i JOIN customers c ON c.id = i.customer_id LEFT JOIN reports r ON (i.kind = 'visit' AND r.id = i.ref_id) WHERE ${where} ORDER BY i.created_at DESC`).bind(...bind).all()).results;
+  const rows = (await env.DB.prepare(`SELECT i.*, c.name AS customer_name, c.county AS customer_county, r.visit_date AS visit_date, e.num AS est_num FROM invoices i JOIN customers c ON c.id = i.customer_id LEFT JOIN reports r ON (i.kind = 'visit' AND r.id = i.ref_id) LEFT JOIN estimates e ON (i.kind = 'repair' AND e.id = i.ref_id) WHERE ${where} ORDER BY i.created_at DESC`).bind(...bind).all()).results;
   const today = etDate();
-  return rows.map(i => ({ id: i.id, customer_id: i.customer_id, customer_name: i.customer_name, county: i.customer_county, kind: i.kind, ref_id: i.ref_id, visit_date: i.visit_date || '', amount_cents: i.amount_cents, status: i.status, flag: i.flag, paused: !!i.paused, created_date: i.created_date, age: daysBetween(i.created_date, today), release_date: i.release_date, released: !!i.released_at, notice_state: i.notice_state, term_date: i.term_date, tracking: i.tracking, note: i.note, reminders: i.reminders }));
+  return rows.map(i => ({ id: i.id, customer_id: i.customer_id, customer_name: i.customer_name, county: i.customer_county, kind: i.kind, ref_id: i.ref_id, visit_date: i.visit_date || '', est_no: i.est_num ? 'EST-' + String(i.est_num).padStart(5, '0') : '', amount_cents: i.amount_cents, status: i.status, flag: i.flag, paused: !!i.paused, created_date: i.created_date, age: daysBetween(i.created_date, today), release_date: i.release_date, released: !!i.released_at, notice_state: i.notice_state, term_date: i.term_date, tracking: i.tracking, note: i.note, reminders: i.reminders }));
 }
 
 export const CONTACT_KINDS = ['Installer', 'County', 'Realtor', 'Builder', 'Inspector', 'Referral', 'Lead', 'Customer', 'Other'];
@@ -112,7 +113,7 @@ export async function adminApi(request, env, path) {
         installer = { id: si.id || '', name: k ? k.name : si.name, company: k ? k.company : '', phone: k ? k.phone : '', email: k ? k.email : '', repair_prefs: k ? (k.repair_prefs || '') : '', date: si.date || '' };
       } }
     for (const x of contracts) if (x.status === 'complete') x.signed = await signedSendInfo(env, x.id, c);
-    return reply({ ok: true, customer: c, installer, contracts, reports, invoices: await invoiceRows(env, 'i.customer_id = ?', [c.id]), cases: await listCases(env, c.id), people: await peopleOf(env, c.id), person_roles: PERSON_ROLES });
+    return reply({ ok: true, customer: c, installer, contracts, reports, invoices: await invoiceRows(env, 'i.customer_id = ?', [c.id]), cases: await listCases(env, c.id), estimates: await listEstimates(env, c.id), est_defaults: await estimateDefaults(env, c.id), people: await peopleOf(env, c.id), person_roles: PERSON_ROLES });
   }
   if (path === '/admin/api/customer-delete' && method === 'POST') {
     const j = await readJson(request); if (j.res) return j.res;
@@ -127,6 +128,7 @@ export async function adminApi(request, env, path) {
     if (env.FILES) for (const r of reps) if (r.pdf_key) await env.FILES.delete(r.pdf_key);
     await deleteInspectionFiles(env, (await env.DB.prepare('SELECT id FROM reports WHERE customer_id = ?').bind(cid).all()).results.map(x => x.id));
     await deleteCasesFor(env, cid);
+    await env.DB.prepare('DELETE FROM estimates WHERE customer_id = ?').bind(cid).run();
     await env.DB.batch([env.DB.prepare('DELETE FROM inspections WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM systems WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM invoices WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM reports WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM contracts WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM sessions WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM login_tokens WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM test_customers WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM customers WHERE id = ?').bind(cid), audit(env, email, isTest ? 'test-customer-deleted' : 'customer-deleted', cid, c.name)]);
     return reply({ ok: true });
   }
@@ -251,6 +253,10 @@ export async function adminApi(request, env, path) {
   if (path === '/admin/api/case-comment' && method === 'POST') { const j = await readJson(request, 32768); if (j.res) return j.res; return out(await saveComment(env, email, j.body)); }
   if (path === '/admin/api/contract-send-signed' && method === 'POST') { const j = await readJson(request, 7e6); if (j.res) return j.res; return out(await sendSigned(env, email, j.body)); }
   if (path === '/admin/api/customer-contact' && method === 'POST') { const j = await readJson(request, 8192); if (j.res) return j.res; return out(await savePerson(env, email, j.body)); }
+  m = /^\/admin\/api\/estimate\/([a-f0-9]{20})$/.exec(path);
+  if (m && method === 'GET') { const e = await getEstimate(env, m[1]); return e ? reply({ ok: true, estimate: e }) : reply({ ok: false, error: 'Not found.' }, 404); }
+  m = /^\/admin\/api\/estimate(|-send|-void|-invoice)$/.exec(path);
+  if (m && method === 'POST') { const j = await readJson(request, 65536); if (j.res) return j.res; return out(await ({ '': saveEstimate, '-send': sendEstimate, '-void': voidEstimate, '-invoice': invoiceEstimate })[m[1]](env, email, j.body)); }
   if (path === '/admin/api/case-item' && method === 'POST') { const j = await readJson(request, 16384); if (j.res) return j.res; return out(await saveItem(env, email, j.body)); }
   if (path === '/admin/api/invoices' && method === 'GET') return reply({ ok: true, invoices: await invoiceRows(env, "i.status = 'open' OR i.released_at = '' OR i.notice_state != 'none'", []) });
   m = /^\/admin\/api\/invoice-(waive|paid|pause|release|notice|final)$/.exec(path);
