@@ -53,6 +53,7 @@
       if (x.kind === 'pump' && x.k.pdr != null) h += '<tr><td>' + esc(x.name) + ' flow</td><td><b>' + x.k.pdr + '</b> gallons per minute' + (x.t.design_pdr ? '<br>(designed for ' + x.t.design_pdr + ')' : '') + '</td><td>' + esc(x.k.eff_ok === false ? OWI.plainExtra(x)[2] : 'About what it was designed to move.') + '</td></tr>';
       if (x.kind === 'septic' && x.k.sludge_pct != null) h += '<tr><td>Solids in ' + esc(x.name) + '</td><td><b>' + Math.round(x.k.sludge_pct) + '%</b> of the tank depth<br>(' + v(x.t.sludge) + ' in of ' + v(x.t.liquid_depth) + ' in)</td><td>' + esc(x.k.pump_now ? OWI.plainExtra(x)[2] : 'Below one third of the tank, so no pumping is needed yet.') + '</td></tr>';
     });
+    var zf = OWI.zoneFlush(d); if (zf) { var zq = OWI.zoneFlushPlain(zf); h += '<tr><td>Drip zone flush test</td><td class="' + zq[1] + '"><b>' + esc(zq[0]) + '</b></td><td>' + esc(zq[2]) + '</td></tr>'; }
     h += '</tbody></table></div>';
     if (photoUrl && rep.insp.photos) { h += '<h3>Photos</h3><div class="ph">'; for (var i = 1; i <= rep.insp.photos; i++) h += '<a href="' + esc(photoUrl(i)) + '" target="_blank" rel="noopener"><img src="' + esc(photoUrl(i)) + '" alt="Photo ' + i + ' from the visit" loading="lazy"></a>'; h += '</div>'; }
     h += '<p style="margin-top:10px"><b>Next check-up due:</b> ' + esc(dt(d.next_due) || 'to be scheduled') + '. Your portal shows each number over time.</p>';
@@ -75,6 +76,13 @@
     });
     if (lat.length) {
       h += '<div class="tw"><table><thead><tr><th>' + zone(d) + '</th><th>Length</th><th>Design head</th><th>Turnup height</th><th>Last time</th><th>Baseline</th><th>Off design</th><th>Valves left at</th><th>Adjusted to</th></tr></thead><tbody>' + lat.map(function (l) { var pc = OWI.latPct(l); return '<tr><td>' + l.n + '</td><td>' + v(l.length) + '</td><td>' + v(l.design) + '</td><td>' + v(l.turnup) + '</td><td>' + v(l.last) + '</td><td>' + v(l.baseline) + '</td><td>' + (pc === null ? '-' : (pc > 0 ? '+' : '') + pc + '%') + '</td><td>' + v(l.left) + '</td><td>' + v(l.adjusted) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+    }
+    var zf = OWI.zoneFlush(d);
+    if (zf) {
+      var dv = function (m, de) { return v(m) + (de != null ? ' (' + de + ')' : ''); };
+      h += '<h3>Zone flush test</h3><div class="tw"><table><thead><tr><th>Zone</th><th>Dose gpm (design)</th><th>Flush gpm (design)</th><th>Inlet psi</th><th>Outlet psi</th><th>Last time (in / out psi, flush gpm)</th><th>Result</th></tr></thead><tbody>' +
+        zf.rows.map(function (x) { var z = x.z; return '<tr><td>' + z.n + '</td><td>' + dv(z.dose, z.design_dose) + '</td><td>' + dv(z.flush, z.design_flush) + '</td><td>' + v(z.in_psi) + '</td><td>' + v(z.out_psi) + '</td><td>' + (z.last_in != null || z.last_flush != null ? v(z.last_in) + ' / ' + v(z.last_out) + ', ' + v(z.last_flush) : '-') + '</td><td>' + (x.r.bad ? '<b>' + esc(x.r.text) + '</b>' : esc(x.r.text)) + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+        '<p>Filters cleaned before the test: ' + (zf.filters ? 'Yes' : 'No') + '. Zone valves close fully: ' + (zf.valves ? 'Yes' : 'No') + '.' + (zf.notes ? ' ' + esc(zf.notes) : '') + '</p>';
     }
     h += '<h3>Flow test and meters</h3><div class="tw"><table><tbody>';
     h += '<tr><td>Water level, pump off (start)</td><td>' + v(d.flow.off, 'in') + '</td><td>Dose volume</td><td>' + v(d.flow.dose, 'gal') + '</td></tr>';

@@ -209,4 +209,26 @@ ok(j.system.septic_h === 60 && j.system.pump_h === 48 && j.system.liquid_depth =
 ok(j.system.tanks[0].h === 60 && j.system.tanks[0].liquid_depth === 50 && j.system.tanks[1].h === 48, 'extra tanks keep their height and liquid depth');
 j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP } }));
 ok(j.system.septic_h === 60 && j.system.liquid_depth === 50, 'a setup save that leaves them out keeps them');
+// ---- drip zone flush test: design gpm in setup, every visit, first reading is the baseline
+j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP, laterals: [{ length: 1200, dose_gpm: 5.93, flush_gpm: 12.5 }, { length: 1200, dose_gpm: 6.3, flush_gpm: 12.5 }] } }));
+ok(j.system.laterals[0].dose_gpm === 5.93 && j.system.laterals[1].flush_gpm === 12.5, 'setup saves each zone design dose and flush gpm');
+ok(OWI0.zoneResult({ flush: 12.1, design_flush: 12.5, in_psi: 22 }).text === 'Baseline set' && OWI0.zoneResult({ flush: 8.9, design_flush: 12.5, in_psi: 27 }).text === 'Check: flush 29% under design', 'result: baseline set, or check when flush is >10% under design');
+ok(OWI0.zoneResult({ flush: 12.4, design_flush: 12.5, in_psi: 28, base_in: 22 }).text === 'Check: inlet psi 27% above baseline' && OWI0.zoneResult({ flush: 12.4, design_flush: 12.5, in_psi: 24, base_in: 22 }).text === 'OK' && OWI0.zoneResult({}) === null, 'result: check when inlet psi is >20% off baseline; OK otherwise; nothing typed = no result');
+const zs = () => ({ ...SETUP, laterals: [{ length: 1200 }, { length: 1200 }] });
+let zp = await J(await adm('/admin/api/inspection', { customer_id: wid, visit_date: '2027-01-10', data: form({ zflush: { filters: true, valves: false, notes: 'Zone 2 return valve may be partly closed.', zones: [{ dose: 6, flush: 12.1, in_psi: 22, out_psi: 14 }, { dose: 4.2, flush: 8.9, in_psi: 27, out_psi: 9 }] } }), system: zs() }));
+j = await J(await adm('/admin/api/customer/' + wid)); let zr = j.reports.find(x => x.id === zp.id), zd = zr.insp.data;
+ok(zp.ok && zd.zflush.zones.length === 2 && zd.zflush.zones[0].design_flush === 12.5 && zd.zflush.valves === false, 'the flush test is saved with design numbers from setup, even when the form leaves them out');
+j = await J(await adm('/admin/api/system?customer_id=' + wid + '&date=2027-04-10'));
+ok(j.system.laterals[0].base_in === 22 && j.system.laterals[1].base_in === 27 && j.system.laterals[0].flush_gpm === 12.5, 'first readings become each zone baseline; design gpm kept');
+ok(j.prev.zflush.length === 2 && j.prev.zflush[1].flush === 8.9, 'next visit gets last time readings');
+ok(zr.checks.some(c => c.label === 'Zone flush test' && c.status === 'repair') && OWI0.problems(zd).some(p => /Zone 2: flush 29% under design/.test(p.label)), 'a zone under design counts as needing attention');
+const zc = OWI0.countyHtml({ visit_date: '2027-01-10', insp: zr.insp }, { name: 'Sean Wilkins', address: 'x' }, zd.operator), zh = OWI0.homeHtml({ visit_date: '2027-01-10', insp: zr.insp }, { name: 'Sean Wilkins', address: 'x' }, zd.operator);
+ok(/Zone flush test/.test(zc) && /12\.1 \(12\.5\)/.test(zc) && /Zone valves close fully: No/.test(zc) && /<b>Check: flush 29% under design<\/b>/.test(zc), 'county copy shows the flush test table');
+ok(/Drip zone flush test/.test(zh) && /1 of 2 zones need a look/.test(zh), 'owner report explains it in plain words');
+zp = await J(await adm('/admin/api/inspection', { customer_id: wid, visit_date: '2027-04-10', data: form({ zflush: { filters: true, valves: true, zones: [{ flush: 12.4, in_psi: 28, out_psi: 15 }, {}] } }), system: zs() }));
+j = await J(await adm('/admin/api/customer/' + wid)); zd = j.reports.find(x => x.id === zp.id).insp.data;
+ok(zd.zflush.zones.length === 1 && zd.zflush.zones[0].base_in === 22 && OWI0.zoneResult(zd.zflush.zones[0]).text === 'Check: inlet psi 27% above baseline' && zd.zflush.zones[0].last_in === 22 && zd.zflush.zones[0].last_flush === 12.1, 'second visit compares against the baseline, with last time filled in from the earlier report; an untested zone is left out');
+j = await J(await adm('/admin/api/system?customer_id=' + wid + '&date=2027-06-01')); ok(j.system.laterals[0].base_in === 22, 'the baseline does not move');
+j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP, laterals: [{ length: 1200, dose_gpm: 5.93, flush_gpm: 12.5 }, { length: 1200, dose_gpm: 6.3, flush_gpm: 12.5 }] } })); ok(j.system.laterals[1].base_in === 27, 'a setup save keeps the baselines');
+ok(OWI0.zoneFlush(form({})) === null, 'no flush test on the report when nothing was typed');
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);

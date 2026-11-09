@@ -114,12 +114,14 @@
     OWI.SECTIONS.forEach(function (s) { s.items.forEach(function (it) { var a = (d.checks && d.checks[s.k] || {})[it[0]]; if ((a === 'no' && !it[2]) || (a === 'yes' && it[2] === 'x')) out.push({ s: s.t, label: it[1] }); }); });
     Object.keys(d.tanks || {}).forEach(function (id) { var t = d.tanks[id]; (OWI.TANK_ITEMS[t.kind] || []).forEach(function (it) { if ((t.checks || {})[it[0]] === 'no' && it[2] !== 'i') out.push({ s: t.name, label: it[1] }); }); });
     Object.keys(d.cards || {}).forEach(function (id) { (d.cards[id].rows || []).forEach(function (r) { if (r.a === 'no') out.push({ s: d.cards[id].title, label: r.l }); }); });
+    var zf = OWI.zoneFlush(d); if (zf) zf.rows.forEach(function (x) { if (x.r.bad) out.push({ s: 'Zone flush test', label: 'Zone ' + x.z.n + ': ' + x.r.text.replace(/^Check: /, '') }); });
     return out;
   };
   // roll the canned answers up into the four pass/repair rows the older screens use
   OWI.rollup = function (d, c) {
     var w = d.words || {}, map = [['septic', 'Septic tank'], ['pumptank', 'Pump tank, floats, alarm'], ['panel', 'Control panel'], ['field', 'Drain field']];
     return map.map(function (p) { var x = w[p[0]]; var def = OWI.WORDS.filter(function (q) { return q.k === p[0]; })[0]; var tone = x && def.o[x.i] ? def.o[x.i][1] : 'g'; return { label: p[1], status: tone === 'g' || tone === 'c' ? 'pass' : 'repair' }; })
+      .concat((function () { var z = OWI.zoneFlush(d); return z ? [{ label: 'Zone flush test', status: z.bad ? 'repair' : 'pass' }] : []; })())
       .concat(c || d.tanks || d.cards ? (function () { var e = OWI.extras(d, c || {}); return e.tanks.concat(e.cards).map(function (x) { return { label: x.name || x.title, status: x.bad ? 'repair' : 'pass' }; }); })() : []);
   };
   OWI.overall = function (status) {
@@ -201,6 +203,31 @@
   };
 
   // the extra tanks and check cards of one report, ready to show (shared by the web pages and the PDFs)
+  // Drip zone flush test (every visit on a system whose field lines are Zones).
+  // Check when flush flow is more than 10% under design, or inlet psi is more than 20% off the zone's baseline.
+  OWI.ZF_FLUSH_PCT = 10; OWI.ZF_PSI_PCT = 20;
+  OWI.zoneResult = function (z) {
+    z = z || {}; var f = n(z.flush), df = n(z.design_flush), pin = n(z.in_psi), base = n(z.base_in), out = [];
+    if (f === null && pin === null && n(z.out_psi) === null && n(z.dose) === null) return null;
+    var fp = f !== null && df ? Math.round((f - df) / df * 100) : null, pp = pin !== null && base ? Math.round((pin - base) / base * 100) : null;
+    if (fp !== null && fp < -OWI.ZF_FLUSH_PCT) out.push('flush ' + (-fp) + '% under design');
+    if (pp !== null && Math.abs(pp) > OWI.ZF_PSI_PCT) out.push('inlet psi ' + Math.abs(pp) + '% ' + (pp > 0 ? 'above' : 'below') + ' baseline');
+    if (out.length) return { bad: true, text: 'Check: ' + out.join('; ') };
+    return { bad: false, text: pin !== null && !base ? 'Baseline set' : 'OK' };
+  };
+  // plain words for the owner: [result, tone, text]
+  OWI.zoneFlushPlain = function (zf) {
+    var bad = zf.rows.filter(function (x) { return x.r.bad; }), base = zf.rows.every(function (x) { return x.r.text === 'Baseline set'; });
+    if (bad.length) return [bad.length + ' of ' + zf.rows.length + ' zones need a look', 'w', 'We measured how fast water flushes through each drip zone and the pressure going in and coming out. ' + bad.map(function (x) { return 'Zone ' + x.z.n + ': ' + x.r.text.replace(/^Check: /, ''); }).join('. ') + '. Low flush flow or a big change in pressure can mean the drip lines are clogging or leaking.'];
+    if (base) return ['First readings taken', 'g', 'We measured how fast water flushes through each drip zone and the pressure going in and coming out. These first readings are the baseline we compare against at every visit.'];
+    return ['Normal', 'g', 'Flushing flow and pressure in each drip zone are close to design and to past readings.'];
+  };
+  OWI.zoneFlush = function (d) {
+    var zf = d && d.zflush; if (!zf || !(zf.zones || []).length) return null;
+    var rows = zf.zones.map(function (z) { return { z: z, r: OWI.zoneResult(z) }; }).filter(function (x) { return x.r; });
+    if (!rows.length) return null;
+    return { rows: rows, bad: rows.some(function (x) { return x.r.bad; }), filters: zf.filters, valves: zf.valves, notes: zf.notes || '' };
+  };
   OWI.extras = function (d, c) {
     var out = { tanks: [], cards: [], malfunction: d.malfunction && d.malfunction.found ? d.malfunction : null }, ct = (c && c.tanks) || {};
     Object.keys(d.tanks || {}).forEach(function (id) {
@@ -266,6 +293,9 @@
       d.cards[cd.id] = { title: S(cd.title, 60), rows: (Array.isArray(x.rows) ? x.rows : []).slice(0, 30).map(function (r) { r = r || {}; return { l: S(r.l, 120), a: YN.indexOf(r.a) >= 0 ? r.a : '' }; }).filter(function (r) { return r.l; }) };
     });
     var mf = s.malfunction || {}; d.malfunction = { found: mf.found === true, notified: S(mf.notified, 200) };
+    var zf = s.zflush || {}, zl = (sys.laterals || []);
+    d.zflush = { filters: zf.filters === true, valves: zf.valves === true, notes: S(zf.notes, 600), zones: (Array.isArray(zf.zones) ? zf.zones : []).slice(0, 12).map(function (z, i) { z = z || {}; var L = zl[i] || {}; return { n: i + 1, dose: N(z.dose), flush: N(z.flush), in_psi: N(z.in_psi), out_psi: N(z.out_psi), design_dose: N(L.dose_gpm), design_flush: N(L.flush_gpm), base_in: N(L.base_in), last_in: N(z.last_in), last_out: N(z.last_out), last_flush: N(z.last_flush) }; }).filter(function (z) { return z.dose !== null || z.flush !== null || z.in_psi !== null || z.out_psi !== null; }) };
+    if (!d.zflush.zones.length) d.zflush = null;
     return d;
   };
   g.OWI = OWI;

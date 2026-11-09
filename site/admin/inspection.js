@@ -56,6 +56,7 @@
     h += det('Pump, piping and controls', checklist(OWI.SECTIONS[2]) + '<h4>Float settings (inches above tank bottom, lowest to highest)</h4><div class="two">' + fld('i_foff', 'Pump off', dec + ' value="' + E((sys.floats || {}).off == null ? '' : sys.floats.off) + '"') + fld('i_ft', 'Timed float (if there is one)', dec + ' value="' + E((sys.floats || {}).timed == null ? '' : sys.floats.timed) + '"') + fld('i_fon', 'Pump on', dec + ' value="' + E((sys.floats || {}).on == null ? '' : sys.floats.on) + '"') + fld('i_fa', 'Alarm', dec + ' value="' + E((sys.floats || {}).alarm == null ? '' : sys.floats.alarm) + '"') + '</div>', false, 'c4');
     var lats = (sys.laterals && sys.laterals.length ? sys.laterals : [{}, {}, {}, {}]).map(function (l, i) { var t = prev && prev.turnups && prev.turnups[i]; return latRow(i, { length: l.length, design: l.design, last: t == null ? '' : t }); }).join('');
     h += det('Lateral field', checklist(OWI.SECTIONS[3]) + '<h4>Lateral head readings</h4><div class="tw"><table class="lat"><thead><tr><th>Lateral</th><th>Length</th><th>Design head</th><th>Turnup height</th><th>Head last time</th><th>Baseline head</th><th>Valves left at</th><th>Adjusted to</th><th>Off design</th></tr></thead><tbody id="latb">' + lats + '</tbody></table></div><button type="button" class="b alt" id="addLat" style="margin-top:6px">Add lateral</button>', false, 'c5');
+    if (sys.zone_word === 'Zone') h += det('Zone flush test', zoneFlushBody(sys, prev), false, 'czf');
     (sys.tanks || []).forEach(function (t) { h += det(E(t.name || (t.kind === 'pump' ? 'Pump tank' : 'Septic tank')), tankBody(t), false, 'cx_' + t.id); });
     (sys.cards || []).forEach(function (cd) { h += det(E(cd.title), cardBody(cd), false, 'ck_' + cd.id); });
     h += det('Flow test and meters', '<div class="two">' + fld('f_amps', 'Pump running amps (A)' + (sys.pump_unit ? ', ' + E(sys.pump_unit) : ''), dec) + '</div><div class="two">' + auto('f_draw', 'Drawdown (in)') + auto('f_dose', 'Dose volume (gal)') + '</div><h4>Pump rate test</h4><div class="calc">' +
@@ -78,6 +79,25 @@
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Save report</button><button class="b alt" type="button" id="clearDraft">Clear form</button></div><div class="msg" id="im" role="status"></div>', true, 'c8');
     return h + '</form>';
   }
+  // Drip systems: flushing flow and pressure at each zone's inlet and outlet, every visit. Design gpm comes from System setup.
+  function zoneFlushBody(sys, prev) {
+    var zs = (sys.laterals && sys.laterals.length ? sys.laterals : [{}, {}]), pz = (prev && prev.zflush) || [];
+    var lastDone = prev && pz.length ? OW.date(prev.date) : 'never recorded';
+    var cell = function (id, lbl) { return '<input id="' + id + '" ' + dec + ' aria-label="' + lbl + '" style="min-width:58px">'; };
+    return '<p class="mute sm" style="margin-top:0">Flushing flow and pressure head at the inlet and outlet of each zone. Last done: <b>' + E(lastDone) + '</b>. Clean the filters and make sure the zone valves close before you test.</p>' +
+      '<label class="ck"><input type="checkbox" id="zf_filt"> Filters cleaned before the test</label><label class="ck"><input type="checkbox" id="zf_valv"> Zone valves close fully (no flow with all zones off)</label>' +
+      '<div class="tw" style="margin-top:8px"><table class="lat"><thead><tr><th>Zone</th><th>Dose gpm<br><span class="mute sm">design / measured</span></th><th>Flush gpm<br><span class="mute sm">design / measured</span></th><th>Inlet psi</th><th>Outlet psi</th><th>Last time<br><span class="mute sm">in / out psi, flush gpm</span></th><th>Result</th></tr></thead><tbody id="zfb">' +
+      zs.map(function (L, i) { var p = pz.filter(function (x) { return x.n === i + 1; })[0], dash = function (x) { return x == null ? '-' : x; };
+        return '<tr data-zf="' + i + '"><td><b>' + (i + 1) + '</b></td><td>' + E(dash(L.dose_gpm)) + ' / ' + cell('zf_dose_' + i, 'Zone ' + (i + 1) + ' dose gpm') + '</td><td>' + E(dash(L.flush_gpm)) + ' / ' + cell('zf_fl_' + i, 'Zone ' + (i + 1) + ' flush gpm') + '</td><td>' + cell('zf_in_' + i, 'Zone ' + (i + 1) + ' inlet psi') + '</td><td>' + cell('zf_out_' + i, 'Zone ' + (i + 1) + ' outlet psi') + '</td><td class="mute">' + (p ? E(dash(p.in_psi) + ' / ' + dash(p.out_psi) + ', ' + dash(p.flush)) : 'none') + '</td><td id="zf_r_' + i + '" class="sm"></td></tr>'; }).join('') +
+      '</tbody></table></div>' + (zs.some(function (L) { return L.flush_gpm == null; }) ? '<p class="note">Add each zone\'s design dose and flush gpm in System setup so the test can be checked against design.</p>' : '') +
+      '<label for="zf_note">Notes on the test</label><textarea id="zf_note" maxlength="600"></textarea>' +
+      '<p class="mute sm">Check shows when flush flow is more than ' + OWI.ZF_FLUSH_PCT + '% under design, or inlet psi is more than ' + OWI.ZF_PSI_PCT + '% off the zone\'s baseline (its first recorded reading). Rising psi with falling flow points to clogging; falling psi with more flow points to a leak.</p>';
+  }
+  function zoneFlushData() {
+    if (!$('zfb')) return null; var zs = (ctx.sys.laterals || []), pz = (ctx.prev && ctx.prev.zflush) || [];
+    return { filters: $('zf_filt').checked, valves: $('zf_valv').checked, notes: $('zf_note').value, zones: [].slice.call(document.querySelectorAll('#zfb tr')).map(function (tr) { var i = Number(tr.getAttribute('data-zf')), L = zs[i] || {}, p = pz.filter(function (x) { return x.n === i + 1; })[0] || {};
+      return { n: i + 1, dose: num('zf_dose_' + i), flush: num('zf_fl_' + i), in_psi: num('zf_in_' + i), out_psi: num('zf_out_' + i), design_dose: L.dose_gpm, design_flush: L.flush_gpm, base_in: L.base_in, last_in: p.in_psi, last_out: p.out_psi, last_flush: p.flush }; }) };
+  }
   function calcRow(id, label, unit, isAuto) { return '<div class="cl"><label for="' + id + '">' + label + '</label><input id="' + id + '" ' + (isAuto ? 'class="auto" readonly tabindex="-1"' : dec) + '><span class="u">' + unit + '</span></div>' + (isAuto ? fm(id) : ''); }
 
   // ---- reading the form
@@ -96,6 +116,7 @@
     d.tanks = {}; (ctx.sys.tanks || []).forEach(function (t) { d.tanks[t.id] = tankData(t); });
     d.cards = {}; (ctx.sys.cards || []).forEach(function (cd) { d.cards[cd.id] = { title: cd.title, rows: cardRows(cd.id) }; });
     d.malfunction = { found: $('mf_on').checked, notified: val('mf_note') };
+    d.zflush = zoneFlushData();
     return d;
   }
   function tankData(t) {
@@ -151,6 +172,7 @@
     (ctx.sys.tanks || []).forEach(function (t) { if (extraCalc(t)) xbad = true; });
     (ctx.sys.cards || []).forEach(function (cd) { var rows = cardRows(cd.id), a = rows.filter(function (r) { return r.a; }).length; $('ck_' + cd.id).textContent = a + ' of ' + rows.length + ' answered'; });
     var mf = $('mf_on').checked; $('mf_box').hidden = !mf; $('mf_due').textContent = mf ? 'Notify the county within 48 hours of the visit, by ' + OW.date(addDays(date, 2)) + '.' : '';
+    if ($('zfb')) { var zd = d.zflush, done = 0; zd.zones.forEach(function (z, i) { var r = OWI.zoneResult(z), cel = $('zf_r_' + i); if (r) done++; cel.textContent = r ? r.text : ''; cel.style.color = r ? (r.bad ? 'var(--bad)' : 'var(--good)') : ''; cel.style.fontWeight = r ? '600' : ''; }); $('czf').textContent = done ? done + ' of ' + zd.zones.length + ' zones tested' : 'Every visit'; }
     var bad = OWI.problems(d).length; $('needs').textContent = bad + (bad === 1 ? ' item needs' : ' items need') + ' attention'; $('needs').className = 'pill ' + (bad ? 'bad' : 'warn');
     var counts = {}; OWI.SECTIONS.forEach(function (sec, i) { counts[sec.k] = [Object.keys(d.checks[sec.k]).length, sec.items.length]; });
     ['septic:c2', 'pump:c3', 'controls:c4', 'field:c5'].forEach(function (z) { var a = z.split(':'); $(a[1]).textContent = counts[a[0]][0] + ' of ' + counts[a[0]][1] + ' answered'; });
@@ -282,8 +304,8 @@
   // the field lines: how many, how long, and the designed head. The visit form starts from these.
   function zonesHtml() {
     var w = SU.zone_word === 'Zone' ? 'Zone' : 'Lateral', n = 0, tot = 0; SU.zones.forEach(function (z) { if (z.length != null) tot += z.length; });
-    return '<div class="fcard" style="padding:12px 14px"><h3>' + w + 's (field lines)</h3><p class="mute sm">How many there are, how long each is, and the designed head from the plans. These fill in on every visit form.</p>' +
-      SU.zones.map(function (z, i) { return '<div class="item" style="display:block"><div class="row" style="justify-content:space-between"><b>' + w + ' ' + (i + 1) + '</b><button type="button" class="b danger" data-rmzone="' + i + '">Remove</button></div><div class="two">' + fld('su_zl' + i, 'Length (ft)', dec + ' value="' + E(z.length == null ? '' : z.length) + '"') + fld('su_zd' + i, 'Design head (optional)', dec + ' value="' + E(z.design == null ? '' : z.design) + '"') + '</div></div>'; }).join('') +
+    return '<div class="fcard" style="padding:12px 14px"><h3>' + w + 's (field lines)</h3><p class="mute sm">How many there are, how long each is, and the designed head from the plans.' + (w === 'Zone' ? ' For drip zones, add the design dose and flush flow from the permit; the zone flush test on every visit compares against them.' : '') + ' These fill in on every visit form.</p>' +
+      SU.zones.map(function (z, i) { return '<div class="item" style="display:block"><div class="row" style="justify-content:space-between"><b>' + w + ' ' + (i + 1) + '</b><button type="button" class="b danger" data-rmzone="' + i + '">Remove</button></div><div class="two">' + fld('su_zl' + i, 'Length (ft)', dec + ' value="' + E(z.length == null ? '' : z.length) + '"') + fld('su_zd' + i, 'Design head (optional)', dec + ' value="' + E(z.design == null ? '' : z.design) + '"') + (w === 'Zone' ? fld('su_zq' + i, 'Design dose (gpm)', dec + ' value="' + E(z.dose_gpm == null ? '' : z.dose_gpm) + '"') + fld('su_zf' + i, 'Design flush (gpm)', dec + ' value="' + E(z.flush_gpm == null ? '' : z.flush_gpm) + '"') : '') + '</div></div>'; }).join('') +
       '<div class="row" style="margin-top:8px;align-items:center"><button type="button" class="b alt" id="suZone">Add a ' + w.toLowerCase() + '</button><span class="mute sm" id="su_ztot">' + (SU.zones.length ? SU.zones.length + ' ' + w.toLowerCase() + (SU.zones.length === 1 ? '' : 's') + ', ' + tot + ' ft in all' : '') + '</span></div></div>';
   }
   function setupHtml() {
@@ -314,7 +336,7 @@
     SU.sys_desc = val('su_desc'); SU.design_flow = num('su_flow'); SU.zone_word = val('su_zone');
     if ($('su_inst')) { var it = val('su_inst'), hit = (A.contacts && A.contacts() || []).filter(function (c) { return c.kind === 'Installer' && (c.name + (c.company && c.company !== c.name ? ' (' + c.company + ')' : '') === it || c.name === it); })[0]; SU.installer = { id: hit ? hit.id : '', name: hit ? hit.name : it, date: val('su_idate') }; }
     SU.addresses = []; for (var i = 0; $('su_addr' + i); i++) if (val('su_addr' + i)) SU.addresses.push(val('su_addr' + i));
-    SU.zones = []; for (var zi = 0; $('su_zl' + zi); zi++) SU.zones.push({ length: num('su_zl' + zi), design: num('su_zd' + zi) });
+    SU.zones = []; for (var zi = 0; $('su_zl' + zi); zi++) SU.zones.push({ length: num('su_zl' + zi), design: num('su_zd' + zi), dose_gpm: $('su_zq' + zi) ? num('su_zq' + zi) : undefined, flush_gpm: $('su_zf' + zi) ? num('su_zf' + zi) : undefined });
     readTank('su_s_', SU.sep); readTank('su_p_', SU.pmp); SU.tanks.forEach(function (t, i) { readTank('su_t' + i + '_', t); });
     SU.cards.forEach(function (c, i) { c.title = val('su_ct' + i); c.items = $('su_ci' + i).value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean); });
   }
@@ -341,7 +363,7 @@
     D = A.S.d; $('panel').classList.add('wide'); $('panel').innerHTML = '<h2>System setup</h2><p class="mute">Loading...</p>'; $('panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
     OW.api('/admin/api/system?customer_id=' + D.customer.id + '&date=' + today()).then(function (j) {
       if (!j.ok) return A.fail(j); var s = j.system || {}, pm = s.permit || {};
-      SU = { installer: s.installer || { id: '', name: '', date: '' }, zones: (s.laterals || []).map(function (l) { return { length: l.length == null ? null : l.length, design: l.design == null ? null : l.design }; }), sys_desc: s.sys_desc || '', design_flow: s.design_flow == null ? null : s.design_flow, zone_word: s.zone_word || 'Lateral', addresses: (s.addresses || []).slice(),
+      SU = { installer: s.installer || { id: '', name: '', date: '' }, zones: (s.laterals || []).map(function (l) { return { length: l.length == null ? null : l.length, design: l.design == null ? null : l.design, dose_gpm: l.dose_gpm == null ? null : l.dose_gpm, flush_gpm: l.flush_gpm == null ? null : l.flush_gpm }; }), sys_desc: s.sys_desc || '', design_flow: s.design_flow == null ? null : s.design_flow, zone_word: s.zone_word || 'Lateral', addresses: (s.addresses || []).slice(),
         sep: { name: s.septic_name || '', model: s.septic_model || '', unit: s.septic_unit || '', gal: s.septic_gal, shape: s.septic_shape || 'rect', a: s.septic_a, b: s.septic_b, h: s.septic_h, ld: s.liquid_depth, gpi: null },
         pmp: { name: s.pump_name || '', model: s.pump_model || '', unit: s.pump_unit || '', gal: s.pump_gal, shape: s.tank_shape || 'rect', a: s.tank_a, b: s.tank_b, h: s.pump_h, gpi: s.gpi },
         tanks: (s.tanks || []).map(function (t) { return { id: t.id, kind: t.kind, name: t.name, model: t.model || '', unit: t.unit || '', gal: t.gal, shape: t.shape || 'rect', a: t.a, b: t.b, h: t.h, ld: t.liquid_depth, gpi: t.gpi }; }),
@@ -354,7 +376,7 @@
   function wireSetup() {
     var P = $('panel');
     P.oninput = function (e) { var id = e.target.id; if (id === 'su_issued' || id === 'su_months') { var pi = OWI.permitInfo({ issued: val('su_issued'), months: num('su_months') }, today()); $('su_exp').value = pi.expires ? OW.date(pi.expires) : ''; $('su_warn').hidden = !pi.expired; } var m = /^(su_(?:s|p|t\d+)_)(shape|a|b|gal)$/.exec(id); if (m) recalcGpi(m[1]); var ml = /^(su_(?:s|t\d+)_)ld$/.exec(id); if (ml) { e.target.dataset.hand = '1'; e.target.classList.remove('auto'); } if (/^su_zl\d+$/.test(id)) { var tt = 0, nn = 0; for (var q = 0; $('su_zl' + q); q++) { nn++; tt += num('su_zl' + q) || 0; } var zw = (val('su_zone') === 'Zone' ? 'zone' : 'lateral'); $('su_ztot').textContent = nn + ' ' + zw + (nn === 1 ? '' : 's') + ', ' + tt + ' ft in all'; } };
-    P.onchange = function (e) { var m = /^(su_(?:s|p|t\d+)_)model$/.exec(e.target.id); if (m) lookupModel(m[1]); };
+    P.onchange = function (e) { if (e.target.id === 'su_zone') { readSetup(); showSetup(); return; } var m = /^(su_(?:s|p|t\d+)_)model$/.exec(e.target.id); if (m) lookupModel(m[1]); };
     P.onclick = function (e) {
       var t = e.target, g = function (a) { var b = t.closest('[' + a + ']'); return b ? b.getAttribute(a) : null; };
       if (!$('suSave')) return;
@@ -371,7 +393,7 @@
       if (g('data-rmcard') !== null) { readSetup(); SU.cards.splice(Number(g('data-rmcard')), 1); showSetup(); return; }
       if (t.id === 'suSave') {
         readSetup(); var m = $('sm'); m.className = 'msg'; m.textContent = 'Saving...';
-        var S = SU, body = { laterals: S.zones.filter(function (z) { return z.length != null || z.design != null; }).slice(0, 12), permit: S.permit, addresses: S.addresses, installer: S.installer || { id: '', name: '', date: '' }, sys_desc: S.sys_desc, design_flow: S.design_flow, zone_word: S.zone_word, cards: S.cards, tanks: S.tanks.map(function (x) { return { id: x.id, kind: x.kind, name: x.name, model: x.model, unit: x.unit, gal: x.gal, shape: x.shape, a: x.a, b: x.b, h: x.h, liquid_depth: x.kind === 'pump' ? undefined : x.ld, gpi: x.gpi }; }),
+        var S = SU, body = { laterals: S.zones.filter(function (z) { return z.length != null || z.design != null || z.dose_gpm != null || z.flush_gpm != null; }).slice(0, 12), permit: S.permit, addresses: S.addresses, installer: S.installer || { id: '', name: '', date: '' }, sys_desc: S.sys_desc, design_flow: S.design_flow, zone_word: S.zone_word, cards: S.cards, tanks: S.tanks.map(function (x) { return { id: x.id, kind: x.kind, name: x.name, model: x.model, unit: x.unit, gal: x.gal, shape: x.shape, a: x.a, b: x.b, h: x.h, liquid_depth: x.kind === 'pump' ? undefined : x.ld, gpi: x.gpi }; }),
           septic_name: S.sep.name, septic_unit: S.sep.unit, pump_unit: S.pmp.unit, septic_model: S.sep.model, septic_gal: S.sep.gal, septic_shape: S.sep.shape, septic_a: S.sep.a, septic_b: S.sep.b, septic_h: S.sep.h, pump_h: S.pmp.h, liquid_depth: S.sep.ld, pump_name: S.pmp.name, pump_model: S.pmp.model, pump_gal: S.pmp.gal, tank_shape: S.pmp.shape, tank_a: S.pmp.a, tank_b: S.pmp.b, gpi: S.pmp.gpi };
         OW.api('/admin/api/system', { customer_id: D.customer.id, system: body }).then(function (j) { if (!j.ok) { m.className = 'msg err'; m.textContent = j.error || 'Could not save.'; return; } OW.toast('System setup saved.'); m.className = 'msg'; m.textContent = 'Saved.'; if (A.reloadContacts) A.reloadContacts(); OW.api('/admin/api/customer/' + D.customer.id).then(function (x) { if (x && x.ok && A.S.d && A.S.d.customer.id === D.customer.id) A.S.d.installer = x.installer; }); });
       }
