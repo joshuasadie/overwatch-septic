@@ -17,7 +17,7 @@ const cleanTank = t => { t = t || {}; const fl = t.floats || {}; return { id: ri
 export function cleanSystem(b) {
   b = b || {}; const p = b.permit || {};
   return { sys_desc: clean(b.sys_desc, 80), tank_shape: b.tank_shape === 'round' ? 'round' : 'rect', tank_a: num(b.tank_a), tank_b: num(b.tank_b), design_flow: num(b.design_flow), septic_gal: num(b.septic_gal), liquid_depth: num(b.liquid_depth), pump_gal: num(b.pump_gal), gpi: num(b.gpi), dose: num(b.dose), design_pdr: num(b.design_pdr), design_head: num(b.design_head),
-    floats: { alarm: num(b.floats && b.floats.alarm), on: num(b.floats && b.floats.on), off: num(b.floats && b.floats.off), timed: num(b.floats && b.floats.timed) }, septic_unit: clean(b.septic_unit, 60), pump_unit: clean(b.pump_unit, 60), laterals: (Array.isArray(b.laterals) ? b.laterals : []).slice(0, 12).map(l => ({ length: num(l && l.length), design: num(l && l.design) })),
+    floats: { alarm: num(b.floats && b.floats.alarm), on: num(b.floats && b.floats.on), off: num(b.floats && b.floats.off), timed: num(b.floats && b.floats.timed) }, septic_unit: clean(b.septic_unit, 60), pump_unit: clean(b.pump_unit, 60), laterals: (Array.isArray(b.laterals) ? b.laterals : []).slice(0, 12).map(l => ({ length: num(l && l.length), design: num(l && l.design), dose_gpm: num(l && l.dose_gpm), flush_gpm: num(l && l.flush_gpm), base_in: num(l && l.base_in), base_out: num(l && l.base_out), base_flush: num(l && l.base_flush) })),
     installer: { id: clean(b.installer && b.installer.id, 40), name: clean(b.installer && b.installer.name, 120), date: day(b.installer && b.installer.date) },
     septic_name: clean(b.septic_name, 60), pump_name: clean(b.pump_name, 60), septic_model: clean(b.septic_model, 60), pump_model: clean(b.pump_model, 60), septic_shape: b.septic_shape === 'round' ? 'round' : 'rect', septic_a: num(b.septic_a), septic_b: num(b.septic_b), septic_h: num(b.septic_h), pump_h: num(b.pump_h), zone_word: b.zone_word === 'Zone' ? 'Zone' : 'Lateral',
     permit: { county: clean(p.county, 40), parcel: clean(p.parcel, 40), lot: clean(p.lot, 80), mail: clean(p.mail, 160), type: clean(p.type, 60), issued: day(p.issued), months: num(p.months), ca_no: clean(p.ca_no, 40), ip_no: clean(p.ip_no, 40), other_no: clean(p.other_no, 60), bedrooms: num(p.bedrooms), occupants: num(p.occupants), freq: OWI.FREQ.some(f => f[0] === p.freq) ? p.freq : '', owners: clean(p.owners, 120) },
@@ -26,11 +26,14 @@ export function cleanSystem(b) {
     cards: (Array.isArray(b.cards) ? b.cards : []).slice(0, 8).map(c => ({ id: rid(c && c.id), title: clean(c && c.title, 60) || 'Other checks', items: (Array.isArray(c && c.items) ? c.items : []).slice(0, 30).map(i => clean(i, 120)).filter(Boolean) })) };
 }
 
+// Flush-test baselines (and design gpm, when a form leaves them out) stay with each zone across saves.
+const ZKEEP = ['dose_gpm', 'flush_gpm', 'base_in', 'base_out', 'base_flush'];
+function keepZoneData(next, cur) { return (Array.isArray(next) ? next : []).map((l, i) => { const o = (cur || [])[i] || {}, x = { ...(l || {}) }; for (const k of ZKEEP) if (x[k] === undefined || (k.startsWith('base_') && x[k] == null)) x[k] = o[k]; return x; }); }
 // the setup screen: permit, addresses, names, tanks and check cards. Sizes and readings already saved are kept.
 export async function saveSystem(env, who, c, b) {
   const row = await env.DB.prepare('SELECT data FROM systems WHERE customer_id = ?').bind(c.id).first(), cur = row ? jparse(row.data, {}) : {};
   const old = new Map((cur.tanks || []).map(t => [t.id, t]));
-  const merged = { ...cur, design_flow: b.design_flow !== undefined ? b.design_flow : cur.design_flow, sys_desc: b.sys_desc !== undefined ? b.sys_desc : cur.sys_desc, permit: b.permit, addresses: b.addresses, installer: b.installer !== undefined ? b.installer : cur.installer, laterals: b.laterals !== undefined ? b.laterals : cur.laterals, septic_name: b.septic_name, pump_name: b.pump_name, zone_word: b.zone_word, cards: b.cards,
+  const merged = { ...cur, design_flow: b.design_flow !== undefined ? b.design_flow : cur.design_flow, sys_desc: b.sys_desc !== undefined ? b.sys_desc : cur.sys_desc, permit: b.permit, addresses: b.addresses, installer: b.installer !== undefined ? b.installer : cur.installer, laterals: b.laterals !== undefined ? keepZoneData(b.laterals, cur.laterals) : cur.laterals, septic_name: b.septic_name, pump_name: b.pump_name, zone_word: b.zone_word, cards: b.cards,
     ...Object.fromEntries(['septic_model', 'pump_model', 'septic_unit', 'pump_unit', 'septic_shape', 'septic_a', 'septic_b', 'septic_gal', 'pump_gal', 'tank_shape', 'tank_a', 'tank_b', 'gpi', 'design_pdr', 'design_head', 'septic_h', 'pump_h', 'liquid_depth'].filter(k => b[k] !== undefined).map(k => [k, b[k]])),
     tanks: (Array.isArray(b.tanks) ? b.tanks : []).slice(0, 8).map(t => { const o = old.get(t && t.id); const x = Object.fromEntries(['id', 'kind', 'name', 'model', 'unit', 'gal', 'shape', 'a', 'b', 'h', 'gpi', 'liquid_depth'].filter(k => t && t[k] !== undefined).map(k => [k, t[k]])); return o ? { ...o, ...x } : x; }) };
   const sys = cleanSystem(merged), now = new Date().toISOString();
@@ -47,7 +50,7 @@ async function previous(env, cid, date) {
   const r = await env.DB.prepare("SELECT r.visit_date, i.data FROM reports r JOIN inspections i ON i.report_id = r.id WHERE r.customer_id = ? AND r.visit_date < ? ORDER BY r.visit_date DESC, r.created_at DESC LIMIT 1").bind(cid, date).first();
   if (!r) return null;
   const d = jparse(r.data, {});
-  return { date: r.visit_date, et: d.meters && d.meters.et, events: d.meters && d.meters.events, flow: d.meters && d.meters.flow, turnups: (d.laterals || []).map(l => l.turnup), septic_pumped: d.septic && d.septic.pumped };
+  return { date: r.visit_date, et: d.meters && d.meters.et, events: d.meters && d.meters.events, flow: d.meters && d.meters.flow, turnups: (d.laterals || []).map(l => l.turnup), septic_pumped: d.septic && d.septic.pumped, zflush: d.zflush ? d.zflush.zones.map(z => ({ n: z.n, in_psi: z.in_psi, out_psi: z.out_psi, flush: z.flush })) : [] };
 }
 
 export async function systemInfo(env, cid, date) {
@@ -59,11 +62,14 @@ export async function systemInfo(env, cid, date) {
 export async function createInspection(env, who, c, b) {
   const date = String(b.visit_date || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'Please choose the visit date.' };
-  const sys = cleanSystem(b.system), d = OWI.sanitize(b.data, sys), op = operatorOf(env);
+  const stored = await env.DB.prepare('SELECT data FROM systems WHERE customer_id = ?').bind(c.id).first(), b0 = b.system || {};
+  if (stored) b0.laterals = keepZoneData(b0.laterals, (jparse(stored.data, {}).laterals));
+  const sys = cleanSystem(b0), d = OWI.sanitize(b.data, sys), op = operatorOf(env);
   if (!op.cert) return { error: 'The operator certificate number is not set up.', status: 500 };
   if (d.septic.sludge !== null && d.liquid_depth && d.septic.sludge > d.liquid_depth) return { error: 'Sludge depth is deeper than the liquid depth. Please check both numbers.' };
   if (d.flow.on !== null && d.flow.off !== null && d.flow.on < d.flow.off) return { error: 'The pump-on water level should be higher than the pump-off level. Please check the flow test.' };
   const prev = await previous(env, c.id, date);
+  if (d.zflush) for (const z of d.zflush.zones) { const p = ((prev && prev.zflush) || []).find(x => x.n === z.n) || {}; z.last_in = p.in_psi ?? null; z.last_out = p.out_psi ?? null; z.last_flush = p.flush ?? null; }
   const g = OWI.gpi(d.tank_shape, d.tank_a, d.tank_b); if (g !== null) { d.gpi = g; d.flow.gpi = g; sys.gpi = g; }
   const cx = { design_flow: sys.design_flow, design_pdr: d.flow.design_pdr, dose: d.flow.dose, prev, date };
   const calc = OWI.calc(d, cx); calc.formulas = OWI.formulas(d, calc, cx);
@@ -80,6 +86,8 @@ export async function createInspection(env, who, c, b) {
   d.sysinfo = { permit: sys.permit, addresses: sys.addresses, names: { septic: sys.septic_name, pump: sys.pump_name }, zone_word: sys.zone_word, units: { septic: sys.septic_unit || '', pump: sys.pump_unit || '' } };
   if (calc.drawdown !== null) d.flow.drawdown = calc.drawdown;
   if (calc.dose !== null) d.flow.dose = calc.dose;
+  // the first flush-test reading on each zone becomes its baseline, kept on the system
+  if (d.zflush) for (const z of d.zflush.zones) { const L = sys.laterals[z.n - 1]; if (L && L.base_in == null && z.in_psi != null) { L.base_in = z.in_psi; L.base_out = z.out_psi; L.base_flush = z.flush; } }
   d.operator = op; sys.tank_shape = d.tank_shape; sys.tank_a = d.tank_a; sys.tank_b = d.tank_b;
   const rid = id(), now = new Date().toISOString();
   await env.DB.batch([
