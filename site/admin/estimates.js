@@ -26,7 +26,7 @@
   function blank(caseId) {
     var d = A.S.d, def = d.est_defaults || { rate: 150, markup: 30, valid_until: '' }, prim = (d.people || []).filter(function (p) { return p.primary; })[0] || {};
     var k = caseId && (d.cases || []).filter(function (x) { return x.id === caseId; })[0];
-    return { id: '', no: 'New estimate', status: 'draft', title: k ? k.title : '', contact_id: prim.id || '', case_id: caseId || '', valid_until: def.valid_until, notes: NOTE, tax_on: false, tax_rate: '7', created_at: new Date().toISOString(), lines: [{ type: 'part', desc: '', qty: 1, cost: '', markup: def.markup }, { type: 'labor', desc: '', qty: 1, rate: def.rate }] };
+    return { id: '', no: 'New estimate', status: 'draft', title: k ? k.title : '', contact_id: prim.id || '', case_id: caseId || '', valid_until: def.valid_until, notes: NOTE, tax_on: false, tax_rate: '7', view: 'summary', scope: '', created_at: new Date().toISOString(), lines: [{ type: 'part', desc: '', qty: 1, cost: '', markup: def.markup }, { type: 'labor', desc: '', qty: 1, rate: def.rate }] };
   }
   A.newEstimate = function (caseId) { cur = blank(caseId); draw(); };
   function open(id) { OW.api('/admin/api/estimate/' + id).then(function (j) { if (!j.ok) return OW.toast(j.error); cur = j.estimate; draw(); }); }
@@ -39,6 +39,8 @@
   function totalsHtml() { return '<div class="esttot"><div><span>Subtotal</span><b>' + d2(cur.subtotal) + '</b></div><div style="align-items:center"><span style="display:flex;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox" id="es_tax" style="width:auto;min-height:0;margin:0"' + (cur.tax_on ? ' checked' : '') + (editable() ? '' : ' disabled') + '><label for="es_tax" style="margin:0;font-weight:400">Sales tax on parts</label><input id="es_rate" aria-label="Tax rate percent" inputmode="decimal" style="width:52px;min-height:28px;padding:2px 4px" value="' + E(cur.tax_rate) + '"' + (editable() ? '' : ' disabled') + '>%</span><b>' + d2(cur.tax) + '</b></div><div style="font-size:18px"><b>Total</b><b>' + d2(cur.total) + (cur.pending ? ' + pending' : '') + '</b></div>' + (cur.pending ? '<p class="warn" style="font-size:13px;margin:2px 0 0;text-align:right">' + cur.pending + ' item' + (cur.pending > 1 ? 's' : '') + ' pending, not in the total yet. Leave a cost or hours blank to mark it pending.</p>' : '') + '</div>'; }
   function draw() {
     var v = $('estView'), d = A.S.d; if (!v) return; sums(cur);
+    if (!cur.view) cur.view = 'summary';
+    if (!cur.scope) cur.scope = cur.lines.filter(function (l) { return l.type === 'labor' && l.desc; }).map(function (l) { return l.desc; }).join('\n');
     var ro = !editable(), dis = ro ? ' disabled' : '', st = ST[cur.status] || [cur.status, 'mute'];
     var people = (d.people || []).map(function (p) { return '<option value="' + E(p.id) + '"' + (p.id === cur.contact_id ? ' selected' : '') + '>' + E(p.name) + (p.email ? '' : ' (no email)') + '</option>'; }).join('');
     var cases = '<option value="">None</option>' + (d.cases || []).map(function (k) { return '<option value="' + E(k.id) + '"' + (k.id === cur.case_id ? ' selected' : '') + '>' + E(k.no + ' ' + k.title) + '</option>'; }).join('');
@@ -46,6 +48,8 @@
       (cur.status === 'sent' ? '<p class="mute" style="margin:6px 0 0;font-size:14px">Sent ' + E(OW.date(cur.sent_at)) + '. You can still change it; press Send again so the customer gets the new total.</p>' : '') +
       '<div class="two" style="margin-top:8px"><div><label for="es_title">Title</label><input id="es_title" maxlength="160" value="' + E(cur.title) + '" placeholder="Repairs from Oct 1 county report"' + dis + '></div><div><label for="es_valid">Valid until</label><input id="es_valid" type="date" value="' + E(cur.valid_until) + '"' + dis + '></div>' +
       '<div><label for="es_contact">Contact (gets the email)</label><select id="es_contact"' + dis + '>' + people + '</select></div><div><label for="es_case">Case</label><select id="es_case"' + dis + '>' + cases + '</select></div></div>' +
+      '<div style="margin-top:10px"><label>Customer sees</label><div class="row" role="radiogroup" style="gap:6px">' + ['summary', 'itemized'].map(function (k) { return '<button type="button" class="b' + (cur.view === k ? '' : ' alt') + '" data-view="' + k + '" role="radio" aria-checked="' + (cur.view === k) + '" style="padding:4px 14px;min-height:0"' + dis + '>' + (k === 'summary' ? 'Summary' : 'Itemized') + '</button>'; }).join('') + '</div>' +
+      (cur.view === 'summary' ? '<label for="es_scope" style="margin-top:8px">Scope of work <span class="mute sm" style="font-weight:400">(one item per line; starts from your labor lines, edit freely)</span></label><textarea id="es_scope" maxlength="3000" style="min-height:' + Math.max(120, 26 * (cur.scope.split('\\n').length + 1)) + 'px"' + dis + '>' + E(cur.scope) + '</textarea><p class="mute sm" style="margin:4px 0 0">The customer sees the scope, labor hours and total, parts total, and no-charge and pending items. Your line items below stay as they are for your records.</p>' : '<p class="mute sm" style="margin:6px 0 0">The customer sees each line with its price (never your cost or markup).</p>') + '</div>' +
       '<div class="tw" style="margin-top:10px"><table class="estlines"><thead><tr><th>Type</th><th>Description</th><th>Qty / hrs</th><th>Cost / rate</th><th>Markup %</th><th class="r">Total</th><th></th></tr></thead><tbody id="es_lines">' + cur.lines.map(lineRow).join('') + '</tbody></table></div>' +
       (ro ? '' : '<div class="row" style="gap:6px;margin:8px 0">' + Object.keys(TYPES).map(function (t) { return '<button class="b alt" type="button" data-ladd="' + t + '" style="padding:3px 12px;min-height:0;font-size:14px">+ ' + TYPES[t] + '</button>'; }).join('') + '</div>') +
       '<div id="es_tot">' + totalsHtml() + '</div>' +
@@ -61,10 +65,11 @@
     if (!editable()) return;
     cur.title = $('es_title').value; cur.valid_until = $('es_valid').value; cur.contact_id = $('es_contact').value; cur.case_id = $('es_case').value; cur.notes = $('es_notes').value;
     cur.tax_on = $('es_tax').checked; cur.tax_rate = $('es_rate').value;
+    if ($('es_scope')) cur.scope = $('es_scope').value;
   }
   function refreshTotals() { sums(cur); cur.lines.forEach(function (l, i) { var c = document.querySelector('[data-amt="' + i + '"]'); if (c) c.innerHTML = amt(l); }); $('es_tot').innerHTML = totalsHtml(); wireTax(); }
   function wireTax() { $('es_tax').onchange = function () { cur.tax_on = this.checked; refreshTotals(); }; $('es_rate').oninput = function () { cur.tax_rate = this.value; refreshTotals(); $('es_rate').focus(); }; }
-  function payload() { read(); return { id: cur.id || undefined, customer_id: A.S.d.customer.id, contact_id: cur.contact_id, case_id: cur.case_id, title: cur.title, valid_until: cur.valid_until, notes: cur.notes, tax_on: cur.tax_on, tax_rate: cur.tax_rate, lines: cur.lines }; }
+  function payload() { read(); return { id: cur.id || undefined, customer_id: A.S.d.customer.id, contact_id: cur.contact_id, case_id: cur.case_id, title: cur.title, valid_until: cur.valid_until, notes: cur.notes, tax_on: cur.tax_on, tax_rate: cur.tax_rate, view: cur.view, scope: cur.scope, lines: cur.lines }; }
   function save() { return OW.api('/admin/api/estimate', payload()).then(function (j) { if (!j.ok) { msg('esm', j.error, true); return null; } cur.id = j.id; cur.no = j.no; return j; }); }
   function reload(then) { OW.api('/admin/api/customer/' + A.S.d.customer.id).then(function (x) { if (x.ok) { A.S.d.estimates = x.estimates; A.S.d.cases = x.cases; } A.refresh().then(function () { if (then) then(); }); }); }
   function wire() {
@@ -74,6 +79,7 @@
     tb.onclick = function (e) { var b = e.target.closest('[data-ldel]'); if (!b) return; read(); cur.lines.splice(+b.getAttribute('data-ldel'), 1); draw(); };
     document.querySelectorAll('[data-ladd]').forEach(function (b) { b.onclick = function () { read(); var t = b.getAttribute('data-ladd'), def = A.S.d.est_defaults || {}; cur.lines.push(t === 'part' ? { type: t, desc: '', qty: 1, cost: '', markup: def.markup } : t === 'labor' ? { type: t, desc: '', qty: 1, rate: def.rate } : t === 'other' ? { type: t, desc: '', qty: 1, unit: '' } : { type: t, desc: '', qty: 1 }); draw(); var ds = document.querySelectorAll('#es_lines textarea'); if (ds.length) ds[ds.length - 1].focus(); }; });
     wireTax();
+    document.querySelectorAll('[data-view]').forEach(function (b) { b.onclick = function () { read(); cur.view = b.getAttribute('data-view'); draw(); }; });
     $('es_x').onclick = function () { $('estView').innerHTML = ''; cur = null; };
     $('es_prev').onclick = function () { read(); sums(cur); var pv = $('es_pv'); if (pv.innerHTML) { pv.innerHTML = ''; return; } var k = (A.S.d.cases || []).filter(function (x) { return x.id === cur.case_id; })[0]; cur.case_no = k ? k.no : ''; pv.innerHTML = '<h3 style="margin:14px 0 6px">What the customer sees</h3>' + OW.estimateHtml(cur, A.S.d.customer); };
     $('es_pdf').onclick = function () { read(); sums(cur); OW.estimatePdf(cur, A.S.d.customer).then(function (b) { OW.download(b, (cur.no === 'New estimate' ? 'estimate' : cur.no) + '.pdf'); }); };

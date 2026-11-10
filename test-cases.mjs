@@ -136,6 +136,7 @@ await adm('/admin/api/customer-delete', { id: bob }); ok(!(await J(await adm('/a
   const es = (await J(await adm('/admin/api/customer/' + sean))).estimates;
   ok(es.length === 1 && es[0].status === 'draft' && es[0].title === 'Repairs from Oct 1 county report' && es[0].case_id === L.find(c => /Broken lids/.test(c.title)).id && es[0].contact_name === 'Sean Wilkins' && es[0].total === 735.15 && es[0].pending === 3 && es[0].lines.length === 13, "Sean's draft estimate is created once, linked to the lids case, not sent");
   const ne = await J(await adm('/admin/api/estimate', { customer_id: sean, title: 'next', lines: [{ type: 'other', desc: 'x', qty: 1, unit: 1 }] })); ok(Number(ne.no.slice(4)) === es[0].num + 1, 'the estimate counter moves past it');
+  ok(es[0].view === 'summary' && es[0].scope.startsWith('Remount the alarm reset') && es[0].scope.split('\n').length === 6, "Sean's estimate gets the approved scope of work and shows as a summary");
   ok(!sent.some(m => /EST-/.test(m.subject)), 'nothing was emailed');
   const tb = (await J(await adm('/admin/api/contacts'))).contacts.filter(c => c.name === 'Tim Barbee');
   ok(tb.length === 1 && tb[0].phone === '704-589-0595' && tb[0].email === 'tbarbee5@carolina.rr.com' && tb[0].company === "Driller's Service Inc., Wastewater Division" && tb[0].customer_id === sean && /PO Box 1407/.test(tb[0].notes), 'Tim Barbee is added once as a contact, linked to the Wilkins account');

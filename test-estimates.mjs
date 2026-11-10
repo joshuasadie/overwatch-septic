@@ -94,5 +94,14 @@ j = await J(await adm('/admin/api/estimate', { customer_id: ann, title: 'Pend', 
 e = (await J(await adm('/admin/api/estimate/' + j.id))).estimate;
 ok(e.total === 117 && e.pending === 2 && e.lines[1].pending && e.lines[1].cost === '' && e.lines[2].qty === '' && e.lines[2].pending, 'blank cost or hours is pending and left out of the total');
 sent.length = 0; await adm('/admin/api/estimate-send', { id: j.id }); ok(sent.some(m => /plus 2 items still to be priced/.test(m.text)), 'the email says items are still to be priced');
-pe = (await J(await annP('/portal/api/estimates'))).estimates.find(x => x.id === j.id); ok(pe.pending === 2 && pe.lines[1].pending && !('cost' in pe.lines[1]), 'the portal shows pending, still without cost');
+pe = (await J(await annP('/portal/api/estimates'))).estimates.find(x => x.id === j.id); ok(pe.pending === 2 && pe.view === 'summary' && pe.lines.length === 0 && pe.summary.pending.length === 2 && pe.summary.parts === 117 && !('scope' in pe), 'summary by default: the portal gets totals and pending names, no line items');
+await adm('/admin/api/estimate', { id: j.id, title: 'Pend', view: 'itemized', lines: [{ type: 'part', desc: 'Lid', qty: 2, cost: 45, markup: 30 }, { type: 'part', desc: 'Control part', qty: 1, cost: '', markup: 30 }, { type: 'labor', desc: 'Fill soil', qty: '', rate: 150 }] });
+pe = (await J(await annP('/portal/api/estimates'))).estimates.find(x => x.id === j.id); ok(pe.view === 'itemized' && pe.lines[1].pending && !('cost' in pe.lines[1]) && !('markup' in pe.lines[0]), 'itemized: the portal gets lines with prices, still without cost or markup');
+// summary math
+j = await J(await adm('/admin/api/estimate', { customer_id: ann, title: 'Sum', scope: 'Replace lids\n\n  Pack soil  ', lines: [{ type: 'part', desc: 'Lid', qty: 4, cost: 45, markup: 30 }, { type: 'labor', desc: 'Install lids', qty: 1, rate: 125 }, { type: 'labor', desc: 'Pack soil', qty: 1.5, rate: 125 }, { type: 'other', desc: 'Trip', qty: 1, unit: 40 }, { type: 'free', desc: 'Valve reset' }, { type: 'labor', desc: 'Find valves', qty: '', rate: 125 }] }));
+e = (await J(await adm('/admin/api/estimate/' + j.id))).estimate;
+ok(e.view === 'summary' && e.summary.labor_hours === 2.5 && e.summary.labor_rate === 125 && e.summary.labor === 312.5 && e.summary.parts === 234 && e.summary.other === 40 && e.summary.free[0] === 'Valve reset' && e.summary.pending[0] === 'Find valves' && e.summary.scope.join('|') === 'Replace lids|Pack soil', 'summary: hours and labor total, parts total, other, no-charge and pending by name, your scope lines');
+await adm('/admin/api/estimate', { id: j.id, title: 'Sum', scope: '', lines: [{ type: 'labor', desc: 'Install lids', qty: 1, rate: 125 }, { type: 'labor', desc: 'Pack soil', qty: 1, rate: 150 }] });
+e = (await J(await adm('/admin/api/estimate/' + j.id))).estimate; ok(e.summary.scope.join('|') === 'Install lids|Pack soil' && e.summary.labor_rate === null && e.summary.labor_hours === 2, 'blank scope falls back to the labor lines; mixed rates show hours without one rate');
+
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);
