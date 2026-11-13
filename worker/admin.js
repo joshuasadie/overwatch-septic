@@ -3,6 +3,7 @@ import { reply, clean, id, EMAIL, siteOrigin, sendMail, readJson, originOk, veri
 import { createInvoice, markPaid, releaseInvoice, releaseReport, sendCountyReport, sendNotice, noticeDrafts, toCents, etDate, daysBetween } from './billing.js';
 import { operatorOf, systemInfo, createInspection, saveSystem, attachInspections, uploadPhoto, servePhoto, deleteInspectionFiles } from './inspection.js';
 import { createContract, previewContract, resendContract, voidContract, countersign, publicView, signedSendInfo, sendSigned } from './contracts.js';
+import { listViewers, saveViewer, deleteViewer, viewerLog } from './viewers.js';
 import { listEstimates, getEstimate, saveEstimate, sendEstimate, voidEstimate, invoiceEstimate, estimateDefaults } from './estimates.js';
 import { listCases, getCase, saveCase, saveComment, saveItem, caseFromReport, deleteCasesFor, CASE_STATUS, CASE_TYPES, CHANNELS, ITEM_STATUS, peopleOf, savePerson, addPrimaryContact, PERSON_ROLES } from './cases.js';
 
@@ -129,6 +130,7 @@ export async function adminApi(request, env, path) {
     await deleteInspectionFiles(env, (await env.DB.prepare('SELECT id FROM reports WHERE customer_id = ?').bind(cid).all()).results.map(x => x.id));
     await deleteCasesFor(env, cid);
     await env.DB.prepare('DELETE FROM estimates WHERE customer_id = ?').bind(cid).run();
+    await env.DB.prepare('DELETE FROM viewer_systems WHERE customer_id = ?').bind(cid).run();
     await env.DB.batch([env.DB.prepare('DELETE FROM inspections WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM systems WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(cid), env.DB.prepare('DELETE FROM invoices WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM reports WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM contracts WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM sessions WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM login_tokens WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM test_customers WHERE customer_id = ?').bind(cid), env.DB.prepare('DELETE FROM customers WHERE id = ?').bind(cid), audit(env, email, isTest ? 'test-customer-deleted' : 'customer-deleted', cid, c.name)]);
     return reply({ ok: true });
   }
@@ -282,6 +284,11 @@ export async function adminApi(request, env, path) {
     const d = await noticeDrafts(env, inv, kind);
     return reply({ ok: true, kind, owner: d.owner, county: d.county, address: d.customer.address, name: d.customer.name, county_name: d.customer.county, term: d.term });
   }
+  if (path === '/admin/api/viewers' && method === 'GET') return reply({ ok: true, ...(await listViewers(env)) });
+  m = /^\/admin\/api\/viewer-log\/([a-f0-9]{20})$/.exec(path);
+  if (m && method === 'GET') return reply({ ok: true, log: await viewerLog(env, m[1]) });
+  m = /^\/admin\/api\/viewer(|-delete)$/.exec(path);
+  if (m && method === 'POST') { const j = await readJson(request, 16384); if (j.res) return j.res; return out(await (m[1] ? deleteViewer : saveViewer)(env, email, j.body)); }
   if (path === '/admin/api/counties' && method === 'GET') return reply({ ok: true, counties: (await env.DB.prepare('SELECT name, email FROM counties ORDER BY name').all()).results });
   // ---- contacts: installers, county staff, referrals and leads
   if (path === '/admin/api/contacts' && method === 'GET') {

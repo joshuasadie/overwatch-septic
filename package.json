@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node test.mjs && node test-portals.mjs && node test-billing.mjs && node test-inspection.mjs && node test-cases.mjs && node test-estimates.mjs"
+    "test": "node test.mjs && node test-portals.mjs && node test-billing.mjs && node test-inspection.mjs && node test-cases.mjs && node test-estimates.mjs && node test-viewers.mjs"
   }
 }
