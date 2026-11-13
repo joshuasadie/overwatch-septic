@@ -63,6 +63,7 @@ export async function request(req, env) {
 
 import { adminApi } from './admin.js';
 import { loginRequest, loginVerify, portalApi } from './portal.js';
+import { viewerApi } from './viewers.js';
 import { tokenApi } from './contracts.js';
 import { payRedirect, stripeWebhook, countyReportPage, runDaily } from './billing.js';
 import { ensureSchema, originOk, readJson, turnstileOk, id } from './lib.js';
@@ -98,6 +99,7 @@ export default {
     if (pathname === '/login/api/request') return loginRequest(req, env);
     if (pathname === '/login/verify') return loginVerify(req, env);
     if (pathname.startsWith('/portal/api/')) return portalApi(req, env, pathname);
+    if (pathname.startsWith('/view/api/')) return viewerApi(req, env, pathname);
     if (pathname.startsWith('/api/contract/')) {
       if (!env.DB) return reply({ ok: false, error: 'Unavailable.' }, 503);
       try { await ensureSchema(env); } catch { return reply({ ok: false, error: 'Unavailable.' }, 503); }

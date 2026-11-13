@@ -5,6 +5,7 @@ import { publicView, signAsOwner } from './contracts.js';
 import { checkoutUrl, reportLocked, etDate } from './billing.js';
 import { portalCases, portalComment, portalRequest } from './cases.js';
 import { portalEstimates, portalRespond, portalQuestion } from './estimates.js';
+import { viewerByEmail, isViewerKey, touchViewer } from './viewers.js';
 
 const COOKIE = '__Host-ow_session', LINK_MIN = 15, SESSION_DAYS = 30;
 const sessionCookie = (v, maxAge) => `${COOKIE}=${v}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
@@ -36,7 +37,7 @@ export async function loginRequest(request, env) {
   if (ec >= 5 || ic >= 10) return reply({ ok: false, error: 'Too many sign-in requests. Please wait an hour and try again.' }, 429);
   await env.DB.batch([env.DB.prepare('INSERT INTO login_log (at, eh, ih) VALUES (?, ?, ?)').bind(now, eh, ih), env.DB.prepare('DELETE FROM login_log WHERE at < ?').bind(isoIn(-864e5)), env.DB.prepare('DELETE FROM login_tokens WHERE expires_at < ?').bind(now), env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(now)]);
   // The answer is the same whether or not the address is a customer, so the form cannot be used to look up who is one.
-  const c = await env.DB.prepare('SELECT id, name FROM customers WHERE email = ?').bind(email).first();
+  const c = (await env.DB.prepare('SELECT id, name FROM customers WHERE email = ?').bind(email).first()) || await (async () => { const v = await viewerByEmail(env, email); return v ? { id: 'v:' + v.id, name: v.name } : null; })();
   if (c) {
     const token = rand();
     await env.DB.prepare('INSERT INTO login_tokens (hash, customer_id, expires_at, used) VALUES (?, ?, ?, 0)').bind(await sha(token), c.id, isoIn(LINK_MIN * 60e3)).run();
@@ -55,7 +56,7 @@ export async function loginVerify(request, env) {
     if (!/^[A-Za-z0-9_-]{30,80}$/.test(t)) return expired();
     const row = await env.DB.prepare('SELECT customer_id FROM login_tokens WHERE hash = ? AND used = 0 AND expires_at > ?').bind(await sha(t), new Date().toISOString()).first();
     if (!row) return expired();
-    return page('Sign in', `<p>Confirm to sign in to your customer portal.</p><form method="POST" action="/login/verify"><input type="hidden" name="t" value="${esc(t)}"><button type="submit">Sign in</button></form>`);
+    return page('Sign in', `<p>Confirm to sign in${isViewerKey(row.customer_id) ? '' : ' to your customer portal'}.</p><form method="POST" action="/login/verify"><input type="hidden" name="t" value="${esc(t)}"><button type="submit">Sign in</button></form>`);
   }
   if (request.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: { allow: 'GET, POST' } });
   if (!originOk(request, env) && request.headers.get('sec-fetch-site') !== 'same-origin') return page('Request not allowed', '<p>Please open the link from your email again.</p>', 403);
@@ -68,7 +69,8 @@ export async function loginVerify(request, env) {
   if (!used.meta || used.meta.changes !== 1) return expired();
   const sess = rand();
   await env.DB.prepare('INSERT INTO sessions (hash, customer_id, expires_at, created_at) VALUES (?, ?, ?, ?)').bind(await sha(sess), row.customer_id, isoIn(SESSION_DAYS * 864e5), now).run();
-  return new Response(null, { status: 303, headers: { location: '/portal/', 'set-cookie': sessionCookie(sess, SESSION_DAYS * 86400), 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
+  if (isViewerKey(row.customer_id)) await touchViewer(env, row.customer_id);
+  return new Response(null, { status: 303, headers: { location: isViewerKey(row.customer_id) ? '/view/' : '/portal/', 'set-cookie': sessionCookie(sess, SESSION_DAYS * 86400), 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
 }
 
 export async function portalApi(request, env, path) {
