@@ -120,13 +120,34 @@
   function d2(n) { return '$' + Number(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
   OW.d2 = d2;
   OW.EST_FROM = ['Overwatch Septic, LLC', '374 Hubert Herndon Rd, Chapel Hill, NC 27516'];
+  // the customer's summary (the server sends e.summary to the portal; the admin preview works it out from the lines)
+  OW.estSummary = function (e) {
+    if (e.summary && !e.lines.length) return e.summary;
+    var L = e.lines, lab = L.filter(function (l) { return l.type === 'labor'; }), lp = lab.filter(function (l) { return !l.pending; }), r2 = function (x) { return Math.round(x * 100) / 100; };
+    var sum = function (a) { return r2(a.reduce(function (s, l) { return s + (l.amount || 0); }, 0)); }, rates = lp.map(function (l) { return Number(l.rate); }).filter(function (x, i, a) { return a.indexOf(x) === i; });
+    var sc = String(e.scope || '').split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+    return { scope: sc.length ? sc : lab.map(function (l) { return l.desc; }).filter(Boolean), labor_hours: r2(lp.reduce(function (s, l) { return s + (Number(l.qty) || 0); }, 0)), labor_rate: rates.length === 1 ? rates[0] : null, labor: sum(lp), parts: sum(L.filter(function (l) { return l.type === 'part' && !l.pending; })), other: sum(L.filter(function (l) { return l.type === 'other' && !l.pending; })), free: L.filter(function (l) { return l.type === 'free'; }).map(function (l) { return l.desc.replace(/\s*\(done\)\s*$/i, ''); }), pending: L.filter(function (l) { return l.pending; }).map(function (l) { return l.desc; }) };
+  };
+  function sumRows(e) {
+    var S = OW.estSummary(e), rows = [];
+    if (S.labor || S.labor_hours) rows.push(['Labor', S.labor_hours ? 'about ' + S.labor_hours + ' hour' + (S.labor_hours === 1 ? '' : 's') + (S.labor_rate ? ' at ' + d2(S.labor_rate).replace('.00', '') + '/hr' : '') : '', d2(S.labor)]);
+    if (S.parts) rows.push(['Parts and materials', '', d2(S.parts)]);
+    if (S.other) rows.push(['Other charges', '', d2(S.other)]);
+    if (S.pending.length) rows.push(['Pending', S.pending.join('; '), 'To be priced']);
+    return { S: S, rows: rows };
+  }
   OW.estimateHtml = function (e, cust) {
-    var E = OW.esc;
+    var E = OW.esc, summ = e.view !== 'itemized', SR = summ ? sumRows(e) : null;
+    var body = summ ?
+      (SR.S.scope.length ? '<h3 style="margin:8px 0 4px;font-size:16px">Scope of work</h3><ul style="margin:0 0 10px 20px;padding:0">' + SR.S.scope.map(function (x) { return '<li style="margin:3px 0">' + E(x) + '</li>'; }).join('') + '</ul>' : '') +
+      (SR.S.free.length ? '<p style="margin:0 0 10px;font-size:14px"><b>Already done, no charge:</b> ' + E(SR.S.free.join('; ')) + '</p>' : '') +
+      '<div class="tw"><table class="esttab"><tbody>' + SR.rows.map(function (r) { return '<tr><td>' + (r[0] === 'Pending' ? '<span class="warn">Pending:</span> ' + E(r[1]) : E(r[0]) + (r[1] ? ' <span class="mute">(' + E(r[1]) + ')</span>' : '')) + '</td><td class="r">' + E(r[2]) + '</td></tr>'; }).join('') + '</tbody></table></div>'
+      : null;
     return '<div class="estdoc"><div class="estdoc-h"><div><b style="font-size:17px">' + E(OW.EST_FROM[0]) + '</b><br>' + E(OW.EST_FROM[1]) + '<br>' + E([OW.CONTACT.phone, OW.CONTACT.email].filter(Boolean).join(' · ')) + '</div><div style="text-align:right"><b style="font-size:17px">ESTIMATE</b><br>' + E(e.no) + '<br>' + E(OW.date(e.sent_at || e.created_at)) + (e.valid_until ? '<br>Valid until ' + E(OW.date(e.valid_until)) : '') + '</div></div>' +
       '<p style="margin:12px 0 4px"><b>For:</b> ' + E(cust.name) + (cust.address ? ', ' + E(cust.address) : '') + '</p>' + (e.title ? '<p style="margin:0 0 8px"><b>Work:</b> ' + E(e.title) + (e.case_no ? ' <span class="mute">(' + E(e.case_no) + ')</span>' : '') + '</p>' : '') +
-      '<div class="tw"><table class="esttab"><thead><tr><th>Description</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th></tr></thead><tbody>' +
+      (summ ? body : '<div class="tw"><table class="esttab"><thead><tr><th>Description</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th></tr></thead><tbody>' +
       e.lines.map(function (l) { return '<tr><td>' + (l.type === 'labor' ? 'Labor: ' : '') + E(l.desc) + '</td><td class="r">' + (l.qty === '' ? '—' : E(l.qty) + (l.type === 'labor' ? ' h' : '')) + '</td><td class="r">' + (l.pending && !l.unit ? 'Pending' : d2(l.unit)) + '</td><td class="r">' + (l.type === 'free' ? 'No charge' : l.pending ? 'Pending' : d2(l.amount)) + '</td></tr>'; }).join('') +
-      '</tbody></table></div><div class="esttot">' + (e.tax ? '<div><span>Subtotal</span><span>' + d2(e.subtotal) + '</span></div><div><span>Sales tax on parts (' + E(e.tax_rate) + '%)</span><span>' + d2(e.tax) + '</span></div>' : '') + '<div><b>Total' + (e.pending ? ' so far' : '') + '</b><b>' + d2(e.total) + '</b></div>' + (e.pending ? '<p class="mute" style="font-size:13px;margin:2px 0 0;text-align:right">Items marked Pending are not priced yet and are not in this total.</p>' : '') + '</div>' +
+      '</tbody></table></div>') + '<div class="esttot">' + (e.tax ? '<div><span>Subtotal</span><span>' + d2(e.subtotal) + '</span></div><div><span>Sales tax on parts (' + E(e.tax_rate) + '%)</span><span>' + d2(e.tax) + '</span></div>' : '') + '<div><b>Total' + (e.pending ? ' so far' : '') + '</b><b>' + d2(e.total) + '</b></div>' + (e.pending ? '<p class="mute" style="font-size:13px;margin:2px 0 0;text-align:right">Items marked Pending are not priced yet and are not in this total.</p>' : '') + '</div>' +
       (e.notes ? '<p class="mute" style="white-space:pre-wrap;font-size:14px;margin:12px 0 0">' + E(e.notes) + '</p>' : '') +
       (e.accepted_at ? '<p class="good" style="margin:10px 0 0"><b>Accepted</b> by ' + E(e.accepted_name) + ' on ' + E(new Date(e.accepted_at).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' })) + '</p>' : '') + '</div>';
   };
@@ -138,9 +159,16 @@
       L.text('For: ' + cust.name + (cust.address ? ', ' + cust.address : ''), {});
       if (e.title) L.text('Work: ' + e.title + (e.case_no ? ' (' + e.case_no + ')' : ''), { after: 8 });
       var R = [350, 420, 500];
+      if (e.view !== 'itemized') {
+        var SR = sumRows(e);
+        if (SR.S.scope.length) { L.text('Scope of work', { bold: true, after: 2 }); SR.S.scope.forEach(function (x) { L.text('- ' + x, { indent: 10, after: 0 }); }); L.gap(6); }
+        if (SR.S.free.length) L.text('Already done, no charge: ' + SR.S.free.join('; '), { size: 10, after: 6 });
+        L.rule(); SR.rows.forEach(function (r) { L.row([r[0] === 'Pending' ? 'Pending: ' + r[1] : r[0] + (r[1] ? ' (' + r[1] + ')' : ''), '', '', r[2]], { right: R }); }); L.rule();
+      } else {
       L.row(['Description', 'Qty', 'Price', 'Total'], { bold: true, right: R }); L.rule();
       e.lines.forEach(function (l) { L.row([(l.type === 'labor' ? 'Labor: ' : '') + l.desc, l.qty === '' ? '-' : l.qty + (l.type === 'labor' ? ' h' : ''), l.pending && !l.unit ? 'Pending' : d2(l.unit), l.type === 'free' ? 'No charge' : l.pending ? 'Pending' : d2(l.amount)], { right: R }); });
       L.rule();
+      }
       if (e.tax) { L.row(['Subtotal', '', '', d2(e.subtotal)], { right: R }); L.row(['Sales tax on parts (' + e.tax_rate + '%)', '', '', d2(e.tax)], { right: R }); }
       L.row([e.pending ? 'Total so far' : 'Total', '', '', d2(e.total)], { bold: true, size: 12, right: R });
       if (e.pending) L.text('Items marked Pending are not priced yet and are not in this total.', { size: 9, italic: true });

@@ -46,14 +46,26 @@ export async function estimateDefaults(env, customerId) {
   const c = await hasContract(env, customerId);
   return { rate: c ? EST_DEFAULTS.contract_rate : EST_DEFAULTS.rate, under_contract: c, markup: EST_DEFAULTS.markup, valid_until: addDays(today(), EST_DEFAULTS.valid_days) };
 }
+// The customer's summary: scope of work, labor and parts as totals, no-charge and pending items by name.
+export function summarize(lines, scope) {
+  const L = lines.filter(l => l.type === 'labor'), lp = L.filter(l => !l.pending), rates = [...new Set(lp.map(l => l.rate))];
+  const sum = (a) => r2(a.reduce((s, l) => s + (l.amount || 0), 0));
+  const sc = String(scope || '').split('\n').map(x => x.trim()).filter(Boolean);
+  return { scope: sc.length ? sc : L.map(l => l.desc).filter(Boolean), labor_hours: r2(lp.reduce((s, l) => s + (Number(l.qty) || 0), 0)), labor_rate: rates.length === 1 ? rates[0] : null, labor: sum(lp), parts: sum(lines.filter(l => l.type === 'part' && !l.pending)), other: sum(lines.filter(l => l.type === 'other' && !l.pending)), free: lines.filter(l => l.type === 'free').map(l => l.desc.replace(/\s*\(done\)\s*$/i, '')), pending: lines.filter(l => l.pending).map(l => l.desc) };
+}
 function row(e, full) {
   const lines = JSON.parse(e.lines || '[]');
   const out = { id: e.id, num: e.num, no: estNo(e.num), customer_id: e.customer_id, customer_name: e.customer_name, contact_id: e.contact_id, contact_name: e.contact_name || '', case_id: e.case_id, case_no: e.case_num ? `OWS-${pad(e.case_num)}` : '', title: e.title, status: e.status, valid_until: e.valid_until, notes: e.notes, tax_on: !!e.tax_on, tax_rate: e.tax_rate, created_at: e.created_at, sent_at: e.sent_at, accepted_at: e.accepted_at, accepted_name: e.accepted_name, declined_at: e.declined_at, decline_reason: e.decline_reason, invoice_id: e.invoice_id, expired: e.status === 'sent' && e.valid_until && e.valid_until < today() };
-  out.lines = full ? lines : lines.map(l => ({ type: l.type, desc: l.desc, qty: l.qty, unit: l.unit, amount: l.amount, pending: !!l.pending }));
+  out.view = e.view === 'itemized' ? 'itemized' : 'summary'; out.scope = e.scope || '';
+  out.summary = summarize(lines, e.scope);
+  // the customer gets line items only when you chose Itemized; cost and markup never
+  out.lines = full ? lines : out.view === 'itemized' ? lines.map(l => ({ type: l.type, desc: l.desc, qty: l.qty, unit: l.unit, amount: l.amount, pending: !!l.pending })) : [];
+  if (!full) delete out.scope;
   Object.assign(out, totals(lines, !!e.tax_on, e.tax_rate));
   return out;
 }
-const SEL = "SELECT e.*, c.name AS customer_name, p.name AS contact_name, k.num AS case_num FROM estimates e JOIN customers c ON c.id = e.customer_id LEFT JOIN customer_contacts p ON p.id = e.contact_id LEFT JOIN cases k ON k.id = e.case_id";
+const SEL = "SELECT e.*, c.name AS customer_name, p.name AS contact_name, k.num AS case_num, v.view AS view, v.scope AS scope FROM estimates e JOIN customers c ON c.id = e.customer_id LEFT JOIN customer_contacts p ON p.id = e.contact_id LEFT JOIN cases k ON k.id = e.case_id LEFT JOIN estimate_view v ON v.estimate_id = e.id";
+const saveView = (env, eid, b) => env.DB.prepare("INSERT INTO estimate_view (estimate_id, view, scope) VALUES (?, ?, ?) ON CONFLICT(estimate_id) DO UPDATE SET view = excluded.view, scope = excluded.scope").bind(eid, b.view === 'itemized' ? 'itemized' : 'summary', clean(b.scope, 3000, true)).run();
 
 // ---- admin
 export async function listEstimates(env, customerId) {
@@ -84,11 +96,13 @@ export async function saveEstimate(env, who, b) {
   if (cur) {
     await env.DB.prepare('UPDATE estimates SET contact_id = ?, case_id = ?, title = ?, valid_until = ?, notes = ?, tax_on = ?, tax_rate = ?, lines = ?, updated_at = ? WHERE id = ?')
       .bind(p ? p.id : cur.contact_id, k ? k.id : (b.case_id === '' ? '' : cur.case_id), f.title, f.valid_until, f.notes, f.tax_on, f.tax_rate, JSON.stringify(lines), now, cur.id).run();
+    await saveView(env, cur.id, b);
     return { ok: true, id: cur.id, no: estNo(cur.num) };
   }
   const eid = id(), n = await nextNum(env);
   await env.DB.prepare("INSERT INTO estimates (id, num, customer_id, contact_id, case_id, title, status, valid_until, notes, tax_on, tax_rate, lines, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)")
     .bind(eid, n, customerId, p ? p.id : '', k ? k.id : '', f.title, f.valid_until, f.notes, f.tax_on, f.tax_rate, JSON.stringify(lines), now, now).run();
+  await saveView(env, eid, b);
   return { ok: true, id: eid, no: estNo(n) };
 }
 async function caseNote(env, caseId, body) {
