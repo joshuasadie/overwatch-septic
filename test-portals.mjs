@@ -65,6 +65,13 @@ ok((await adm('/admin/api/contract', { customer_id: cid, terms: { ...terms, rule
     ok(!/email/.test(JSON.stringify(ct.contractText({ ...base, v: 3, owner_email: 'x@y.com' }).sections[8])), 'version 3 agreements keep mail-only notices');
     ok(ct.contractText({ ...base, v: 3, rule_set: '18A' }).party === 'Operator' && !/18A/.test(JSON.stringify(ct.contractText({ ...base, v: 3, rule_set: '18A' }))), 'version 3 uses the 18E sample for older permits too');
     ok(/The Contractor does not perform repairs/.test(JSON.stringify(ct.contractText({ ...base, v: 2, rule_set: '18E' }))), 'version 2 agreements keep their text'); }
+  { const B = { ...base, v: 4, rule_set: '18E', sys_type: 'IIIb', inspection_fee: '250', visits: '1', annual_fee: '250' };
+    const on = JSON.stringify(ct.contractText({ ...B, optional: '1', permit_years: '5' })), off = JSON.stringify(ct.contractText(B));
+    ok(/allows the required inspections to be performed either by the Local Health Department or by a certified operator, at least once every five \(5\) years/.test(on) && /elects to have the system inspected by the Operator, more often than the Operation Permit requires/.test(on), 'operator optional: the opening says the owner elects operator visits');
+    ok(/This is more often than the Operation Permit requires, at the Owner's election/.test(on) && !/as required by the Operation Permit/.test(on), "operator optional: 1(b) no longer says the visits are required by the permit");
+    ok(/described in Subparagraph \(1\)\(b\)/.test(on) && /for the inspections, routine maintenance/.test(on) && /monitoring fee charged by the Local Health Department for this system is separate/.test(on) && !/required by the Operation Permit/.test(on), 'operator optional: 2(a) fee wording and county fee line');
+    ok(!/elects|more often than|monitoring fee charged/.test(off) && /as required by the Operation Permit/.test(off), 'unticked: the agreement reads exactly as before');
+    ok(/once every ten \(10\) years/.test(JSON.stringify(ct.contractText({ ...B, optional: '1', permit_years: '10' }))), 'the permit interval is written out'); }
   ok(ct.annualFrom(250, 'q1s') === 500 && ct.annualFrom(250, '4') === 1000, 'annual fee is the steady yearly total');
   ok(ct.contractText({ ...base }).sections[1].p[0].startsWith('a) The Owner shall pay to the Contractor the sum of $500 per year for periodic'), 'older agreements keep their exact wording'); }
 { const before = (await J(await adm('/admin/api/customer/' + cid))).contracts.length; sent.length = 0;

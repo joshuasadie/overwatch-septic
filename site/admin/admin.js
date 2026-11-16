@@ -169,7 +169,7 @@
     var c = S.d.customer, today = new Date().toISOString().slice(0, 10);
     $('panel').innerHTML = '<h2>New contract</h2><p class="mute" style="margin:0 0 4px">New agreements use the state\'s 18E sample agreement (2025), whatever the permit date. Additions are per-inspection pricing, report delivery, repairs and the named operator. These fields fill its blanks.</p><form id="kf" novalidate><div class="two">' +
       field('k_contractor', 'Contractor name', LS.get('ow_cn') || 'Overwatch Septic, LLC') + field('k_per', 'Fee per inspection ($)', LS.get('ow_per') || (S.cfg && S.cfg.defaults.visit) || '250', 'inputmode="decimal"') +
-      '<div><label for="k_visits">Inspections per year, per the permit</label><select id="k_visits">' + VISITS.map(function (v) { return '<option value="' + v[0] + '">' + v[1] + '</option>'; }).join('') + '</select></div>' + field('k_orig', 'Origination fee, billed when you countersign ($, 0 for none)', LS.get('ow_orig') || (S.cfg && S.cfg.defaults.origination) || '100', 'inputmode="decimal"') +
+      '<div><label for="k_visits">Inspections per year</label><select id="k_visits">' + VISITS.map(function (v) { return '<option value="' + v[0] + '">' + v[1] + '</option>'; }).join('') + '</select>' + '<label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;margin-top:8px"><input type="checkbox" id="k_opt" style="width:auto;min-height:0;margin-top:4px"><span><b>Operator optional for this system</b><br><span class="mute" style="font-size:14px">The permit allows the health department to inspect instead (e.g. Type IIIb: "LHD 1x/5yrs or Operator 1x/5yrs").</span></span></label><div id="k_optyrs" hidden style="margin-top:6px"><label for="k_yrs" style="font-weight:400">The permit requires an inspection every</label> <input id="k_yrs" value="5" inputmode="numeric" maxlength="2" style="width:60px;display:inline-block"> years</div></div>' + field('k_orig', 'Origination fee, billed when you countersign ($, 0 for none)', LS.get('ow_orig') || (S.cfg && S.cfg.defaults.origination) || '100', 'inputmode="decimal"') +
       field('k_caddr', 'Contractor mailing address (for notices)', LS.get('ow_ca') || '374 Hubert Herndon Rd, Chapel Hill, NC 27516') + field('k_health', 'Local health department', LS.get('ow_hd_' + (c.county || '')) || (/^chatham$/i.test(c.county || '') ? 'Chatham County Public Health Department, Environmental Health Division' : c.county ? c.county + ' County Environmental Health' : '')) + field('k_haddr', 'Health department mailing address (for notices)', LS.get('ow_ha_' + (c.county || '')) || (/^chatham$/i.test(c.county || '') ? 'PO Box 130, 80 East St., Pittsboro, NC 27312' : '')) +
       field('k_hcon', 'Health department contact name (optional)', LS.get('ow_hc_' + (c.county || '')) || '') + field('k_appr', 'Provisional or Innovative Approval no. (from System setup)', '') +
       field('k_date', 'Agreement date', today, 'type="date"') + field('k_resp', 'Response time (hours)', '48') + '</div>' +
@@ -180,14 +180,15 @@
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Preview agreement</button></div><div class="msg" id="km" role="status"></div></form>';
     var permitIssued = '';
     // Unsent changes are kept in this browser for each customer until the agreement is sent (the date is not kept: it is always today).
-    var DK = 'ow_kdraft_' + c.id, KF = ['k_contractor', 'k_per', 'k_visits', 'k_orig', 'k_caddr', 'k_health', 'k_haddr', 'k_hcon', 'k_appr', 'k_resp', 'k_rs', 'k_maint'], draft = null;
+    var DK = 'ow_kdraft_' + c.id, KF = ['k_contractor', 'k_per', 'k_visits', 'k_opt', 'k_yrs', 'k_orig', 'k_caddr', 'k_health', 'k_haddr', 'k_hcon', 'k_appr', 'k_resp', 'k_rs', 'k_maint'], draft = null;
     try { draft = JSON.parse(LS.get(DK) || 'null'); } catch (e) { draft = null; }
     if (draft && draft.f) {
-      KF.forEach(function (k) { if (draft.f[k] != null && $(k)) $(k).value = draft.f[k]; });
+      KF.forEach(function (k) { if (draft.f[k] != null && $(k)) { if ($(k).type === 'checkbox') $(k).checked = draft.f[k] === true; else $(k).value = draft.f[k]; } });
       $('km').className = 'msg'; $('km').innerHTML = 'Restored your unsent changes from ' + E(OW.date(draft.at)) + '. <a href="#" id="k_reset">Start over</a>';
       $('k_reset').onclick = function (e) { e.preventDefault(); try { localStorage.removeItem(DK); } catch (x) {} contractForm(); };
     }
-    var saveDraft = function () { var f = {}; KF.forEach(function (k) { if ($(k)) f[k] = $(k).value; }); LS.set(DK, JSON.stringify({ at: new Date().toISOString(), f: f })); };
+    var showOpt = function () { $('k_optyrs').hidden = !$('k_opt').checked; }; $('k_opt').addEventListener('change', showOpt); showOpt();
+    var saveDraft = function () { var f = {}; KF.forEach(function (k) { if ($(k)) f[k] = $(k).type === 'checkbox' ? $(k).checked : $(k).value; }); LS.set(DK, JSON.stringify({ at: new Date().toISOString(), f: f })); };
     $('kf').addEventListener('input', saveDraft); $('kf').addEventListener('change', saveDraft);
     var showTotal = function () { $('k_tot').textContent = feeTotal($('k_per').value, $('k_visits').value); };
     $('k_per').addEventListener('input', showTotal); $('k_visits').addEventListener('change', showTotal); showTotal();
@@ -207,7 +208,7 @@
       var per = v('k_per').replace(/,/g, '');
       if (!v('k_rs')) { $('km').className = 'msg err'; $('km').textContent = 'Choose which rules apply. Check the permit date.'; return; }
       if (!/^\d+(\.\d{1,2})?$/.test(per) || Number(per) <= 0) { $('km').className = 'msg err'; $('km').textContent = 'Enter the fee per inspection, like 250.'; return; }
-      var terms = { contractor_name: v('k_contractor'), contractor_address: v('k_caddr'), health_dept: v('k_health'), health_addr: v('k_haddr'), health_contact: v('k_hcon'), approval_no: v('k_appr'), permit_issued: permitIssued, inspection_fee: per, visits: v('k_visits'), origination_fee: v('k_orig'), date: v('k_date'), response_hours: v('k_resp'), rule_set: v('k_rs'), maintenance: v('k_maint').split('\n') };
+      var terms = { contractor_name: v('k_contractor'), contractor_address: v('k_caddr'), health_dept: v('k_health'), health_addr: v('k_haddr'), health_contact: v('k_hcon'), approval_no: v('k_appr'), permit_issued: permitIssued, inspection_fee: per, visits: v('k_visits'), optional: $('k_opt').checked ? '1' : '', permit_years: $('k_opt').checked ? (v('k_yrs') || '5') : '', origination_fee: v('k_orig'), date: v('k_date'), response_hours: v('k_resp'), rule_set: v('k_rs'), maintenance: v('k_maint').split('\n') };
       $('km').className = 'msg'; $('km').textContent = 'Building the preview...';
       // Preview first: the server builds the terms exactly as it would for sending, and nothing is saved.
       OW.api('/admin/api/contract-preview', { customer_id: c.id, terms: terms }).then(function (j) {
