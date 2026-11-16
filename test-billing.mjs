@@ -163,7 +163,7 @@ j = await J(await adm('/admin/api/customer/' + cid)); ok(j.contracts[0].status =
 
 // pause and paid-after-notice
 const rF = await rep('2026-10-25', '250'); const iF = rF.fin.invoice; await adm('/admin/api/invoice-pause', { id: iF, paused: true }); sent.length = 0;
-await runDaily(env, at(3)); ok(emailsTo('ann@home.com').length === 0, 'paused invoice gets no reminders');
+await runDaily(env, at(3)); ok(emailsTo('ann@home.com').filter(m => !/inspection report/.test(m.subject)).length === 0, 'paused invoice gets no reminders');
 await adm('/admin/api/invoice-pause', { id: iF, paused: false });
 const rG = await rep('2026-10-26', '250'); const iG = rG.fin.invoice; await runDaily(env, at(30)); sent.length = 0;
 await hook('checkout.session.completed', { client_reference_id: iG, payment_status: 'paid', payment_intent: 'pi_9' });

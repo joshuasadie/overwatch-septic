@@ -7,7 +7,7 @@ import { fmtPhone } from './inspection.js';
 const TOKEN = /^[A-Za-z0-9_-]{20,60}$/;
 export const LINK_DAYS = 14;
 export const MAX_MAINT = 20; // routine maintenance lines in an agreement
-const TERM_KEYS = ['date', 'owner_name', 'owner_address', 'county', 'system_address', 'permit', 'sys_type', 'rules', 'cite', 'contractor_name', 'contractor_address', 'health_dept', 'response_hours', 'annual_fee', 'increase_pct', 'interest_pct', 'repair_days', 'origination_fee', 'inspection_fee', 'visits', 'rule_set', 'health_addr', 'approval_no', 'health_contact', 'permit_issued', 'emergency_fee'];
+const TERM_KEYS = ['optional', 'permit_years', 'date', 'owner_name', 'owner_address', 'county', 'system_address', 'permit', 'sys_type', 'rules', 'cite', 'contractor_name', 'contractor_address', 'health_dept', 'response_hours', 'annual_fee', 'increase_pct', 'interest_pct', 'repair_days', 'origination_fee', 'inspection_fee', 'visits', 'rule_set', 'health_addr', 'approval_no', 'health_contact', 'permit_issued', 'emergency_fee'];
 
 // The permit as entered in System setup is the source for the agreement; the customer record fills anything left blank there.
 export function permitTerms(sys, customer) {
