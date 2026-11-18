@@ -58,6 +58,12 @@ footer a{color:var(--mute)}
 :focus-visible{outline:3px solid #8cd4d5;outline-offset:2px}
 @media(max-width:760px){.hero,.two{grid-template-columns:1fr}.hero{padding-block:28px}}
 .hp{position:absolute;left:-9999px;height:0;overflow:hidden}.chk{display:flex!important;gap:10px;align-items:flex-start;font-weight:400!important}.chk input{width:18px!important;margin-top:5px}#st.err{color:#b3261e}#st.done{color:var(--ink)}
+/* service-area map (NC counties from the US Census, via us-atlas) */
+.mapfig{margin:22px 0 0;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px}
+.ncmap{display:block;width:100%;height:auto}.ncmap .off path{fill:var(--line);stroke:var(--paper);stroke-width:.8}
+.ncmap .on path{fill:var(--amber);stroke:#8a5e17;stroke-width:1}.ncmap .edge{fill:none;stroke:#5c3d0c;stroke-width:1.6}
+.ncmap .st{fill:none;stroke:var(--mute);stroke-width:1;opacity:.6}.ncmap .lab text{font-family:Barlow,Arial,sans-serif;font-weight:700;font-size:11px;fill:#241e17;text-anchor:middle}
+@media (max-width:600px){.ncmap .lab{display:none}}
 </style></head><body>
 
 <div class="in">
@@ -111,7 +117,8 @@ footer a{color:var(--mute)}
 <section class="s" id="area">
 <div>
 <div><h2>Where we work</h2><p class="lead" style="margin-bottom:6px">Central North Carolina.</p>
-<ul class="counties"><li>Alamance</li><li>Chatham</li><li>Durham</li><li>Harnett</li><li>Lee</li><li>Moore</li><li>Orange</li><li>Randolph</li><li>Wake</li></ul></div>
+<ul class="counties"><li>Alamance</li><li>Chatham</li><li>Durham</li><li>Harnett</li><li>Lee</li><li>Moore</li><li>Orange</li><li>Randolph</li><li>Wake</li></ul>
+<figure class="mapfig" id="areaMap"></figure></div>
 </div>
 </section>
 
@@ -137,5 +144,5 @@ footer a{color:var(--mute)}
 </div>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="/form.js"></script>
-<script src="/phone.js"></script>
+<script src="/area-map.js" defer></script><script src="/phone.js"></script>
 </body></html>
