@@ -33,6 +33,8 @@ ok(jack && jack.email === 'jackharman53@gmail.com' && jack.address === '2112 Whi
 const draft = L.bills.find(b => b.no === 'INV-00101');
 ok(draft && draft.state === 'draft' && draft.total_cents === 250000 && draft.greet === 'Jack' && draft.lines.length === 3 && draft.contact_id === jack.id, 'his $2,500 invoice INV-00101 is waiting as a draft');
 ok(L.next_no === 'INV-00102', 'the next invoice is INV-00102');
+const kc = await J(await adm('/admin/api/contacts'));
+ok(kc.kinds.includes('Engineer') && kc.contacts.find(c => c.name === 'Jack Harman').kind === 'Engineer', 'Jack is filed as an Engineer');
 // validation
 ok((await adm('/admin/api/bill', { bill_name: '', bill_email: 'a@b.com', lines: [{ desc: 'x' }], total: 10 })).status === 400, 'needs a name');
 ok((await adm('/admin/api/bill', { bill_name: 'A', bill_email: 'nope', lines: [{ desc: 'x' }], total: 10 })).status === 400, 'needs a valid email');

@@ -31,7 +31,7 @@ async function invoiceRows(env, where, bind) {
   return rows.map(i => ({ id: i.id, customer_id: i.customer_id, customer_name: i.customer_name, county: i.customer_county, kind: i.kind, ref_id: i.ref_id, visit_date: i.visit_date || '', est_no: i.est_num ? 'EST-' + String(i.est_num).padStart(5, '0') : '', inv_no: i.inv_num ? invNo(i.inv_num) : '', job: i.job || '', due_date: i.due_date || '', amount_cents: i.amount_cents, status: i.status, flag: i.flag, paused: !!i.paused, created_date: i.created_date, age: daysBetween(i.created_date, today), release_date: i.release_date, released: !!i.released_at, notice_state: i.notice_state, term_date: i.term_date, tracking: i.tracking, note: i.note, reminders: i.reminders }));
 }
 
-export const CONTACT_KINDS = ['Installer', 'County', 'Realtor', 'Builder', 'Inspector', 'Referral', 'Lead', 'Customer', 'Other'];
+export const CONTACT_KINDS = ['Installer', 'Engineer', 'County', 'Realtor', 'Builder', 'Inspector', 'Referral', 'Lead', 'Customer', 'Other'];
 function cleanContact(b) {
   const c = { name: clean(b.name, 100), company: clean(b.company, 120), kind: CONTACT_KINDS.includes(b.kind) ? b.kind : 'Other', county: clean(b.county, 40), phone: clean(b.phone, 40), email: clean(b.email, 254), next_step: clean(b.next_step, 200), next_date: /^\d{4}-\d{2}-\d{2}$/.test(b.next_date || '') ? b.next_date : '', notes: clean(b.notes, 2000), customer_id: clean(b.customer_id, 40) };
   if (!c.name) return { error: 'Enter a name.' };
