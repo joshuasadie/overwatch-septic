@@ -16,6 +16,7 @@
   function stateText(i) {
     if (i.status === 'waived') return ['Waived', 'good'];
     if (i.status === 'paid') return i.flag ? ['Paid, ' + i.flag + '. Held', 'bad'] : i.released ? ['Released', 'good'] : ['Paid, release ' + OW.date(i.release_date), 'warn'];
+    if (i.kind === 'bill' && i.status === 'open') { var td = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10); return i.due_date && i.due_date < td ? ['Past due since ' + OW.date(i.due_date) + (i.paused ? ' (paused)' : ''), 'bad'] : ['Sent, due ' + OW.date(i.due_date), 'warn']; }
     if (i.notice_state === 'final_drafted') return ['Final notice ready for your OK', 'bad'];
     if (i.notice_state === 'sent') return ['Notice sent, ends ' + OW.date(i.term_date), 'bad'];
     if (i.notice_state === 'drafted') return ['Unpaid day ' + i.age + ', notice ready for your OK', 'bad'];
@@ -28,10 +29,11 @@
         rows.filter(function (i) { return i.notice_state === 'drafted' || i.notice_state === 'final_drafted'; }).map(function (i) { return '<div class="alert bad"><span><b>' + (i.notice_state === 'drafted' ? 'A notice is ready for your OK.' : 'A final notice is ready for your OK.') + '</b><br><span class="mute">' + E(i.customer_name) + ', ' + E(OW.invFor(i)) + ', ' + OW.money(i.amount_cents) + ' unpaid ' + i.age + ' days.</span></span><button class="b" data-rv="' + i.id + '" data-kind="' + (i.notice_state === 'drafted' ? 'notice' : 'final') + '">Review and send</button></div>'; }).join('');
       $('it').innerHTML = rows.map(function (i) {
         var st = stateText(i), b = '';
-        if (i.status === 'open') b += '<button class="b alt" data-iv="waive" data-id="' + i.id + '">Waive fee</button><button class="b alt" data-iv="paid" data-id="' + i.id + '">Mark paid</button><button class="b alt" data-iv="pause" data-id="' + i.id + '" data-p="' + (i.paused ? 0 : 1) + '">' + (i.paused ? 'Resume' : 'Pause') + '</button>';
+        if (i.kind === 'bill') b += '<button class="b alt" data-bill="' + i.id + '">Open</button>' + (i.status === 'open' ? '<button class="b alt" data-iv="paid" data-id="' + i.id + '">Record payment</button>' : '');
+        else if (i.status === 'open') b += '<button class="b alt" data-iv="waive" data-id="' + i.id + '">Waive fee</button><button class="b alt" data-iv="paid" data-id="' + i.id + '">Mark paid</button><button class="b alt" data-iv="pause" data-id="' + i.id + '" data-p="' + (i.paused ? 0 : 1) + '">' + (i.paused ? 'Resume' : 'Pause') + '</button>';
         if (i.status === 'paid' && !i.released) b += '<button class="b alt" data-iv="release" data-id="' + i.id + '">Release now</button>';
         if (i.notice_state === 'drafted' || i.notice_state === 'final_drafted') b += '<button class="b" data-rv="' + i.id + '" data-kind="' + (i.notice_state === 'drafted' ? 'notice' : 'final') + '">Review notice</button>';
-        return '<tr><td><b class="pickc" data-cid="' + i.customer_id + '" style="cursor:pointer">' + E(i.customer_name) + '</b></td><td>' + E(OW.invFor(i)) + '</td><td>' + OW.money(i.amount_cents) + '</td><td><span class="pill ' + st[1] + '">' + E(st[0]) + '</span>' + (i.note ? '<br><small class="mute">' + E(i.note) + '</small>' : '') + '</td><td><span class="row">' + b + '</span></td></tr>';
+        return '<tr><td>' + (i.kind === 'bill' ? '<b data-bill="' + i.id + '" style="cursor:pointer">' + E(i.customer_name) + '</b><br><small class="mute">not a customer</small>' : '<b class="pickc" data-cid="' + i.customer_id + '" style="cursor:pointer">' + E(i.customer_name) + '</b>') + '</td><td>' + E(OW.invFor(i)) + '</td><td>' + OW.money(i.amount_cents) + '</td><td><span class="pill ' + st[1] + '">' + E(st[0]) + '</span>' + (i.note ? '<br><small class="mute">' + E(i.note) + '</small>' : '') + '</td><td><span class="row">' + b + '</span></td></tr>';
       }).join('') || '<tr><td colspan="5" class="mute">No open invoices.</td></tr>';
     });
   }
@@ -325,7 +327,8 @@
     if (iv) {
       var act = iv.getAttribute('data-iv'), iid = iv.getAttribute('data-id');
       if (act === 'waive' && !confirm('Waive this fee? Whatever is locked is released to the customer right away.')) return;
-      if (act === 'paid' && !confirm('Mark this invoice paid (for a check or cash)? The 3 business day hold starts now.')) return;
+      var isBill = !!document.querySelector('[data-bill="' + iid + '"]');
+      if (act === 'paid' && !confirm(isBill ? 'Record this invoice as paid (check or cash)? They get a thank-you email.' : 'Mark this invoice paid (for a check or cash)? The 3 business day hold starts now.')) return;
       return void OW.api('/admin/api/invoice-' + act, { id: iid, paused: iv.getAttribute('data-p') === '1' }).then(function (j) { j.ok ? OW.toast('Done.') : fail(j); refresh(); });
     }
     var cs = t.closest('[data-county-send]'); if (cs) return void OW.api('/admin/api/report-county-send', { id: cs.getAttribute('data-county-send') }).then(function (j) { j.ok ? OW.toast('County copy sent.') : fail(j); refresh(); });

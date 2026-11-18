@@ -4,6 +4,7 @@ import { createInvoice, markPaid, releaseInvoice, releaseReport, sendCountyRepor
 import { operatorOf, systemInfo, createInspection, saveSystem, attachInspections, uploadPhoto, servePhoto, deleteInspectionFiles } from './inspection.js';
 import { createContract, previewContract, resendContract, voidContract, countersign, publicView, signedSendInfo, sendSigned } from './contracts.js';
 import { listViewers, saveViewer, deleteViewer, viewerLog } from './viewers.js';
+import { listBills, getBill, saveBill, sendBill, voidBill, invNo } from './bills.js';
 import { listEstimates, getEstimate, saveEstimate, sendEstimate, voidEstimate, invoiceEstimate, estimateDefaults } from './estimates.js';
 import { listCases, getCase, saveCase, saveComment, saveItem, caseFromReport, deleteCasesFor, CASE_STATUS, CASE_TYPES, CHANNELS, ITEM_STATUS, peopleOf, savePerson, addPrimaryContact, PERSON_ROLES } from './cases.js';
 
@@ -25,9 +26,9 @@ const out = r => r.error ? reply({ ok: false, error: r.error }, r.status || 400)
 
 
 async function invoiceRows(env, where, bind) {
-  const rows = (await env.DB.prepare(`SELECT i.*, c.name AS customer_name, c.county AS customer_county, r.visit_date AS visit_date, e.num AS est_num FROM invoices i JOIN customers c ON c.id = i.customer_id LEFT JOIN reports r ON (i.kind = 'visit' AND r.id = i.ref_id) LEFT JOIN estimates e ON (i.kind = 'repair' AND e.id = i.ref_id) WHERE ${where} ORDER BY i.created_at DESC`).bind(...bind).all()).results;
+  const rows = (await env.DB.prepare(`SELECT i.*, COALESCE(b.bill_name, c.name) AS customer_name, c.county AS customer_county, r.visit_date AS visit_date, e.num AS est_num, b.num AS inv_num, b.job AS job, b.due_date AS due_date FROM invoices i LEFT JOIN customers c ON c.id = i.customer_id LEFT JOIN bills b ON (i.kind = 'bill' AND b.invoice_id = i.id) LEFT JOIN reports r ON (i.kind = 'visit' AND r.id = i.ref_id) LEFT JOIN estimates e ON (i.kind = 'repair' AND e.id = i.ref_id) WHERE ${where} ORDER BY i.created_at DESC`).bind(...bind).all()).results;
   const today = etDate();
-  return rows.map(i => ({ id: i.id, customer_id: i.customer_id, customer_name: i.customer_name, county: i.customer_county, kind: i.kind, ref_id: i.ref_id, visit_date: i.visit_date || '', est_no: i.est_num ? 'EST-' + String(i.est_num).padStart(5, '0') : '', amount_cents: i.amount_cents, status: i.status, flag: i.flag, paused: !!i.paused, created_date: i.created_date, age: daysBetween(i.created_date, today), release_date: i.release_date, released: !!i.released_at, notice_state: i.notice_state, term_date: i.term_date, tracking: i.tracking, note: i.note, reminders: i.reminders }));
+  return rows.map(i => ({ id: i.id, customer_id: i.customer_id, customer_name: i.customer_name, county: i.customer_county, kind: i.kind, ref_id: i.ref_id, visit_date: i.visit_date || '', est_no: i.est_num ? 'EST-' + String(i.est_num).padStart(5, '0') : '', inv_no: i.inv_num ? invNo(i.inv_num) : '', job: i.job || '', due_date: i.due_date || '', amount_cents: i.amount_cents, status: i.status, flag: i.flag, paused: !!i.paused, created_date: i.created_date, age: daysBetween(i.created_date, today), release_date: i.release_date, released: !!i.released_at, notice_state: i.notice_state, term_date: i.term_date, tracking: i.tracking, note: i.note, reminders: i.reminders }));
 }
 
 export const CONTACT_KINDS = ['Installer', 'County', 'Realtor', 'Builder', 'Inspector', 'Referral', 'Lead', 'Customer', 'Other'];
@@ -285,6 +286,12 @@ export async function adminApi(request, env, path) {
     const d = await noticeDrafts(env, inv, kind);
     return reply({ ok: true, kind, owner: d.owner, county: d.county, address: d.customer.address, name: d.customer.name, county_name: d.customer.county, term: d.term });
   }
+  // invoices to anyone (bills.js)
+  if (path === '/admin/api/bills' && method === 'GET') return reply(await listBills(env));
+  m = /^\/admin\/api\/bill\/([a-f0-9]{20})$/.exec(path);
+  if (m && method === 'GET') { const b = await getBill(env, m[1]); return b ? reply({ ok: true, bill: b }) : reply({ ok: false, error: 'Not found.' }, 404); }
+  m = /^\/admin\/api\/bill(|-send|-void)$/.exec(path);
+  if (m && method === 'POST') { const j = await readJson(request, m[1] === '-send' ? 1600000 : 65536); if (j.res) return j.res; return out(await ({ '': saveBill, '-send': sendBill, '-void': voidBill })[m[1]](env, email, j.body)); }
   if (path === '/admin/api/viewers' && method === 'GET') return reply({ ok: true, ...(await listViewers(env)) });
   m = /^\/admin\/api\/viewer-log\/([a-f0-9]{20})$/.exec(path);
   if (m && method === 'GET') return reply({ ok: true, log: await viewerLog(env, m[1]) });
