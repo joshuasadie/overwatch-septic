@@ -1,9 +1,10 @@
 // Billing: invoices, Stripe Checkout, the 3 business day hold, release of contracts and reports, and the daily unpaid sequence.
 import { countyInspectionHtml, ownerReportEmailHtml } from './inspection.js';
 import { reply, clean, id, rand, sha, siteOrigin, sendMail, esc, ensureSchema } from './lib.js';
+import { invNo, mailBill } from './bills.js';
 
 export const HOLD_DAYS = 3, NOTICE_DAYS = 30;
-export const money = c => '$' + (c / 100).toFixed(2);
+export const money = c => '$' + (c / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 export const toCents = v => { const n = Number(String(v ?? '').replace(/[$,]/g, '')); return Number.isFinite(n) && n >= 0 && n < 100000 ? Math.round(n * 100) : null; };
 
 // ---- dates (all business rules use the Eastern date)
@@ -40,10 +41,13 @@ async function billMail(env, to, name, subject, text) {
   if (ok && env.MAIL_TO && to.toLowerCase() !== String(env.MAIL_TO).toLowerCase()) await sendMail(env, env.MAIL_TO, `[Copy] ${subject} (sent to ${name})`, [`Sent to ${name} <${to}> on ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}.`, '', '----- What they received -----', '', text].join('\n'));
   return ok;
 }
-export const label = (inv, ref) => inv.kind === 'origination' ? 'origination fee for your Inspection and Maintenance Agreement' : inv.kind === 'repair' ? `repair work${ref ? ', ' + ref : ''}` : `septic visit on ${niceDate(ref || inv.created_date)}`;
+export const label = (inv, ref) => inv.kind === 'bill' ? `invoice ${ref}` : inv.kind === 'origination' ? 'origination fee for your Inspection and Maintenance Agreement' : inv.kind === 'repair' ? `repair work${ref ? ', ' + ref : ''}` : `septic visit on ${niceDate(ref || inv.created_date)}`;
 async function refDate(env, inv) {
+  if (inv.kind === 'bill') { const b = await env.DB.prepare('SELECT num, job FROM bills WHERE invoice_id = ?').bind(inv.id).first(); return b ? invNo(b.num) + (b.job ? ` (${b.job})` : '') : ''; }
   if (inv.kind === 'repair') { const e = await env.DB.prepare('SELECT num, title FROM estimates WHERE id = ?').bind(inv.ref_id).first(); return e ? `estimate EST-${String(e.num).padStart(5, '0')} (${e.title})` : ''; }
   if (inv.kind !== 'visit') return ''; const r = await env.DB.prepare('SELECT visit_date FROM reports WHERE id = ?').bind(inv.ref_id).first(); return r ? r.visit_date : ''; }
+// Who pays: the customer, or for an invoice to anyone (kind 'bill') the bill-to person.
+export const payer = (env, inv) => inv.kind === 'bill' ? env.DB.prepare('SELECT bill_name AS name, bill_email AS email, greet, num FROM bills WHERE invoice_id = ?').bind(inv.id).first() : env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(inv.customer_id).first();
 const payLink = (env, inv) => `${siteOrigin(env)}/pay/${inv.id}`;
 const getCounty = async (env, name) => { const r = await env.DB.prepare('SELECT email FROM counties WHERE name = ?').bind(String(name || '').trim().toLowerCase()).first(); return r ? r.email : ''; };
 
@@ -65,7 +69,7 @@ export async function checkoutUrl(env, inv, customer) {
   const o = siteOrigin(env), body = new URLSearchParams({
     mode: 'payment', client_reference_id: inv.id, customer_email: customer.email, success_url: `${o}/pay/done/?ok=1`, cancel_url: `${o}/pay/done/?ok=0`,
     'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': 'usd', 'line_items[0][price_data][unit_amount]': String(inv.amount_cents),
-    'line_items[0][price_data][product_data][name]': inv.kind === 'origination' ? 'Origination fee: Inspection and Maintenance Agreement' : inv.kind === 'repair' ? 'Septic repair work' : 'Septic inspection and maintenance visit',
+    'line_items[0][price_data][product_data][name]': inv.kind === 'bill' ? `Overwatch Septic invoice${customer.num ? ' ' + invNo(customer.num) : ''}` : inv.kind === 'origination' ? 'Origination fee: Inspection and Maintenance Agreement' : inv.kind === 'repair' ? 'Septic repair work' : 'Septic inspection and maintenance visit',
     'metadata[invoice_id]': inv.id, 'payment_intent_data[metadata][invoice_id]': inv.id,
   });
   try {
@@ -83,7 +87,8 @@ export async function payRedirect(request, env, invId) {
   const inv = await env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(invId).first();
   if (!inv) return page('Invoice not found', 'This payment link is not valid.', 404);
   if (inv.status !== 'open') return page(inv.status === 'waived' ? 'No payment needed' : 'Already paid', inv.status === 'waived' ? 'This fee was waived. Nothing is due.' : 'This invoice has been paid. Thank you.', 200);
-  const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(inv.customer_id).first();
+  const c = await payer(env, inv);
+  if (!c) return page('Invoice not found', 'This payment link is not valid.', 404);
   const r = await checkoutUrl(env, inv, c);
   if (r.error) return page('Payment unavailable', r.error, 503);
   return new Response(null, { status: 303, headers: { location: r.url, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
@@ -137,9 +142,12 @@ export async function markPaid(env, inv, who, now = new Date()) {
   const r = await env.DB.prepare("UPDATE invoices SET status = 'paid', paid_at = ?, release_date = ?, flag = '', note = '' WHERE id = ? AND status = 'open'").bind(nowIso, rel, inv.id).run();
   if (!r.meta || r.meta.changes !== 1) return false;
   await audit(env, who, 'invoice-paid', inv.id, money(inv.amount_cents));
-  const c = await env.DB.prepare('SELECT name, email FROM customers WHERE id = ?').bind(inv.customer_id).first();
+  // nothing is held behind an invoice to anyone, so it is done as soon as it is paid
+  if (inv.kind === 'bill') await env.DB.prepare("UPDATE invoices SET released_at = ?, notice_state = 'none' WHERE id = ?").bind(nowIso, inv.id).run();
+  const c = await payer(env, inv);
+  if (!c) return true;
   const what = label(inv, await refDate(env, inv));
-  await billMail(env, c.email, c.name, 'Payment received. Thank you', [`Hello ${c.name},`, '', `We received your payment of ${money(inv.amount_cents)} for the ${what}.`, inv.kind === 'repair' ? 'Thank you for your business.' : `It is released after the payment has cleared, on ${niceDate(rel)}. We will email you when it is available in your customer portal.`, '', 'Overwatch Septic, LLC'].join('\n'));
+  await billMail(env, c.email, c.name, 'Payment received. Thank you', [`Hello ${c.greet || c.name},`, '', `We received your payment of ${money(inv.amount_cents)} for the ${what}.`, inv.kind === 'repair' || inv.kind === 'bill' ? 'Thank you for your business.' : `It is released after the payment has cleared, on ${niceDate(rel)}. We will email you when it is available in your customer portal.`, '', 'Overwatch Septic, LLC'].join('\n'));
   if (inv.notice_state === 'sent' || inv.notice_state === 'final_drafted' || inv.notice_state === 'drafted') await alertOwner(env, 'Paid after notice', `${c.name} paid ${money(inv.amount_cents)} after the unpaid sequence reached "${inv.notice_state}". If a notice already went to the county, you may want to tell them the agreement continues.`);
   return true;
 }
@@ -153,7 +161,7 @@ export async function releaseInvoice(env, inv, who, now = new Date()) {
   const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(inv.customer_id).first();
   if (inv.kind === 'origination') {
     await sendMail(env, c.email, 'Your signed agreement is available', [`Hello ${c.name},`, '', 'Your fully signed Inspection and Maintenance Agreement is now available. Sign in to your customer portal to read and download it:', '', `${siteOrigin(env)}/login/`, '', 'Overwatch Septic, LLC'].join('\n'), env.MAIL_TO);
-  } else if (inv.kind !== 'repair') await releaseReport(env, inv.ref_id, c, nowIso);
+  } else if (inv.kind !== 'repair' && inv.kind !== 'bill') await releaseReport(env, inv.ref_id, c, nowIso);
   return true;
 }
 export async function releaseReport(env, reportId, customer, nowIso = new Date().toISOString()) {
@@ -256,8 +264,15 @@ export async function runDaily(env, now = new Date()) {
   // 2. the unpaid sequence
   const open = (await env.DB.prepare("SELECT * FROM invoices WHERE status = 'open' AND paused = 0").all()).results;
   for (const inv of open) {
-    const age = daysBetween(inv.created_date, today), c = await env.DB.prepare('SELECT name, email FROM customers WHERE id = ?').bind(inv.customer_id).first();
+    const age = daysBetween(inv.created_date, today), c = await payer(env, inv);
     if (!c) continue;
+    if (inv.kind === 'bill') {
+      // Invoices to anyone: never a notice to the county. One reminder at 15 days (unless turned off), and tell Josh once it is past due.
+      const bl = await env.DB.prepare('SELECT * FROM bills WHERE invoice_id = ?').bind(inv.id).first(); if (!bl) continue;
+      if (inv.notice_state === 'none' && bl.due_date && today > bl.due_date) { await env.DB.prepare("UPDATE invoices SET notice_state = 'alerted' WHERE id = ?").bind(inv.id).run(); await alertOwner(env, `Invoice ${invNo(bl.num)} past due`, `${bl.bill_name}'s ${money(inv.amount_cents)} invoice ${invNo(bl.num)}${bl.job ? ' (' + bl.job + ')' : ''} was due ${niceDate(bl.due_date)} and is unpaid. Nothing goes to the county for this kind of invoice. Follow up with them.`); acted++; }
+      else if (bl.reminders !== 'none' && inv.notice_state === 'none' && age >= 15 && !inv.d15_sent) { await mailBill(env, bl, 'reminder', ''); await env.DB.prepare('UPDATE invoices SET d15_sent = 1, last_reminder_date = ? WHERE id = ?').bind(today, inv.id).run(); acted++; }
+      continue;
+    }
     const what = label(inv, await refDate(env, inv)), link = payLink(env, inv), amt = money(inv.amount_cents);
     const remind = async (subject, lines, set) => { await billMail(env, c.email, c.name, subject, [`Hello ${c.name},`, '', ...lines, '', `Pay here: ${link}`, '', 'If you already paid, or have a question, reply to this email.', '', 'Overwatch Septic, LLC'].join('\n')); await env.DB.prepare(`UPDATE invoices SET ${set}, last_reminder_date = ? WHERE id = ?`).bind(today, inv.id).run(); acted++; };
     if (inv.kind === 'repair') {

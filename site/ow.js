@@ -11,8 +11,8 @@
     return fetch(url, init).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j.status = r.status; if (!r.ok && !j.error) j.error = 'Something went wrong. Please try again.'; return j; }); }).catch(function () { return { ok: false, error: 'Could not reach the server. Check your connection and try again.' }; });
   };
   var tt; OW.toast = function (m) { var t = document.getElementById('toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); } t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(function () { t.hidden = true; }, 3500); };
-  OW.money = function (c) { return '$' + (c / 100).toFixed(2); };
-  OW.invFor = function (i) { return i.kind === 'origination' ? 'Origination fee' : i.kind === 'repair' ? 'Repair' + (i.est_no ? ', ' + i.est_no : '') : 'Visit ' + OW.date(i.visit_date); };
+  OW.money = function (c) { return '$' + (c / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
+  OW.invFor = function (i) { return i.kind === 'bill' ? (i.inv_no || 'Invoice') + (i.job ? ', ' + i.job : '') : i.kind === 'origination' ? 'Origination fee' : i.kind === 'repair' ? 'Repair' + (i.est_no ? ', ' + i.est_no : '') : 'Visit ' + OW.date(i.visit_date); };
   OW.STATUS = { terminated: ['Cancelled for nonpayment', 'bad'], sent: ['Waiting on customer', 'warn'], owner_signed: ['Needs your signature', 'warn'], complete: ['Signed', 'good'], void: ['Cancelled', 'mute'], none: ['Not sent', 'bad'] };
   OW.pill = function (s, forCustomer) { var x = OW.STATUS[s] || OW.STATUS.none; var label = x[0]; if (forCustomer) label = { sent: 'Needs your signature', owner_signed: 'Signed by you, waiting on us', complete: 'Signed', terminated: 'Cancelled for nonpayment', void: 'Cancelled' }[s] || label; return '<span class="pill ' + x[1] + '">' + OW.esc(label) + '</span>'; };
   OW.LOGO = '<svg width="40" height="40" viewBox="0 0 100 100" fill="none" stroke="var(--brz)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="50" cy="50" r="47" fill="var(--slate)"/><g stroke="var(--onslate)"><path d="M30 23 50 11 70 23Z"/><path d="M38 23V34M62 23V34"/><path d="M38 34 31 62M62 34 69 62M36 54 64 40M64 54 36 40" stroke-width="2.2"/></g><path d="M40 29Q50 21 60 29Q50 37 40 29Z" stroke-width="2"/><circle cx="50" cy="29" r="2.4" fill="var(--brz)" stroke="none"/><rect x="26" y="62" width="48" height="12" rx="6"/><path d="M42 62v-3M58 62v-3M16 68h10M74 68h10M30 81h40M36 87h28M41 93h18" stroke-width="2.2"/></svg>';
@@ -150,6 +150,30 @@
       '</tbody></table></div>') + '<div class="esttot">' + (e.tax ? '<div><span>Subtotal</span><span>' + d2(e.subtotal) + '</span></div><div><span>Sales tax on parts (' + E(e.tax_rate) + '%)</span><span>' + d2(e.tax) + '</span></div>' : '') + '<div><b>Total' + (e.pending ? ' so far' : '') + '</b><b>' + d2(e.total) + '</b></div>' + (e.pending ? '<p class="mute" style="font-size:13px;margin:2px 0 0;text-align:right">Items marked Pending are not priced yet and are not in this total.</p>' : '') + '</div>' +
       (e.notes ? '<p class="mute" style="white-space:pre-wrap;font-size:14px;margin:12px 0 0">' + E(e.notes) + '</p>' : '') +
       (e.accepted_at ? '<p class="good" style="margin:10px 0 0"><b>Accepted</b> by ' + E(e.accepted_name) + ' on ' + E(new Date(e.accepted_at).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' })) + '</p>' : '') + '</div>';
+  };
+  // ---- invoices to anyone (INV-00101…). b: the bill from /admin/api/bill; sent date and due date fill in when it is sent.
+  OW.billPdf = function (b) {
+    var sent = b.sent_date || new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+    var due = b.due_date || (function () { var d = new Date(sent + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + Number(b.terms || 0)); return d.toISOString().slice(0, 10); })();
+    return layout(window.PDFLib, 'Invoice ' + b.no).then(function (L) {
+      L.letterhead([OW.EST_FROM[1], '919-525-1455', OW.CONTACT.email, OW.CONTACT.site]);
+      L.text('INVOICE ' + b.no, { bold: true, size: 15, center: true, after: 8 });
+      L.text('Date: ' + OW.date(sent) + '   |   Due: ' + (Number(b.terms) === 0 ? 'on receipt' : OW.date(due) + ' (Net ' + b.terms + ')'), {});
+      L.gap(4); L.text('Bill to', { bold: true, after: 1 });
+      [b.bill_name, b.bill_company, b.bill_address, b.bill_email].filter(Boolean).forEach(function (x) { L.text(x, { after: 0 }); });
+      if (b.job) { L.gap(6); L.text('Project: ' + b.job, { after: 4 }); }
+      L.gap(6); var R = [500];
+      L.row(['Description', 'Amount'], { bold: true, right: R, w0: 400 }); L.rule();
+      b.lines.forEach(function (l) { L.row([(l.date ? l.date + ':  ' : '') + l.desc, b.per_line ? d2((l.cents || 0) / 100) : ''], { right: R, w0: 400 }); });
+      L.rule();
+      L.row(['Total due', d2(b.total_cents / 100)], { bold: true, size: 12, right: R, w0: 400 });
+      L.gap(10); L.text('How to pay', { bold: true, after: 2 });
+      if (b.pay_online) L.text('Online by card or bank: ' + location.origin + '/pay/' + b.id, { size: 10, after: 2 });
+      if (b.pay_check) L.text((b.pay_online ? 'Or by check' : 'By check') + ' payable to Overwatch Septic, LLC, mailed to ' + OW.EST_FROM[1] + '. Please write ' + b.no + ' on the check.', { size: 10, after: 2 });
+      if (b.notes) { L.gap(6); L.text(b.notes, { size: 10 }); }
+      L.gap(14); L.text('Thank you for your business.', { italic: true, size: 10, center: true });
+      return L.save();
+    });
   };
   OW.estimatePdf = function (e, cust) {
     return layout(window.PDFLib, 'Estimate ' + e.no).then(function (L) {
