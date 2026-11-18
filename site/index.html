@@ -35,7 +35,7 @@ nav{display:flex;flex-wrap:wrap;gap:10px 24px;align-items:center;justify-content
 .dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:8px}
 .row{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.14);font-size:15px}
 .row:last-child{border:0}
-.ok{background:#6fd08c}.alarm{background:var(--amber)}
+.ok{background:#6fd08c}.due{background:#e0a33a}.due-t{color:#f0c060;font-weight:600}.alarm{background:var(--amber)}
 .alarmline{background:var(--amber);color:var(--amberink);font-weight:600;border-radius:10px;padding:12px 16px;margin-top:14px}
 section.s{padding-block:34px;border-top:1px solid var(--line)}
 section.s h2{font-size:clamp(26px,4vw,36px);margin:0 0 6px}
@@ -83,10 +83,10 @@ footer a{color:var(--mute)}
 </div>
 <aside class="panelcard" aria-label="Example of a system check">
 <h2>What we check</h2>
-<p style="margin:0 0 8px;font-size:14px;opacity:.85">A typical visit, from our written report</p>
+<p style="margin:0 0 8px;font-size:14px;color:var(--onslate);opacity:.8">A typical visit, from our written report</p>
 <div class="row"><span><i class="dot ok"></i>Tank and baffles</span><span>Pass</span></div>
+<div class="row"><span><i class="dot due"></i>Tank solids (35%)</span><span class="due-t">Pump soon</span></div>
 <div class="row"><span><i class="dot ok"></i>Pump and float switches</span><span>Pass</span></div>
-<div class="row"><span><i class="dot ok"></i>Control panel contactor</span><span>Pass</span></div>
 <div class="row"><span><i class="dot ok"></i>Alarm test</span><span>Pass</span></div>
 <div class="row"><span><i class="dot ok"></i>Drain field</span><span>Pass</span></div>
 </aside>
