@@ -164,7 +164,7 @@
       if (b.job) { L.gap(6); L.text('Project: ' + b.job, { after: 4 }); }
       L.gap(6); var R = [500];
       L.row(['Description', 'Amount'], { bold: true, right: R, w0: 400 }); L.rule();
-      b.lines.forEach(function (l) { L.row([(l.date ? l.date + ':  ' : '') + l.desc, b.per_line ? d2((l.cents || 0) / 100) : ''], { right: R, w0: 400 }); });
+      b.lines.forEach(function (l) { L.row([(l.date ? (/^\d{4}-\d{2}-\d{2}$/.test(l.date) ? OW.date(l.date) : l.date) + ':  ' : '') + l.desc, b.per_line ? d2((l.cents || 0) / 100) : ''], { right: R, w0: 400 }); });
       L.rule();
       L.row(['Total due', d2(b.total_cents / 100)], { bold: true, size: 12, right: R, w0: 400 });
       L.gap(10); L.text('How to pay', { bold: true, after: 2 });

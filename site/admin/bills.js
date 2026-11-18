@@ -7,9 +7,17 @@
   function today() { return new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10); }
   function dueOf(b) { if (b.due_date) return b.due_date; var d = new Date(today() + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + Number(b.terms || 0)); return d.toISOString().slice(0, 10); }
   function money(c) { return d2((c || 0) / 100); }
+  function iso(v) {
+    v = String(v || '').trim(); if (!v || /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+    var y = +today().slice(0, 4), d = new Date(v + (/\d{4}/.test(v) ? '' : ' ' + y)); if (isNaN(d)) return '';
+    var out = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    if (!/\d{4}/.test(v) && out > today()) out = (y - 1) + out.slice(4);
+    return out;
+  }
+  function shown(v) { return /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? OW.date(v) : v || ''; }
   function load() { return OW.api('/admin/api/bills').then(function (j) { if (!j.ok) return; L = j; if (!cur) draw(); }); }
-  function blank() { return { id: '', no: L.next_no, state: 'draft', who: 'other', bill_name: '', greet: '', bill_company: '', bill_email: '', bill_address: '', contact_id: '', customer_id: '', job: '', lines: [{ date: '', desc: '', amount: '' }], per_line: false, total: '', terms: 30, pay_online: true, pay_check: true, reminders: 'one', notes: '', save_contact: true }; }
-  function fromBill(b) { var c = JSON.parse(JSON.stringify(b)); c.who = b.customer_id ? 'customer' : 'other'; c.total = (b.total_cents / 100).toFixed(2); c.lines = b.lines.map(function (l) { return { date: l.date, desc: l.desc, amount: l.cents == null ? '' : (l.cents / 100).toFixed(2) }; }); c.save_contact = false; return c; }
+  function blank() { return { id: '', no: L.next_no, state: 'draft', who: 'other', bill_name: '', greet: '', bill_company: '', bill_email: '', bill_address: '', contact_id: '', customer_id: '', job: '', lines: [{ date: today(), desc: '', amount: '' }], per_line: false, total: '', terms: 30, pay_online: true, pay_check: true, reminders: 'one', notes: '', save_contact: true }; }
+  function fromBill(b) { var c = JSON.parse(JSON.stringify(b)); c.who = b.customer_id ? 'customer' : 'other'; c.total = (b.total_cents / 100).toFixed(2); c.lines = b.lines.map(function (l) { return { date: iso(l.date), desc: l.desc, amount: l.cents == null ? '' : (l.cents / 100).toFixed(2) }; }); c.save_contact = false; return c; }
 
   function draw() {
     var box = $('billBox'); if (!box) return;
@@ -32,8 +40,8 @@
       '<label for="bl_a">Mailing address</label><input id="bl_a" maxlength="240" value="' + E(c.bill_address) + '">' +
       (who ? '' : '<label class="chk" style="display:flex;gap:8px;align-items:center;font-weight:400;margin-top:6px"><input type="checkbox" id="bl_sc" style="width:auto;min-height:0"' + (c.save_contact ? ' checked' : '') + '> ' + (c.contact_id ? 'Save this address to their contact' : 'Save to Contacts') + '</label>') +
       '<label for="bl_j">Job or project</label><input id="bl_j" maxlength="200" value="' + E(c.job) + '" placeholder="Property, permit or job name">' +
-      '<label style="margin-top:10px">Work</label><div class="tw"><table><thead><tr><th style="width:16%;min-width:74px">Date</th><th>Description</th>' + (c.per_line ? '<th style="width:16%">Amount</th>' : '') + '<th style="width:1%"></th></tr></thead><tbody>' +
-      c.lines.map(function (l, i) { return '<tr><td><input data-l="' + i + '" data-f="date" maxlength="20" value="' + E(l.date) + '" placeholder="Nov 7"></td><td><input data-l="' + i + '" data-f="desc" maxlength="300" value="' + E(l.desc) + '"></td>' + (c.per_line ? '<td><input data-l="' + i + '" data-f="amount" inputmode="decimal" value="' + E(l.amount) + '" style="text-align:right"></td>' : '') + '<td>' + (c.lines.length > 1 ? '<button type="button" class="b alt" data-ldel="' + i + '" aria-label="Remove line">&times;</button>' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+      '<label style="margin-top:10px">Work</label><div class="tw"><table><thead><tr><th style="width:20%;min-width:150px">Date</th><th>Description</th>' + (c.per_line ? '<th style="width:16%">Amount</th>' : '') + '<th style="width:1%"></th></tr></thead><tbody>' +
+      c.lines.map(function (l, i) { return '<tr><td><input type="date" data-l="' + i + '" data-f="date" value="' + E(iso(l.date)) + '"></td><td><input data-l="' + i + '" data-f="desc" maxlength="300" value="' + E(l.desc) + '"></td>' + (c.per_line ? '<td><input data-l="' + i + '" data-f="amount" inputmode="decimal" value="' + E(l.amount) + '" style="text-align:right"></td>' : '') + '<td>' + (c.lines.length > 1 ? '<button type="button" class="b alt" data-ldel="' + i + '" aria-label="Remove line">&times;</button>' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>' +
       '<div class="row" style="gap:12px;margin-top:6px;align-items:center"><button type="button" class="b alt" id="bl_add">Add line</button><label style="display:flex;gap:8px;align-items:center;font-weight:400;margin:0"><input type="checkbox" id="bl_pl" style="width:auto;min-height:0"' + (c.per_line ? ' checked' : '') + '> Price each line separately</label></div>' +
       '<div class="two"><div><label for="bl_t">Total</label><input id="bl_t" inputmode="decimal" value="' + E(c.per_line ? '' : c.total) + '"' + (c.per_line ? ' disabled placeholder="Adds up the lines"' : ' placeholder="2500"') + '></div><div><label for="bl_terms">Due</label><select id="bl_terms">' + [30, 15, 0].map(function (t) { return '<option value="' + t + '"' + (Number(c.terms) === t ? ' selected' : '') + '>' + TERMS[t] + '</option>'; }).join('') + '</select></div></div>' +
       '<label style="margin-top:10px">How they can pay</label><label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="bl_po" style="width:auto;min-height:0"' + (c.pay_online ? ' checked' : '') + '> Online (card or bank) with a Pay link</label><label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="bl_pc" style="width:auto;min-height:0"' + (c.pay_check ? ' checked' : '') + '> Check payable to Overwatch Septic, LLC</label>' +
@@ -57,7 +65,7 @@
     [].forEach.call(document.querySelectorAll('#blf [data-who]'), function (x) { x.onclick = function () { grab(); cur.who = x.getAttribute('data-who'); if (cur.who === 'other') cur.customer_id = ''; else cur.contact_id = ''; draw(); }; });
     if ($('bl_cust')) $('bl_cust').onchange = function () { grab(); var x = L.customers.filter(function (k) { return k.id === this.value; }, this)[0]; cur.customer_id = this.value; if (x) { cur.bill_name = x.name; cur.greet = x.name.split(/[\s,]+/)[0]; cur.bill_email = x.email; cur.bill_address = x.address; cur.bill_company = ''; } draw(); };
     if ($('bl_k')) $('bl_k').onchange = function () { grab(); var x = L.contacts.filter(function (k) { return k.id === this.value; }, this)[0]; cur.contact_id = this.value; if (x) { cur.bill_name = x.name; cur.greet = x.name.split(/[\s,]+/)[0]; cur.bill_email = x.email; cur.bill_address = x.address; cur.bill_company = x.company; cur.save_contact = !x.address; } draw(); };
-    $('bl_add').onclick = function () { grab(); cur.lines.push({ date: '', desc: '', amount: '' }); draw(); };
+    $('bl_add').onclick = function () { grab(); cur.lines.push({ date: today(), desc: '', amount: '' }); draw(); };
     $('bl_pl').onchange = function () { grab(); cur.per_line = this.checked; draw(); };
     [].forEach.call(document.querySelectorAll('#blf [data-ldel]'), function (x) { x.onclick = function () { grab(); cur.lines.splice(+x.getAttribute('data-ldel'), 1); draw(); }; });
     $('bl_x').onclick = function () { cur = null; load().then(draw); };
@@ -101,7 +109,7 @@
     var b = cur, open = b.state === 'sent' && b.status === 'open';
     $('billBox').innerHTML = '<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px"><h3 style="margin:0 0 4px">' + E(b.no) + ' &middot; ' + E(b.bill_name) + ' <span class="pill ' + (b.status === 'paid' ? 'good' : open && b.due_date < today() ? 'bad' : open ? 'warn' : 'mute') + '">' + E(stateOf(b)) + '</span></h3>' +
       '<p class="mute sm" style="margin:0 0 8px">' + E([b.job, money(b.total_cents), 'sent ' + OW.date(b.sent_date) + ' to ' + b.bill_email].filter(Boolean).join(' · ')) + '</p>' +
-      '<ul class="list">' + b.lines.map(function (l) { return '<li><span>' + (l.date ? '<b>' + E(l.date) + ':</b> ' : '') + E(l.desc) + '</span>' + (b.per_line ? '<span>' + money(l.cents) + '</span>' : '') + '</li>'; }).join('') + '</ul>' +
+      '<ul class="list">' + b.lines.map(function (l) { return '<li><span>' + (l.date ? '<b>' + E(shown(l.date)) + ':</b> ' : '') + E(l.desc) + '</span>' + (b.per_line ? '<span>' + money(l.cents) + '</span>' : '') + '</li>'; }).join('') + '</ul>' +
       '<div class="row" style="gap:8px;margin-top:10px">' + (open ? '<button class="b" id="bs_paid">Record check payment</button>' : '') + '<button class="b alt" id="bs_pdf">Download PDF</button>' + (open ? '<button class="b alt" id="bs_re">Resend</button>' + (b.pay_online ? '<button class="b alt" id="bs_link">Copy pay link</button>' : '') + '<button class="b danger" id="bs_void">Void</button>' : '') + '<button class="b alt" id="bs_x">Close</button></div><div class="msg" id="blm" role="status"></div></div>';
     $('bs_x').onclick = function () { cur = null; draw(); };
     $('bs_pdf').onclick = function () { OW.billPdf(b).then(function (bytes) { OW.download(bytes, b.no + '.pdf'); }); };
