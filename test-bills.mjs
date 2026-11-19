@@ -35,6 +35,8 @@ ok(draft && draft.state === 'draft' && draft.total_cents === 250000 && draft.gre
 ok(L.next_no === 'INV-00102', 'the next invoice is INV-00102');
 const kc = await J(await adm('/admin/api/contacts'));
 ok(kc.kinds.includes('Engineer') && kc.contacts.find(c => c.name === 'Jack Harman').kind === 'Engineer', 'Jack is filed as an Engineer');
+const moon = kc.contacts.find(c => c.name === 'John Moon');
+ok(moon && moon.company === 'Williams Brothers Trucking' && moon.phone === '(912) 424-4695 ext. 1650' && moon.notes.startsWith('Terminal Manager'), 'John Moon is in Contacts');
 // validation
 ok((await adm('/admin/api/bill', { bill_name: '', bill_email: 'a@b.com', lines: [{ desc: 'x' }], total: 10 })).status === 400, 'needs a name');
 ok((await adm('/admin/api/bill', { bill_name: 'A', bill_email: 'nope', lines: [{ desc: 'x' }], total: 10 })).status === 400, 'needs a valid email');
