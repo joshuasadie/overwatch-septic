@@ -37,6 +37,13 @@ const kc = await J(await adm('/admin/api/contacts'));
 ok(kc.kinds.includes('Engineer') && kc.contacts.find(c => c.name === 'Jack Harman').kind === 'Engineer', 'Jack is filed as an Engineer');
 const moon = kc.contacts.find(c => c.name === 'John Moon');
 ok(moon && moon.company === 'Williams Brothers Trucking' && moon.phone === '(912) 424-4695 ext. 1650' && moon.email === 'john.moon@wbtus.com' && moon.notes.startsWith('Terminal Manager'), 'John Moon is in Contacts');
+ok(moon.address === '6991 Old US Hwy #1, New Hill, NC', 'contacts come back with their address');
+let kr = await J(await adm('/admin/api/contact', { name: 'Addr Test', address: '12 Pine St, Apex, NC' }));
+let kl = (await J(await adm('/admin/api/contacts'))).contacts.find(c => c.name === 'Addr Test');
+ok(kl && kl.address === '12 Pine St, Apex, NC', 'a new contact saves its address');
+await adm('/admin/api/contact', { id: kl.id, name: 'Addr Test', address: '14 Pine St, Apex, NC' });
+kl = (await J(await adm('/admin/api/contacts'))).contacts.find(c => c.name === 'Addr Test');
+ok(kl.address === '14 Pine St, Apex, NC', 'editing changes the address');
 // validation
 ok((await adm('/admin/api/bill', { bill_name: '', bill_email: 'a@b.com', lines: [{ desc: 'x' }], total: 10 })).status === 400, 'needs a name');
 ok((await adm('/admin/api/bill', { bill_name: 'A', bill_email: 'nope', lines: [{ desc: 'x' }], total: 10 })).status === 400, 'needs a valid email');

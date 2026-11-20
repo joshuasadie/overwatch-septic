@@ -66,7 +66,7 @@
   function hl(t, q) { t = String(t || ''); if (!q) return E(t); var i = t.toLowerCase().indexOf(q); return i < 0 ? E(t) : E(t.slice(0, i)) + '<mark>' + E(t.slice(i, i + q.length)) + '</mark>' + E(t.slice(i + q.length)); }
   function drawK() {
     var q = $('fromKq').value.trim().toLowerCase(), groups = {};
-    K.list.filter(function (c) { return !c.customer_id && c.kind !== 'Customer'; }).filter(function (c) { return !q || [c.name, c.company, c.county].some(function (x) { return String(x || '').toLowerCase().indexOf(q) >= 0; }); }).forEach(function (c) { (groups[c.kind] = groups[c.kind] || []).push(c); });
+    K.list.filter(function (c) { return !c.customer_id && c.kind !== 'Customer'; }).filter(function (c) { return !q || [c.name, c.company, c.county, c.address].some(function (x) { return String(x || '').toLowerCase().indexOf(q) >= 0; }); }).forEach(function (c) { (groups[c.kind] = groups[c.kind] || []).push(c); });
     var kinds = Object.keys(groups).sort(function (a, b) { return (K_ORDER.indexOf(a) + 1 || 99) - (K_ORDER.indexOf(b) + 1 || 99); });
     KC.items = []; var h = '';
     kinds.forEach(function (k) {
@@ -82,7 +82,7 @@
     var c = K.list.filter(function (x) { return x.id === k; })[0]; if (!c) return;
     editCustomer(null); K.toCustomer = c.id;
     $('c_name').value = c.name; $('c_email').value = c.email; $('c_phone').value = c.phone; $('c_county').value = c.county;
-    var addr = /^Property: (.+)/m.exec(c.notes || ''); if (addr) $('c_address').value = addr[1];
+    var addr = /^Property: (.+)/m.exec(c.notes || ''); $('c_address').value = c.address || (addr ? addr[1] : '');
     $('c_notes').value = c.notes || '';
     $('edHint').innerHTML = 'From your contacts: check the details, add the property address, system type and permit number, then save. <b>Save and send contract</b> opens the contract form for them.';
     closeK(); $('fromKq').value = c.name;
@@ -106,23 +106,23 @@
     $('kN').innerHTML = K.list.length + (due.length ? ' &middot; <span style="color:var(--warn)">' + due.length + ' to follow up</span>' : '');
     var counts = { All: K.list.length }; K.list.forEach(function (c) { counts[c.kind] = (counts[c.kind] || 0) + 1; });
     $('kchips').innerHTML = ['All'].concat(K.kinds.filter(function (k) { return counts[k]; })).map(function (k) { return '<button type="button" class="b' + (K.kind === k ? '' : ' alt') + '" data-kkind="' + E(k) + '" style="padding:4px 12px;min-height:0;font-size:14px">' + (k === 'All' ? '' : '<span aria-hidden="true" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + kindColor(k) + ';margin-right:6px"></span>') + E(k) + ' ' + counts[k] + '</button>'; }).join('');
-    var q = K.q.toLowerCase(), rows = K.list.filter(function (c) { return (K.kind === 'All' || c.kind === K.kind) && (!q || [c.name, c.company, c.county, c.email, c.notes].join(' ').toLowerCase().indexOf(q) >= 0); });
+    var q = K.q.toLowerCase(), rows = K.list.filter(function (c) { return (K.kind === 'All' || c.kind === K.kind) && (!q || [c.name, c.company, c.county, c.email, c.notes, c.address].join(' ').toLowerCase().indexOf(q) >= 0); });
     $('kt').innerHTML = rows.map(function (c) {
       var reach = [c.phone && '<a href="tel:' + E(c.phone.replace(/[^\d+x]/g, '')) + '">' + E(c.phone) + '</a>', c.email && '<a href="mailto:' + E(c.email) + '">' + E(c.email) + '</a>'].filter(Boolean).join('<br>') || '-';
-      return '<tr><td><b>' + E(c.name) + '</b>' + (c.notes ? '<br><small class="mute">' + E(c.notes) + '</small>' : '') + (c.repair_prefs ? '<br><small><b>Repairs:</b> ' + E(c.repair_prefs) + '</small>' : '') + ((c.systems || []).length ? '<br><small class="mute">Installed: ' + c.systems.map(function (y) { return '<a href="#" data-kgo="' + E(y.id) + '">' + E(y.name) + '</a>'; }).join(', ') + '</small>' : '') + '</td><td>' + E([c.company, c.county && c.county + ' County'].filter(Boolean).join(' · ') || '-') + '</td><td><span class="pill" style="color:' + kindColor(c.kind) + '">' + E(c.kind) + '</span></td><td>' + reach + '</td><td>' + E(c.next_step || '-') + (c.next_date ? '<br><small class="mute">' + E(OW.date(c.next_date)) + '</small>' : '') + '</td><td><span class="row" style="gap:6px"><button class="b alt" type="button" data-kedit="' + E(c.id) + '">Edit</button>' + (c.kind === 'Lead' && !c.customer_id ? '<button class="b" type="button" data-kcust="' + E(c.id) + '">Make customer</button>' : '') + '<button class="b danger" type="button" data-kdel="' + E(c.id) + '">Remove</button></span></td></tr>';
+      return '<tr><td><b>' + E(c.name) + '</b>' + (c.address ? '<br><small>' + E(c.address) + '</small>' : '') + (c.notes ? '<br><small class="mute">' + E(c.notes) + '</small>' : '') + (c.repair_prefs ? '<br><small><b>Repairs:</b> ' + E(c.repair_prefs) + '</small>' : '') + ((c.systems || []).length ? '<br><small class="mute">Installed: ' + c.systems.map(function (y) { return '<a href="#" data-kgo="' + E(y.id) + '">' + E(y.name) + '</a>'; }).join(', ') + '</small>' : '') + '</td><td>' + E([c.company, c.county && c.county + ' County'].filter(Boolean).join(' · ') || '-') + '</td><td><span class="pill" style="color:' + kindColor(c.kind) + '">' + E(c.kind) + '</span></td><td>' + reach + '</td><td>' + E(c.next_step || '-') + (c.next_date ? '<br><small class="mute">' + E(OW.date(c.next_date)) + '</small>' : '') + '</td><td><span class="row" style="gap:6px"><button class="b alt" type="button" data-kedit="' + E(c.id) + '">Edit</button>' + (c.kind === 'Lead' && !c.customer_id ? '<button class="b" type="button" data-kcust="' + E(c.id) + '">Make customer</button>' : '') + '<button class="b danger" type="button" data-kdel="' + E(c.id) + '">Remove</button></span></td></tr>';
     }).join('') || '<tr><td colspan="6" class="mute">No contacts match.</td></tr>';
   }
   function contactForm(c) {
     K.edit = c ? c.id : ''; $('kfT').textContent = c ? 'Edit ' + c.name : 'Add a contact'; $('kX').hidden = !c; $('km2').textContent = '';
     $('k_name').value = c ? c.name : ''; $('k_company').value = c ? c.company : ''; $('k_kind').value = c ? c.kind : 'Installer'; $('k_county').value = c ? c.county : '';
-    $('k_phone').value = c ? c.phone : ''; $('k_email').value = c ? c.email : ''; $('k_next').value = c ? c.next_step : ''; $('k_date').value = c ? c.next_date : ''; $('k_notes').value = c ? c.notes : ''; $('k_prefs').value = c ? (c.repair_prefs || '') : '';
+    $('k_phone').value = c ? c.phone : ''; $('k_email').value = c ? c.email : ''; $('k_addr').value = c ? c.address || '' : ''; $('k_next').value = c ? c.next_step : ''; $('k_date').value = c ? c.next_date : ''; $('k_notes').value = c ? c.notes : ''; $('k_prefs').value = c ? (c.repair_prefs || '') : '';
     if (c) $('kf').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   $('kq').addEventListener('input', function () { K.q = this.value; drawContacts(); });
   $('kX').onclick = function () { contactForm(null); };
   $('kf').addEventListener('submit', function (e) {
     e.preventDefault(); var old = K.list.filter(function (x) { return x.id === K.edit; })[0] || {};
-    OW.api('/admin/api/contact', { id: K.edit || undefined, name: $('k_name').value, company: $('k_company').value, kind: $('k_kind').value, county: $('k_county').value, phone: $('k_phone').value, email: $('k_email').value, next_step: $('k_next').value, next_date: $('k_date').value, notes: $('k_notes').value, repair_prefs: $('k_prefs').value, customer_id: old.customer_id || '' }).then(function (j) {
+    OW.api('/admin/api/contact', { id: K.edit || undefined, name: $('k_name').value, company: $('k_company').value, kind: $('k_kind').value, county: $('k_county').value, phone: $('k_phone').value, address: $('k_addr').value, email: $('k_email').value, next_step: $('k_next').value, next_date: $('k_date').value, notes: $('k_notes').value, repair_prefs: $('k_prefs').value, customer_id: old.customer_id || '' }).then(function (j) {
       if (!j.ok) { $('km2').className = 'msg err'; $('km2').textContent = j.error; return; }
       OW.toast('Contact saved.'); contactForm(null); loadContacts();
     });

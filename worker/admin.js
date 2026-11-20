@@ -38,6 +38,7 @@ function cleanContact(b) {
   if (c.email && !EMAIL.test(c.email)) return { error: 'That email address does not look right.' };
   return c;
 }
+const saveAddr = (env, cid, b) => b.address === undefined ? null : env.DB.prepare('INSERT INTO contact_addr (contact_id, address) VALUES (?, ?) ON CONFLICT(contact_id) DO UPDATE SET address = excluded.address').bind(cid, clean(b.address, 240)).run();
 const savePrefs = (env, cid, b) => b.repair_prefs === undefined ? null : env.DB.prepare('INSERT INTO contact_extra (contact_id, repair_prefs) VALUES (?, ?) ON CONFLICT(contact_id) DO UPDATE SET repair_prefs = excluded.repair_prefs').bind(cid, clean(b.repair_prefs, 2000)).run();
 const setTest = (env, cid, on) => on ? env.DB.prepare('INSERT OR IGNORE INTO test_customers (customer_id) VALUES (?)').bind(cid).run() : env.DB.prepare('DELETE FROM test_customers WHERE customer_id = ?').bind(cid).run();
 export async function adminApi(request, env, path) {
@@ -301,7 +302,7 @@ export async function adminApi(request, env, path) {
   if (path === '/admin/api/counties' && method === 'GET') return reply({ ok: true, counties: (await env.DB.prepare('SELECT name, email FROM counties ORDER BY name').all()).results });
   // ---- contacts: installers, county staff, referrals and leads
   if (path === '/admin/api/contacts' && method === 'GET') {
-    const list = (await env.DB.prepare("SELECT c.*, COALESCE(x.repair_prefs, '') AS repair_prefs FROM contacts c LEFT JOIN contact_extra x ON x.contact_id = c.id ORDER BY CASE WHEN c.next_date = '' THEN 1 ELSE 0 END, c.next_date, c.name").all()).results;
+    const list = (await env.DB.prepare("SELECT c.*, COALESCE(x.repair_prefs, '') AS repair_prefs, COALESCE(a.address, '') AS address FROM contacts c LEFT JOIN contact_extra x ON x.contact_id = c.id LEFT JOIN contact_addr a ON a.contact_id = c.id ORDER BY CASE WHEN c.next_date = '' THEN 1 ELSE 0 END, c.next_date, c.name").all()).results;
     const built = new Map();
     for (const r of (await env.DB.prepare('SELECT s.data, c.id AS cid, c.name AS cname, c.address AS caddr FROM systems s JOIN customers c ON c.id = s.customer_id').all()).results) {
       let si = null; try { si = JSON.parse(r.data).installer; } catch { si = null; }
@@ -318,12 +319,12 @@ export async function adminApi(request, env, path) {
     if (cid) {
       const r = await env.DB.prepare('UPDATE contacts SET name=?, company=?, kind=?, county=?, phone=?, email=?, next_step=?, next_date=?, notes=?, customer_id=?, updated_at=? WHERE id=?').bind(c.name, c.company, c.kind, c.county, c.phone, c.email, c.next_step, c.next_date, c.notes, c.customer_id, now, cid).run();
       if (!r.meta || !r.meta.changes) return reply({ ok: false, error: 'Not found.' }, 404);
-      await savePrefs(env, cid, b);
+      await savePrefs(env, cid, b); await saveAddr(env, cid, b);
       return reply({ ok: true, id: cid });
     }
     const nid = id();
     await env.DB.batch([env.DB.prepare('INSERT INTO contacts (id, name, company, kind, county, phone, email, next_step, next_date, notes, customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(nid, c.name, c.company, c.kind, c.county, c.phone, c.email, c.next_step, c.next_date, c.notes, c.customer_id, now, now), audit(env, email, 'contact-added', nid, c.name)]);
-    await savePrefs(env, nid, b);
+    await savePrefs(env, nid, b); await saveAddr(env, nid, b);
     return reply({ ok: true, id: nid });
   }
   if (path === '/admin/api/county' && method === 'POST') {
