@@ -1,5 +1,5 @@
 // Admin API (Cloudflare Access protected): customers, contracts, reports.
-import { reply, clean, id, EMAIL, siteOrigin, sendMail, readJson, originOk, verifyAccess, ensureSchema } from './lib.js';
+import { schemaProblems, reply, clean, id, EMAIL, siteOrigin, sendMail, readJson, originOk, verifyAccess, ensureSchema } from './lib.js';
 import { createInvoice, markPaid, releaseInvoice, releaseReport, sendCountyReport, sendNotice, noticeDrafts, toCents, etDate, daysBetween } from './billing.js';
 import { operatorOf, systemInfo, createInspection, saveSystem, attachInspections, uploadPhoto, servePhoto, deleteInspectionFiles } from './inspection.js';
 import { createContract, previewContract, resendContract, voidContract, countersign, publicView, signedSendInfo, sendSigned } from './contracts.js';
@@ -45,8 +45,9 @@ export async function adminApi(request, env, path) {
   if (who === 'unconfigured') return reply({ ok: false, error: 'The admin area is not set up yet.' }, 503);
   if (who.fail) return reply({ ok: false, error: 'Not signed in.', reason: who.fail }, 401);
   if (!env.DB) return reply({ ok: false, error: 'The database is not connected.' }, 503);
-  try { await ensureSchema(env); } catch { return reply({ ok: false, error: 'Database error.' }, 500); }
+  try { await ensureSchema(env); } catch (e) { return reply({ ok: false, error: 'Database error: ' + String((e && e.message) || e).slice(0, 300) }, 500); }
   const email = who.email, method = request.method;
+  if (path === '/admin/api/health' && method === 'GET') return reply({ ok: true, schema_problems: schemaProblems });
   if (method !== 'GET' && !originOk(request, env)) return reply({ ok: false, error: 'Request not allowed.' }, 403);
 
   // raw PDF upload for a report
