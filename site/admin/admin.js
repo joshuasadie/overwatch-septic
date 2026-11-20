@@ -369,4 +369,6 @@
   });
   $('cyf').addEventListener('submit', function (e) { e.preventDefault(); OW.api('/admin/api/county', { name: $('cy_n').value, email: $('cy_e').value }).then(function (j) { if (!j.ok) { $('cym').className = 'msg err'; $('cym').textContent = j.error; return; } $('cym').textContent = ''; $('cy_n').value = ''; $('cy_e').value = ''; OW.toast('County saved.'); loadCounties(); }); });
   OW.api('/admin/api/config').then(function (j) { if (j.ok) { S.cfg = j; if (j.operator && j.operator.phone) OW.CONTACT.phone = j.operator.phone; $('who').textContent = 'Admin portal · ' + j.me; } }).then(function () { loadList(); loadInvoices(); loadCounties(); loadContacts(); });
+
+  OW.api('/admin/api/health').then(function (j) { if (j && j.ok && j.schema_problems && j.schema_problems.length) { var d = document.createElement('section'); d.className = 'card'; d.style.border = '2px solid var(--bad, #c0392b)'; d.innerHTML = '<h2 style="margin-top:0">Site setup problem</h2><p class="mute sm">' + j.schema_problems.length + ' database setup step(s) were skipped. Everything else works. Send this to Claude:</p><pre style="white-space:pre-wrap;font-size:12px">' + OW.esc(j.schema_problems.map(function (p) { return p.error + '\n  ' + p.sql; }).join('\n')) + '</pre>'; var m = document.querySelector('main') || document.body; m.insertBefore(d, m.firstChild); } });
 })();

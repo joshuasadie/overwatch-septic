@@ -217,9 +217,25 @@ export const SCHEMA = [
   "INSERT OR IGNORE INTO seeds (k) VALUES ('contact-moon-2026-11')",
 ];
 const ready = new WeakMap();
+// Statements that failed on the last schema run (shown to Josh in admin). Empty when all is well.
+export const schemaProblems = [];
+// All of SCHEMA runs as one batch. If any one statement fails, D1 rolls the whole batch back, so instead of the
+// whole site going down, run them one at a time: the rest still apply and only the bad one is skipped and reported.
+// It only throws (site shows "Database error") if the database itself can't be reached or a core table can't be made.
+async function runSchema(env) {
+  try { await env.DB.batch(SCHEMA.map(q => env.DB.prepare(q))); schemaProblems.length = 0; return; }
+  catch (e) { console.error('schema batch failed, running one at a time:', e && e.message); }
+  const bad = [];
+  for (const q of SCHEMA) {
+    try { await env.DB.prepare(q).run(); }
+    catch (x) { bad.push({ sql: q.slice(0, 160), error: String((x && x.message) || x).slice(0, 300) }); console.error('schema statement failed:', q.slice(0, 160), x && x.message); }
+  }
+  schemaProblems.length = 0; schemaProblems.push(...bad);
+  if (bad.length === SCHEMA.length || bad.some(b => /^CREATE TABLE/i.test(b.sql))) throw new Error(bad[0] ? bad[0].error : 'schema failed');
+}
 export function ensureSchema(env) {
   if (!ready.has(env.DB)) {
-    const p = env.DB.batch(SCHEMA.map(q => env.DB.prepare(q))).catch(e => { ready.delete(env.DB); throw e; });
+    const p = runSchema(env).catch(e => { ready.delete(env.DB); throw e; });
     ready.set(env.DB, p);
   }
   return ready.get(env.DB);
