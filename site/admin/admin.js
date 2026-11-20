@@ -55,9 +55,26 @@
       if (!j.ok) return;
       K.list = j.contacts; K.kinds = j.kinds;
       if (!$('k_kind').options.length) $('k_kind').innerHTML = K.kinds.map(function (k) { return '<option>' + E(k) + '</option>'; }).join('');
-      drawContacts();
+      drawContacts(); fillFromK();
     });
   }
+  function fillFromK() {
+    var ORDER = ['Lead', 'Referral', 'Other', 'Engineer', 'Builder', 'Realtor', 'Installer', 'Inspector', 'County'], groups = {};
+    K.list.filter(function (c) { return !c.customer_id && c.kind !== 'Customer'; }).forEach(function (c) { (groups[c.kind] = groups[c.kind] || []).push(c); });
+    var kinds = Object.keys(groups).sort(function (a, b) { return (ORDER.indexOf(a) + 1 || 99) - (ORDER.indexOf(b) + 1 || 99); });
+    $('fromK').innerHTML = '<option value="">Add from Contacts…</option>' + kinds.map(function (k) { return '<optgroup label="' + E(k === 'Other' ? 'Other' : k === 'County' ? 'County staff' : k + 's') + '">' + groups[k].map(function (c) { return '<option value="' + E(c.id) + '">' + E(c.name) + (c.company && c.company !== c.name ? ' (' + E(c.company) + ')' : '') + '</option>'; }).join('') + '</optgroup>'; }).join('');
+  }
+  // a contact becomes a customer: same as Make customer in Contacts
+  function fromContact(k) {
+    var c = K.list.filter(function (x) { return x.id === k; })[0]; if (!c) return;
+    editCustomer(null); K.toCustomer = c.id;
+    $('c_name').value = c.name; $('c_email').value = c.email; $('c_phone').value = c.phone; $('c_county').value = c.county;
+    var addr = /^Property: (.+)/m.exec(c.notes || ''); if (addr) $('c_address').value = addr[1];
+    $('c_notes').value = c.notes || '';
+    $('edHint').innerHTML = 'From your contacts: check the details, add the property address, system type and permit number, then save. <b>Save and send contract</b> opens the contract form for them.';
+    $('fromK').value = c.id;
+  }
+  $('fromK').onchange = function () { if (this.value) fromContact(this.value); };
   // type colors: installers bronze, county blue, referrals green, leads orange
   function kindColor(k) { return { Installer: 'var(--c1)', County: 'var(--c2)', Referral: 'var(--c3)', Lead: 'var(--warn)', Customer: 'var(--good)' }[k] || 'var(--mute)'; }
   function drawContacts() {
@@ -94,13 +111,7 @@
     if ((k = g('data-kkind'))) { K.kind = k; return void drawContacts(); }
     if ((k = g('data-kedit'))) return void contactForm(K.list.filter(function (x) { return x.id === k; })[0]);
     if ((k = g('data-kdel'))) { c = K.list.filter(function (x) { return x.id === k; })[0]; if (c && confirm('Remove ' + c.name + ' from contacts?')) OW.api('/admin/api/contact', { id: k, remove: true }).then(loadContacts); return; }
-    if ((k = g('data-kcust'))) {
-      c = K.list.filter(function (x) { return x.id === k; })[0]; if (!c) return;
-      editCustomer(null); K.toCustomer = c.id;
-      $('c_name').value = c.name; $('c_email').value = c.email; $('c_phone').value = c.phone; $('c_county').value = c.county;
-      var addr = /^Property: (.+)/m.exec(c.notes || ''); if (addr) $('c_address').value = addr[1];
-      $('c_notes').value = c.notes || '';
-    }
+    if ((k = g('data-kcust'))) return void fromContact(k);
   });
   function review(id, kind) {
     OW.api('/admin/api/invoice-letter?id=' + id + '&kind=' + kind).then(function (j) {
@@ -359,14 +370,19 @@
   function editCustomer(c) {
     S.editing = c ? c.id : ''; K.toCustomer = ''; $('editor').hidden = false; $('edT').textContent = c ? 'Edit customer' : 'Add customer'; $('cm').textContent = '';
     FIELDS.forEach(function (f) { $('c_' + f).value = c ? c[KEYS[f] || f] || '' : ''; });
-    $('c_test').checked = !!(c && c.test);
-    $('editor').scrollIntoView({ behavior: 'smooth' });
+    $('c_test').checked = !!(c && c.test); $('fromK').value = '';
+    $('cSave').textContent = c ? 'Save customer' : 'Save and send contract'; $('cOnly').hidden = !!c;
+    $('edHint').innerHTML = c ? '' : 'After you save, their page opens with <b>Send contract</b>, New inspection and System setup.';
+    setTimeout(function () { $('editor').scrollIntoView({ behavior: 'smooth', block: 'start' }); if (!c) $('c_name').focus({ preventScroll: true }); }, 0);
   }
-  $('edX').onclick = function () { $('editor').hidden = true; };
-  $('cf').addEventListener('submit', function (e) {
-    e.preventDefault(); var body = { id: S.editing || undefined }; FIELDS.forEach(function (f) { body[KEYS[f] || f] = $('c_' + f).value; }); body.test = $('c_test').checked;
-    OW.api('/admin/api/customer', body).then(function (j) { if (!j.ok) { $('cm').className = 'msg err'; $('cm').textContent = j.error; return; } $('editor').hidden = true; OW.toast('Saved.'); S.sel = j.id; select(j.id); if (K.toCustomer && !S.editing) { var lc = K.list.filter(function (x) { return x.id === K.toCustomer; })[0]; K.toCustomer = ''; if (lc) OW.api('/admin/api/contact', Object.assign({}, lc, { kind: 'Customer', customer_id: j.id, next_step: '', next_date: '' })).then(loadContacts); } });
-  });
+  $('edX').onclick = function () { $('editor').hidden = true; K.toCustomer = ''; $('fromK').value = ''; };
+  var thenContract = false;
+  $('cOnly').onclick = function () { thenContract = false; saveCustomer(); };
+  $('cf').addEventListener('submit', function (e) { e.preventDefault(); thenContract = !S.editing; saveCustomer(); });
+  function saveCustomer() {
+    var body = { id: S.editing || undefined }; FIELDS.forEach(function (f) { body[KEYS[f] || f] = $('c_' + f).value; }); body.test = $('c_test').checked;
+    OW.api('/admin/api/customer', body).then(function (j) { if (!j.ok) { $('cm').className = 'msg err'; $('cm').textContent = j.error; return; } $('editor').hidden = true; OW.toast('Saved.'); S.sel = j.id; var go = thenContract; thenContract = false; select(j.id).then(function () { if (go && S.d && S.d.customer && S.d.customer.id === j.id) { contractForm(); var pn = $('panel'); if (pn) pn.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }); if (K.toCustomer && !S.editing) { var lc = K.list.filter(function (x) { return x.id === K.toCustomer; })[0]; K.toCustomer = ''; if (lc) OW.api('/admin/api/contact', Object.assign({}, lc, { kind: 'Customer', customer_id: j.id, next_step: '', next_date: '' })).then(loadContacts); } });
+  }
   $('cyf').addEventListener('submit', function (e) { e.preventDefault(); OW.api('/admin/api/county', { name: $('cy_n').value, email: $('cy_e').value }).then(function (j) { if (!j.ok) { $('cym').className = 'msg err'; $('cym').textContent = j.error; return; } $('cym').textContent = ''; $('cy_n').value = ''; $('cy_e').value = ''; OW.toast('County saved.'); loadCounties(); }); });
   OW.api('/admin/api/config').then(function (j) { if (j.ok) { S.cfg = j; if (j.operator && j.operator.phone) OW.CONTACT.phone = j.operator.phone; $('who').textContent = 'Admin portal · ' + j.me; } }).then(function () { loadList(); loadInvoices(); loadCounties(); loadContacts(); });
 
