@@ -10,7 +10,15 @@
 <section class="card" id="casesBox"><h2>Open cases <span class="mute" id="casesN"></span></h2><div id="casesF" class="row" style="gap:6px;margin:0 0 6px"></div><ul class="list" id="casesL"><li class="mute">Loading…</li></ul></section>
 <section class="card"><h2>Invoices</h2><div class="tw"><table><thead><tr><th>Bill to</th><th>For</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody id="it"></tbody></table></div><div id="billBox"></div></section>
 <section class="card"><h2>Customers</h2><div class="tw"><table><thead><tr><th>Customer</th><th>System</th><th>Contract</th><th>Last visit</th></tr></thead><tbody id="ct"></tbody></table></div>
-<div class="row" style="margin-top:10px"><button class="b" id="addC">Add customer</button></div></section>
+<div class="row" style="margin-top:10px;gap:8px;align-items:center"><button class="b" id="addC">Add customer</button><span class="mute sm">or</span><select id="fromK" aria-label="Add a customer from Contacts" style="width:auto;min-width:220px;max-width:100%"><option value="">Add from Contacts…</option></select></div></section>
+<section class="card" id="editor" hidden style="border:2px solid var(--amber)"><h2 id="edT">Customer</h2><p class="mute sm" id="edHint" style="margin:-4px 0 8px"></p><form id="cf" novalidate>
+<div class="two"><div><label for="c_name">Name</label><input id="c_name" maxlength="100"></div><div><label for="c_email">Email (used for portal sign-in)</label><input id="c_email" type="email" maxlength="254"></div>
+<div><label for="c_phone">Phone</label><input id="c_phone" maxlength="30"></div><div><label for="c_county">County</label><input id="c_county" maxlength="40"></div></div>
+<label for="c_address">Property address</label><input id="c_address" maxlength="200">
+<div class="two"><div><label for="c_sys">System type (roman numeral, like V)</label><input id="c_sys" maxlength="20"></div><div><label for="c_permit">Permit number</label><input id="c_permit" maxlength="40"></div></div>
+<label for="c_notes">Private notes</label><textarea id="c_notes" maxlength="1000"></textarea>
+<label class="chk" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="c_test" style="width:auto;min-height:0"> This is a test customer (can be deleted even after signing)</label>
+<div class="row" style="margin-top:10px"><button class="b" type="submit" id="cSave">Save customer</button><button class="b alt" type="button" id="cOnly" hidden>Save only</button><button class="b alt" type="button" id="edX">Cancel</button></div><div class="msg" id="cm" role="status"></div></form></section>
 <div id="detail" class="in" style="padding:0"></div>
 <details class="card fold" id="ctyBox"><summary><h2>Counties <span class="mute" id="ctyN"></span></h2></summary><p class="mute" style="margin:0 0 6px">Where reports and notices go. A county with no email here gets nothing.</p><ul class="list" id="cty"></ul><form id="cyf" class="two" novalidate style="margin-top:8px;align-items:end"><div><label for="cy_n">County name</label><input id="cy_n" maxlength="40" placeholder="Chatham"></div><div><label for="cy_e">Environmental Health email</label><input id="cy_e" type="email" maxlength="254"></div><div class="row" style="margin-top:8px"><button class="b" type="submit">Save county</button></div></form><div class="msg" id="cym" role="status"></div></details>
 <details class="card fold" id="vwBox"><summary><h2>View-only logins <span class="mute" id="vwN"></span></h2></summary><div id="vwBody"><p class="mute">Loading…</p></div></details>
@@ -26,13 +34,6 @@
 <label for="k_notes">Notes</label><textarea id="k_notes" maxlength="2000"></textarea><label for="k_prefs">Repair preferences (installers: how they want repairs handed to them)</label><textarea id="k_prefs" maxlength="2000" placeholder="Call directly, text photos first, what they handle and what they don't"></textarea>
 <div class="row" style="margin-top:10px"><button class="b" type="submit" id="kSave">Save contact</button><button class="b alt" type="button" id="kX" hidden>Cancel</button></div><div class="msg" id="km2" role="status"></div></form></details>
 <div id="printArea"></div>
-<section class="card" id="editor" hidden><h2 id="edT">Customer</h2><form id="cf" novalidate>
-<div class="two"><div><label for="c_name">Name</label><input id="c_name" maxlength="100"></div><div><label for="c_email">Email (used for portal sign-in)</label><input id="c_email" type="email" maxlength="254"></div>
-<div><label for="c_phone">Phone</label><input id="c_phone" maxlength="30"></div><div><label for="c_county">County</label><input id="c_county" maxlength="40"></div></div>
-<label for="c_address">Property address</label><input id="c_address" maxlength="200">
-<div class="two"><div><label for="c_sys">System type (roman numeral, like V)</label><input id="c_sys" maxlength="20"></div><div><label for="c_permit">Permit number</label><input id="c_permit" maxlength="40"></div></div>
-<label for="c_notes">Private notes</label><textarea id="c_notes" maxlength="1000"></textarea>
-<label class="chk" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="c_test" style="width:auto;min-height:0"> This is a test customer (can be deleted even after signing)</label>
-<div class="row" style="margin-top:10px"><button class="b" type="submit">Save customer</button><button class="b alt" type="button" id="edX">Cancel</button></div><div class="msg" id="cm" role="status"></div></form></section>
+
 </div>
 <script src="/vendor/pdf-lib.min.js"></script><script src="/inspect-core.js"></script><script src="/inspect-view.js"></script><script src="/ow.js"></script><script src="/admin/admin.js"></script><script src="/admin/inspection.js"></script><script src="/admin/cases.js"></script><script src="/admin/estimates.js"></script><script src="/admin/viewers.js"></script><script src="/admin/bills.js"></script></body></html>
