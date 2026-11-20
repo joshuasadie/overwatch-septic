@@ -58,11 +58,24 @@
       drawContacts(); fillFromK();
     });
   }
-  function fillFromK() {
-    var ORDER = ['Lead', 'Referral', 'Other', 'Engineer', 'Builder', 'Realtor', 'Installer', 'Inspector', 'County'], groups = {};
-    K.list.filter(function (c) { return !c.customer_id && c.kind !== 'Customer'; }).forEach(function (c) { (groups[c.kind] = groups[c.kind] || []).push(c); });
-    var kinds = Object.keys(groups).sort(function (a, b) { return (ORDER.indexOf(a) + 1 || 99) - (ORDER.indexOf(b) + 1 || 99); });
-    $('fromK').innerHTML = '<option value="">Add from Contacts…</option>' + kinds.map(function (k) { return '<optgroup label="' + E(k === 'Other' ? 'Other' : k === 'County' ? 'County staff' : k + 's') + '">' + groups[k].map(function (c) { return '<option value="' + E(c.id) + '">' + E(c.name) + (c.company && c.company !== c.name ? ' (' + E(c.company) + ')' : '') + '</option>'; }).join('') + '</optgroup>'; }).join('');
+  // "Add from Contacts": a search box with a dropdown. Leads first; contacts already linked to a customer are left out.
+  var KC = { items: [], on: -1 };
+  var K_ORDER = ['Lead', 'Referral', 'Other', 'Engineer', 'Builder', 'Realtor', 'Installer', 'Inspector', 'County'];
+  function fillFromK() { if (!$('fromKd').hidden) drawK(); }
+  function closeK() { $('fromKd').hidden = true; $('fromKq').setAttribute('aria-expanded', 'false'); $('fromKa').textContent = '▾'; KC.on = -1; }
+  function hl(t, q) { t = String(t || ''); if (!q) return E(t); var i = t.toLowerCase().indexOf(q); return i < 0 ? E(t) : E(t.slice(0, i)) + '<mark>' + E(t.slice(i, i + q.length)) + '</mark>' + E(t.slice(i + q.length)); }
+  function drawK() {
+    var q = $('fromKq').value.trim().toLowerCase(), groups = {};
+    K.list.filter(function (c) { return !c.customer_id && c.kind !== 'Customer'; }).filter(function (c) { return !q || [c.name, c.company, c.county].some(function (x) { return String(x || '').toLowerCase().indexOf(q) >= 0; }); }).forEach(function (c) { (groups[c.kind] = groups[c.kind] || []).push(c); });
+    var kinds = Object.keys(groups).sort(function (a, b) { return (K_ORDER.indexOf(a) + 1 || 99) - (K_ORDER.indexOf(b) + 1 || 99); });
+    KC.items = []; var h = '';
+    kinds.forEach(function (k) {
+      h += '<div class="gh">' + E(k === 'Other' ? 'Other' : k === 'County' ? 'County staff' : k + 's') + '</div>';
+      groups[k].forEach(function (c) { var n = KC.items.push(c) - 1, sub = [c.company && c.company.indexOf(c.name) !== 0 ? c.company : (c.company && c.company !== c.name ? c.company.slice(c.name.length).replace(/^[,\s]+/, '') : ''), c.county].filter(Boolean); h += '<div class="op' + (n === KC.on ? ' on' : '') + '" role="option" data-ko="' + n + '">' + (k === 'Lead' ? '<b>' + hl(c.name, q) + '</b>' : hl(c.name, q)) + (sub.length ? ' <small>· ' + sub.map(function (x) { return hl(x, q); }).join(' · ') + '</small>' : '') + '</div>'; });
+    });
+    $('fromKd').innerHTML = h || '<div class="none">No contacts match.</div>';
+    $('fromKd').hidden = false; $('fromKq').setAttribute('aria-expanded', 'true'); $('fromKa').textContent = '▴';
+    var on = $('fromKd').querySelector('.op.on'); if (on) on.scrollIntoView({ block: 'nearest' });
   }
   // a contact becomes a customer: same as Make customer in Contacts
   function fromContact(k) {
@@ -72,9 +85,18 @@
     var addr = /^Property: (.+)/m.exec(c.notes || ''); if (addr) $('c_address').value = addr[1];
     $('c_notes').value = c.notes || '';
     $('edHint').innerHTML = 'From your contacts: check the details, add the property address, system type and permit number, then save. <b>Save and send contract</b> opens the contract form for them.';
-    $('fromK').value = c.id;
+    closeK(); $('fromKq').value = c.name;
   }
-  $('fromK').onchange = function () { if (this.value) fromContact(this.value); };
+  $('fromKq').addEventListener('input', function () { KC.on = this.value.trim() ? 0 : -1; drawK(); });
+  $('fromKq').addEventListener('focus', function () { if (this.value.trim()) drawK(); });
+  $('fromKq').addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if ($('fromKd').hidden) { KC.on = 0; return drawK(); } KC.on = Math.max(0, Math.min(KC.items.length - 1, KC.on + (e.key === 'ArrowDown' ? 1 : -1))); drawK(); }
+    else if (e.key === 'Enter') { e.preventDefault(); var c = KC.items[KC.on < 0 ? 0 : KC.on]; if (!$('fromKd').hidden && c) fromContact(c.id); }
+    else if (e.key === 'Escape') closeK();
+  });
+  $('fromKa').onclick = function () { if ($('fromKd').hidden) { drawK(); $('fromKq').focus(); } else closeK(); };
+  $('fromKd').addEventListener('mousedown', function (e) { var o = e.target.closest('[data-ko]'); if (!o) return; e.preventDefault(); var c = KC.items[+o.getAttribute('data-ko')]; if (c) fromContact(c.id); });
+  document.addEventListener('click', function (e) { if (!e.target.closest('#fromK')) closeK(); });
   // type colors: installers bronze, county blue, referrals green, leads orange
   function kindColor(k) { return { Installer: 'var(--c1)', County: 'var(--c2)', Referral: 'var(--c3)', Lead: 'var(--warn)', Customer: 'var(--good)' }[k] || 'var(--mute)'; }
   function drawContacts() {
@@ -370,12 +392,12 @@
   function editCustomer(c) {
     S.editing = c ? c.id : ''; K.toCustomer = ''; $('editor').hidden = false; $('edT').textContent = c ? 'Edit customer' : 'Add customer'; $('cm').textContent = '';
     FIELDS.forEach(function (f) { $('c_' + f).value = c ? c[KEYS[f] || f] || '' : ''; });
-    $('c_test').checked = !!(c && c.test); $('fromK').value = '';
+    $('c_test').checked = !!(c && c.test); $('fromKq').value = '';
     $('cSave').textContent = c ? 'Save customer' : 'Save and send contract'; $('cOnly').hidden = !!c;
     $('edHint').innerHTML = c ? '' : 'After you save, their page opens with <b>Send contract</b>, New inspection and System setup.';
     setTimeout(function () { $('editor').scrollIntoView({ behavior: 'smooth', block: 'start' }); if (!c) $('c_name').focus({ preventScroll: true }); }, 0);
   }
-  $('edX').onclick = function () { $('editor').hidden = true; K.toCustomer = ''; $('fromK').value = ''; };
+  $('edX').onclick = function () { $('editor').hidden = true; K.toCustomer = ''; $('fromKq').value = ''; };
   var thenContract = false;
   $('cOnly').onclick = function () { thenContract = false; saveCustomer(); };
   $('cf').addEventListener('submit', function (e) { e.preventDefault(); thenContract = !S.editing; saveCustomer(); });
