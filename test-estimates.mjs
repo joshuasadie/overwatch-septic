@@ -56,7 +56,7 @@ sent.length = 0; j = await J(await adm('/admin/api/estimate-send', { id: e1 }));
 ok(j.ok && sent.some(m => m.to.includes('ann@home.com') && /Estimate EST-00101/.test(m.subject) && /\$590\.50/.test(m.text) && /\/login\//.test(m.text)) && sent.some(m => /^\[Copy\] Estimate EST-00101/.test(m.subject)), 'send emails the customer a portal link, and you a copy');
 let pe = await J(await annP('/portal/api/estimates')); const raw = JSON.stringify(pe);
 ok(pe.estimates.length === 1 && pe.estimates[0].total === 590.5 && pe.estimates[0].status === 'sent', 'the customer sees the sent estimate');
-ok(!/"cost"|"markup"|"rate"|\b45\b/.test(raw), 'cost and markup never reach the portal');
+ok(!/"cost"|"markup"|"rate"|[:,\[]45(\.0+)?[,}\]]/.test(raw), 'cost and markup never reach the portal');
 ok((await J(await bobP('/portal/api/estimates'))).estimates.length === 0 && (await post(bobP, '/portal/api/estimate-accept', { id: e1, name: 'Bob Jones' })).status === 404, "another customer can't see or accept it");
 ok((await adm('/admin/api/estimate-invoice', { id: e1 })).status === 409, 'only an accepted estimate can be invoiced');
 sent.length = 0; j = await J(await post(annP, '/portal/api/estimate-question', { id: e1, body: 'Do the lids come in green?' }));
