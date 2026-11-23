@@ -169,7 +169,7 @@ const rG = await rep('2026-10-26', '250'); const iG = rG.fin.invoice; await runD
 await hook('checkout.session.completed', { client_reference_id: iG, payment_status: 'paid', payment_intent: 'pi_9' });
 ok(emailsTo('joshua@overwatchseptic.com').some(m => /Paid after notice/.test(m.subject)), 'paid after the notice was drafted: you are told');
 // bank payment not yet confirmed
-const rH = await rep('2026-10-27', '250'); await hook('checkout.session.completed', { client_reference_id: rH.fin.invoice, payment_status: 'unpaid', payment_intent: 'pi_10' });
+const rH = await rep(addDays(etDate(), -3), '250'); await hook('checkout.session.completed', { client_reference_id: rH.fin.invoice, payment_status: 'unpaid', payment_intent: 'pi_10' });
 ok((await invs()).find(x => x.id === rH.fin.invoice).status === 'open', 'bank payment started but unconfirmed stays open');
 await hook('checkout.session.async_payment_succeeded', { client_reference_id: rH.fin.invoice, payment_status: 'paid', payment_intent: 'pi_10' });
 ok((await invs()).find(x => x.id === rH.fin.invoice).status === 'paid', 'bank payment confirmed later marks paid');
