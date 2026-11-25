@@ -83,7 +83,7 @@ export async function createInspection(env, who, c, b) {
     x.unit = t.unit || '';
     Object.assign(t, { gal: x.gal, shape: x.shape, a: x.a, b: x.b, gpi: x.gpi, liquid_depth: x.liquid_depth, design_pdr: x.design_pdr, floats: x.floats });
   }
-  d.sysinfo = { permit: sys.permit, addresses: sys.addresses, names: { septic: sys.septic_name, pump: sys.pump_name }, zone_word: sys.zone_word, units: { septic: sys.septic_unit || '', pump: sys.pump_unit || '' } };
+  d.sysinfo = { design_flow: sys.design_flow, permit: sys.permit, addresses: sys.addresses, names: { septic: sys.septic_name, pump: sys.pump_name }, zone_word: sys.zone_word, units: { septic: sys.septic_unit || '', pump: sys.pump_unit || '' } };
   if (calc.drawdown !== null) d.flow.drawdown = calc.drawdown;
   if (calc.dose !== null) d.flow.dose = calc.dose;
   // the first flush-test reading on each zone becomes its baseline, kept on the system

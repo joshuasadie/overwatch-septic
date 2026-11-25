@@ -64,6 +64,7 @@
     var fm = n(m.flow);
     o.flow_used = fm !== null && n(prev.flow) !== null && fm >= n(prev.flow) ? Math.round(fm - n(prev.flow)) : null;
     o.flow_day = o.flow_used !== null && o.days ? Math.round(o.flow_used / o.days) : null;
+    o.flow_pct = o.flow_day !== null && n(ctx.design_flow) ? Math.round(o.flow_day / n(ctx.design_flow) * 100) : null;
     o.flow7_day = n(m.flow7) !== null ? Math.round(n(m.flow7) / 7) : null;
     o.flow30_day = n(m.flow30) !== null ? Math.round(n(m.flow30) / 30) : null;
     // average daily flow, as on the county forms: run hours x 60 x pump rate / days
@@ -115,6 +116,7 @@
     Object.keys(d.tanks || {}).forEach(function (id) { var t = d.tanks[id]; (OWI.TANK_ITEMS[t.kind] || []).forEach(function (it) { if ((t.checks || {})[it[0]] === 'no' && it[2] !== 'i') out.push({ s: t.name, label: it[1] }); }); });
     Object.keys(d.cards || {}).forEach(function (id) { (d.cards[id].rows || []).forEach(function (r) { if (r.a === 'no') out.push({ s: d.cards[id].title, label: r.l }); }); });
     var zf = OWI.zoneFlush(d); if (zf) zf.rows.forEach(function (x) { if (x.r.bad) out.push({ s: 'Zone flush test', label: 'Zone ' + x.z.n + ': ' + x.r.text.replace(/^Check: /, '') }); });
+    OWI.dripProblems(d).forEach(function (l) { out.push({ s: 'Drip system', label: l }); });
     return out;
   };
   // roll the canned answers up into the four pass/repair rows the older screens use
@@ -207,9 +209,10 @@
   // Check when flush flow is more than 10% under design, or inlet psi is more than 20% off the zone's baseline.
   OWI.ZF_FLUSH_PCT = 10; OWI.ZF_PSI_PCT = 20;
   OWI.zoneResult = function (z) {
-    z = z || {}; var f = n(z.flush), df = n(z.design_flush), pin = n(z.in_psi), base = n(z.base_in), out = [];
-    if (f === null && pin === null && n(z.out_psi) === null && n(z.dose) === null) return null;
-    var fp = f !== null && df ? Math.round((f - df) / df * 100) : null, pp = pin !== null && base ? Math.round((pin - base) / base * 100) : null;
+    z = z || {}; var f = n(z.flush), df = n(z.design_flush), pin = n(z.in_psi), base = n(z.base_in), q = n(z.dose), dq = n(z.design_dose), out = [];
+    if (f === null && pin === null && n(z.out_psi) === null && q === null) return null;
+    var fp = f !== null && df ? Math.round((f - df) / df * 100) : null, pp = pin !== null && base ? Math.round((pin - base) / base * 100) : null, qp = q !== null && dq ? Math.round((q - dq) / dq * 100) : null;
+    if (qp !== null && qp < -OWI.ZF_FLUSH_PCT) out.push('dose ' + (-qp) + '% under design');
     if (fp !== null && fp < -OWI.ZF_FLUSH_PCT) out.push('flush ' + (-fp) + '% under design');
     if (pp !== null && Math.abs(pp) > OWI.ZF_PSI_PCT) out.push('inlet psi ' + Math.abs(pp) + '% ' + (pp > 0 ? 'above' : 'below') + ' baseline');
     if (out.length) return { bad: true, text: 'Check: ' + out.join('; ') };
@@ -227,6 +230,66 @@
     var rows = zf.zones.map(function (z) { return { z: z, r: OWI.zoneResult(z) }; }).filter(function (x) { return x.r; });
     if (!rows.length) return null;
     return { rows: rows, bad: rows.some(function (x) { return x.r.bad; }), filters: zf.filters, valves: zf.valves, notes: zf.notes || '' };
+  };
+  // Drip systems: the Supplemental Report Form for Wastewater Drip Systems.
+  // [key, label, the answer that needs attention ('' = information only)]
+  OWI.DRIP_YN = [
+    ['pt_dose', 'Pretreatment dosing method working properly', 'no'], ['pt_alarm', 'Pretreatment alarms working properly', 'no'],
+    ['st_infil', 'Septic tank: signs of infiltration', ''], ['sf_checked', 'Effluent filter checked', ''], ['sf_cleaned', 'Effluent filter cleaned', ''],
+    ['pt_infil', 'Pump tank: signs of infiltration', ''],
+    ['hw_alarm', 'High water alarm float checked and alarms working', 'no'], ['telem', 'Telemetry working properly', 'no'],
+    ['nv_flow', 'Pump run with field valves closed: flow through the meter', 'yes'], ['sol', 'Each solenoid valve cycled: flow response observed', 'no'],
+    ['autoclean', 'Automatic filter cleaning satisfactory', 'no'], ['manual', 'Filters cleaned by hand this visit', ''],
+    ['uv_ok', 'UV light burning OK', 'no'], ['tabs', 'Ample chlorine tablet supply', 'no'],
+    ['veg', 'Vegetation satisfactory', 'no'], ['wet', 'Wet spots in the field or along the force main', 'yes']
+  ];
+  OWI.TELEMETRY_GPD = 600;
+  OWI.dripProblems = function (d) {
+    var dr = d && d.drip; if (!dr) return [];
+    var out = OWI.DRIP_YN.filter(function (it) { return it[2] && dr.yn[it[0]] === it[2]; }).map(function (it) { return it[1] + ': ' + (it[2] === 'yes' ? 'Yes' : 'No'); });
+    if (dr.not_resp) out.push('Solenoid valves not responding: ' + dr.not_resp);
+    return out;
+  };
+  // the filled-in form as blocks, shared by the county page and the county PDF:
+  // { p: [[label, value], ...] } a line of label/value pairs, { t: [head, rows] } a table, { h } a heading
+  OWI.dripBlocks = function (rep, cust, op) {
+    var d = rep.insp.data, c = rep.insp.calc || {}, dr = d.drip || { yn: {} }, Y = dr.yn || {}, sys = d.sysinfo || {}, p = sys.permit || {};
+    var v = function (x) { return x === null || x === undefined || x === '' ? '' : String(x); };
+    var yn = function (k) { return Y[k] === 'yes' ? 'Yes' : Y[k] === 'no' ? 'No' : Y[k] === 'na' ? 'N/A' : ''; };
+    var tm = function (t) { if (!t) return ''; var h = Number(t.slice(0, 2)), m = t.slice(3); return (h % 12 || 12) + ':' + m + (h < 12 ? ' AM' : ' PM'); };
+    var com = function (x) { return x === null || x === undefined ? '' : Number(x).toLocaleString('en-US'); };
+    var B = [];
+    B.push({ p: [['Facility Location', (sys.addresses && sys.addresses[0]) || cust.address || ''], ['County', cust.county || p.county || '']] });
+    B.push({ p: [['Date of Inspection', OWI.dt ? OWI.dt(rep.visit_date) : rep.visit_date], ['Arrival Time', tm(dr.arrival)], ['Performed By', op.name + (op.cert ? ', ' + op.cert : '')]] });
+    B.push({ p: [['Permitted Gallons Per Day', com(cust.design_flow != null ? cust.design_flow : sys.design_flow)]] });
+    B.push({ p: [['Last Site Inspection Performed on', c.last && OWI.dt ? OWI.dt(c.last) : ''], ['Time Interval (days)', v(c.days)]] });
+    var m = d.meters || {}, last = n(m.flow) !== null && n(c.flow_used) !== null ? n(m.flow) - n(c.flow_used) : null;
+    B.push({ gap: 1, p: [["Today's Flow Meter Reading", com(m.flow)], ['Last Visit Flow Meter Reading', com(last)]] });
+    B.push({ p: [['Gallons Pumped Since Last Visit', com(c.flow_used)], ['Calculated Avg. GPD', com(c.flow_day)]] });
+    B.push({ gap: 1, p: [['PreTreatment Type (if Present)', dr.pt_type || 'None']] });
+    if (dr.pt_type) B.push({ p: [['Dosing Method Working Properly', yn('pt_dose')], ['Alarms Working Properly', yn('pt_alarm')]] });
+    var se = d.septic || {}, pu = d.pump || {};
+    B.push({ gap: 1, p: [['Septic Tank Condition (Sludge Judged): Sludge', v(se.sludge) && se.sludge + ' in'], ['Scum', v(se.scum) && se.scum + ' in'], ['Total Depth', v(d.liquid_depth) && d.liquid_depth + ' in'], ['Needs Pumping or O.K. for Now', se.pump_needed === 'Yes' ? 'Needs pumping' : 'O.K. for now']] });
+    B.push({ p: [['Infiltration Signs', yn('st_infil')], ['Effluent Filter Checked', yn('sf_checked')], ['Filter Cleaned', yn('sf_cleaned')]] });
+    B.push({ gap: 1, p: [['Pump Tank Condition (Sludge Judged): Sludge', v(pu.sludge) && pu.sludge + ' in'], ['Total Depth', v(dr.pump_depth) && dr.pump_depth + ' in'], ['Needs Pumping or O.K. for Now', pu.pump_needed === 'Yes' ? 'Needs pumping' : 'O.K. for now'], ['Infiltration Signs', yn('pt_infil')]] });
+    B.push({ gap: 1, p: [['Drip Dispersal System, Number of Field Zones', v(dr.zones)]] });
+    B.push({ p: [['High Water Alarm Float Checked and Alarms Working', yn('hw_alarm')]] });
+    B.push({ p: [['Telemetry (Required for systems > 600 gpd) Working Properly', yn('telem')]] });
+    B.push({ p: [['Run Pump Without Field Valves Open - Was There Flow Thru Meter', yn('nv_flow')]] });
+    B.push({ p: [['Run Pump; Cycle Each Solenoid Valve - Was Flow Response Observed', yn('sol')]] });
+    B.push({ p: [['Solenoid Valves Not Responding', dr.not_resp || 'None'], ['Malfunctioning Coils Replaced', dr.coils || 'None']] });
+    B.push({ p: [['Check Filters for Clogging; Is Automatic Filter Cleaning Satisfactory', yn('autoclean')]] });
+    B.push({ p: [['Pre-Filter', v(dr.pre_psi) && dr.pre_psi + ' psi'], ['Post Filter', v(dr.post_psi) && dr.post_psi + ' psi'], ['Manual Cleaning of Filters Required/Done This Visit', yn('manual')]] });
+    if (dr.disinf === 'uv') B.push({ gap: 1, p: [['Disinfection System', 'U.V.'], ['Light Burning O.K.', yn('uv_ok')], ['Items Replaced', dr.replaced || 'None']] });
+    else if (dr.disinf === 'chlorine') B.push({ gap: 1, p: [['Disinfection System', 'Chlorine'], ['Ample Tablet Supply', yn('tabs')]] });
+    else B.push({ gap: 1, p: [['Disinfection System (if Present)', 'None']] });
+    var zf = d.zflush ? d.zflush.zones : [], rows = zf.map(function (z) { var r = OWI.zoneResult(z); return ['Field Zone ' + z.n, v(z.dose) + (r && /dose/.test(r.text) ? ' (low)' : ''), v(z.flush) + (r && /flush/.test(r.text) ? ' (low)' : ''), v(z.in_psi), com(z.etm), com(z.cycles)]; });
+    if (dr.sand) rows.push(['Sand Filter Zone', v(dr.sand.dose), v(dr.sand.flush), v(dr.sand.psi), com(dr.sand.etm), com(dr.sand.cycles)]);
+    B.push({ h: 'Field Zone Dosing and Flushing Rates (Measured):', t: [['', 'Irrig. Rate-GPM', 'Flush Rate-GPM', 'Headworks PSI', 'ETM', 'Cycles'], rows] });
+    B.push({ gap: 1, p: [['Condition of Effluent Application Area: Vegetation Satisfactory', yn('veg')]] });
+    B.push({ p: [['Any Wet Spots Observed in Field or Along Force Main', yn('wet')]] });
+    B.push({ h: 'Notes, Observations, or Comments Upon the System (Provide Data From PLC if Available):', note: dr.notes || '' });
+    return B;
   };
   OWI.extras = function (d, c) {
     var out = { tanks: [], cards: [], malfunction: d.malfunction && d.malfunction.found ? d.malfunction : null }, ct = (c && c.tanks) || {};
@@ -294,8 +357,21 @@
     });
     var mf = s.malfunction || {}; d.malfunction = { found: mf.found === true, notified: S(mf.notified, 200) };
     var zf = s.zflush || {}, zl = (sys.laterals || []);
-    d.zflush = { filters: zf.filters === true, valves: zf.valves === true, notes: S(zf.notes, 600), zones: (Array.isArray(zf.zones) ? zf.zones : []).slice(0, 12).map(function (z, i) { z = z || {}; var L = zl[i] || {}; return { n: i + 1, dose: N(z.dose), flush: N(z.flush), in_psi: N(z.in_psi), out_psi: N(z.out_psi), design_dose: N(L.dose_gpm), design_flush: N(L.flush_gpm), base_in: N(L.base_in), last_in: N(z.last_in), last_out: N(z.last_out), last_flush: N(z.last_flush) }; }).filter(function (z) { return z.dose !== null || z.flush !== null || z.in_psi !== null || z.out_psi !== null; }) };
+    d.zflush = { filters: zf.filters === true, valves: zf.valves === true, notes: S(zf.notes, 600), zones: (Array.isArray(zf.zones) ? zf.zones : []).slice(0, 12).map(function (z, i) { z = z || {}; var L = zl[i] || {}; return { n: i + 1, dose: N(z.dose), flush: N(z.flush), in_psi: N(z.in_psi), out_psi: N(z.out_psi), etm: N(z.etm), cycles: N(z.cycles), design_dose: N(L.dose_gpm), design_flush: N(L.flush_gpm), base_in: N(L.base_in), last_in: N(z.last_in), last_out: N(z.last_out), last_flush: N(z.last_flush) }; }).filter(function (z) { return z.dose !== null || z.flush !== null || z.in_psi !== null || z.out_psi !== null || z.etm !== null || z.cycles !== null; }) };
     if (!d.zflush.zones.length) d.zflush = null;
+    // the drip supplemental form: only kept when the form sent one
+    var dr = s.drip; d.drip = null;
+    if (dr && typeof dr === 'object') {
+      var o = { yn: {} }; OWI.DRIP_YN.forEach(function (it) { var a = dr.yn && dr.yn[it[0]]; if (YN.indexOf(a) >= 0) o.yn[it[0]] = a; });
+      o.arrival = /^\d{2}:\d{2}$/.test(dr.arrival || '') ? dr.arrival : ''; o.pt_type = S(dr.pt_type, 80); o.pump_depth = N(dr.pump_depth);
+      o.not_resp = S(dr.not_resp, 60); o.coils = S(dr.coils, 60); o.pre_psi = N(dr.pre_psi); o.post_psi = N(dr.post_psi);
+      o.disinf = ['uv', 'chlorine'].indexOf(dr.disinf) >= 0 ? dr.disinf : 'none'; o.replaced = S(dr.replaced, 120); o.notes = S(dr.notes, 1500);
+      var sd = dr.sand; o.sand = sd && typeof sd === 'object' ? { dose: N(sd.dose), flush: N(sd.flush), psi: N(sd.psi), etm: N(sd.etm), cycles: N(sd.cycles) } : null;
+      o.zones = N(dr.zones);
+      // infiltration is asked once, in the standard tank checks ("free of infiltration"), and carried to the drip form
+      [['st_infil', 'septic'], ['pt_infil', 'pump']].forEach(function (q) { var a = d.checks[q[1]].infil; if (!o.yn[q[0]] && a) o.yn[q[0]] = a === 'yes' ? 'no' : a === 'no' ? 'yes' : 'na'; });
+      d.drip = o;
+    }
     return d;
   };
   g.OWI = OWI;

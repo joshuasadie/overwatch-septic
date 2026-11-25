@@ -221,9 +221,9 @@ ok(zp.ok && zd.zflush.zones.length === 2 && zd.zflush.zones[0].design_flush === 
 j = await J(await adm('/admin/api/system?customer_id=' + wid + '&date=2027-04-10'));
 ok(j.system.laterals[0].base_in === 22 && j.system.laterals[1].base_in === 27 && j.system.laterals[0].flush_gpm === 12.5, 'first readings become each zone baseline; design gpm kept');
 ok(j.prev.zflush.length === 2 && j.prev.zflush[1].flush === 8.9, 'next visit gets last time readings');
-ok(zr.checks.some(c => c.label === 'Zone flush test' && c.status === 'repair') && OWI0.problems(zd).some(p => /Zone 2: flush 29% under design/.test(p.label)), 'a zone under design counts as needing attention');
+ok(zr.checks.some(c => c.label === 'Zone flush test' && c.status === 'repair') && OWI0.problems(zd).some(p => /Zone 2: dose 33% under design; flush 29% under design/.test(p.label)), 'a zone under design counts as needing attention');
 const zc = OWI0.countyHtml({ visit_date: '2027-01-10', insp: zr.insp }, { name: 'Sean Wilkins', address: 'x' }, zd.operator), zh = OWI0.homeHtml({ visit_date: '2027-01-10', insp: zr.insp }, { name: 'Sean Wilkins', address: 'x' }, zd.operator);
-ok(/Zone flush test/.test(zc) && /12\.1 \(12\.5\)/.test(zc) && /Zone valves close fully: No/.test(zc) && /<b>Check: flush 29% under design<\/b>/.test(zc), 'county copy shows the flush test table');
+ok(/Zone flush test/.test(zc) && /12\.1 \(12\.5\)/.test(zc) && /Zone valves close fully: No/.test(zc) && /<b>Check: dose 33% under design; flush 29% under design<\/b>/.test(zc), 'county copy shows the flush test table');
 ok(/Drip zone flush test/.test(zh) && /1 of 2 zones need a look/.test(zh), 'owner report explains it in plain words');
 zp = await J(await adm('/admin/api/inspection', { customer_id: wid, visit_date: '2027-04-10', data: form({ zflush: { filters: true, valves: true, zones: [{ flush: 12.4, in_psi: 28, out_psi: 15 }, {}] } }), system: zs() }));
 j = await J(await adm('/admin/api/customer/' + wid)); zd = j.reports.find(x => x.id === zp.id).insp.data;
@@ -231,4 +231,23 @@ ok(zd.zflush.zones.length === 1 && zd.zflush.zones[0].base_in === 22 && OWI0.zon
 j = await J(await adm('/admin/api/system?customer_id=' + wid + '&date=2027-06-01')); ok(j.system.laterals[0].base_in === 22, 'the baseline does not move');
 j = await J(await adm('/admin/api/system', { customer_id: wid, system: { ...SETUP, laterals: [{ length: 1200, dose_gpm: 5.93, flush_gpm: 12.5 }, { length: 1200, dose_gpm: 6.3, flush_gpm: 12.5 }] } })); ok(j.system.laterals[1].base_in === 27, 'a setup save keeps the baselines');
 ok(OWI0.zoneFlush(form({})) === null, 'no flush test on the report when nothing was typed');
+
+// ---- drip supplemental form
+ok(OWI0.zoneResult({ dose: 4.6, design_dose: 6.2 }).text === 'Check: dose 26% under design' && OWI0.zoneResult({ dose: 5.9, design_dose: 6.2 }).text === 'OK', 'a dose rate more than 10% under design is flagged');
+const dsys = { ...SETUP, design_flow: 1500, laterals: [{ length: 900, dose_gpm: 6.2, flush_gpm: 6.2 }, { length: 900, dose_gpm: 6.2, flush_gpm: 6.2 }] };
+await adm('/admin/api/system', { customer_id: wid, system: dsys });
+const drip = { arrival: '16:30', pt_type: '', pump_depth: 58, not_resp: '', coils: '', pre_psi: 38, post_psi: 31, disinf: 'uv', replaced: 'Bulb', notes: 'Dose rate fell over the run. Discs cleaned.', zones: 2, sand: null, bogus: 1,
+  yn: { hw_alarm: 'yes', telem: 'yes', nv_flow: 'no', sol: 'yes', autoclean: 'no', manual: 'yes', uv_ok: 'yes', veg: 'yes', wet: 'no', sf_checked: 'yes', sf_cleaned: 'yes', pt_infil: 'maybe' } };
+await adm('/admin/api/inspection', { customer_id: wid, visit_date: '2027-05-01', data: form({ meters: { flow: 347500 } }), system: dsys });
+zp = await J(await adm('/admin/api/inspection', { customer_id: wid, visit_date: '2027-11-01', data: form({ meters: { flow: 503842 }, drip, zflush: { zones: [{ dose: 7.8, flush: 7.0, in_psi: 22, etm: 1402, cycles: 3118 }, { dose: 4.6, flush: 4.3, in_psi: 23, etm: 1377, cycles: 3090 }] } }), system: dsys }));
+j = await J(await adm('/admin/api/customer/' + wid)); zr = j.reports.find(x => x.id === zp.id); zd = zr.insp.data;
+ok(zp.ok && zd.drip && zd.drip.arrival === '16:30' && zd.drip.yn.autoclean === 'no' && zd.drip.yn.pt_infil === 'no' && zd.drip.yn.st_infil === 'no' && zd.drip.bogus === undefined && zd.drip.disinf === 'uv', 'the drip form is saved and cleaned');
+ok(zd.zflush.zones[0].etm === 1402 && zd.zflush.zones[1].cycles === 3090, 'ETM and cycles are kept per zone');
+ok(zr.insp.calc.flow_used === 156342 && zr.insp.calc.flow_day === 850 && zr.insp.calc.flow_pct === 57, 'gallons since last visit, average gpd and percent of permit');
+ok(OWI0.problems(zd).some(p => p.label === 'Automatic filter cleaning satisfactory: No') && OWI0.problems(zd).some(p => /Zone 2: dose 26% under design/.test(p.label)) && !OWI0.problems(zd).some(p => /Telemetry/.test(p.label)), 'drip answers that need attention are counted');
+const dc = OWI0.countyHtml({ visit_date: '2027-11-01', insp: zr.insp }, { name: 'Sean Wilkins', address: '1718 Charlie Brooks Rd', county: 'Chatham' }, zd.operator);
+ok(/Supplemental Report Form/.test(dc) && /For Wastewater Drip System/.test(dc) && /Arrival Time: <span class="dv">4:30 PM/.test(dc) && /Permitted Gallons Per Day: <span class="dv">1,500/.test(dc), 'county copy adds the drip form with the header filled in');
+ok(/Last Visit Flow Meter Reading: <span class="dv">347,500/.test(dc) && /Calculated Avg. GPD: <span class="dv">850/.test(dc) && /Is Automatic Filter Cleaning Satisfactory: <span class="dv">No/.test(dc) && /Light Burning O.K.: <span class="dv">Yes/.test(dc) && /Infiltration Signs: <span class="dv">No/.test(dc), 'meter and yes/no lines on the drip form');
+ok(/<th>Field Zone 2<\/th><td><b>4\.6 \(low\)<\/b><\/td>/.test(dc) && /1,402/.test(dc) && /Discs cleaned/.test(dc) && /CERTIFIED OPERATOR MAINTENANCE\/MONITORING REPORT/.test(dc), 'zone table flags low rates; the standard report is still there');
+ok(!/Supplemental Report Form/.test(OWI0.countyHtml({ visit_date: '2027-01-10', insp: j.reports.find(x => x.visit_date === '2027-05-01').insp }, { name: 'S', address: 'x' }, zd.operator)), 'a report without the drip form does not get the drip page');
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);
