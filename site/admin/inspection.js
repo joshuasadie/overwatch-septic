@@ -78,8 +78,8 @@
       '<div class="two"><div><label for="i_status">Status of system</label><select id="i_status">' + OWI.STATUS.map(function (t) { return '<option>' + t + '</option>'; }).join('') + '</select></div>' + fld('i_next', 'Next inspection due', 'type="date" value="' + OWI.nextDue((sys.permit || {}).freq, today(), ctx && ctx.first) + '"') + '</div><p class="mute sm" id="stw"></p>' +
       '<label for="i_photos">Photos (optional, up to 8)</label><input id="i_photos" type="file" accept="image/*" multiple><div id="pthumbs" class="row" style="margin-top:6px"></div>' +
       '<label for="i_sign">Certified operator signature</label><input id="i_sign" class="auto" readonly tabindex="-1" value="' + E(A.cfg.operator.name + ', ' + A.cfg.operator.cert) + '">' +
-      '<label for="i_amt">Invoice amount ($). Use 0 to waive it</label><input id="i_amt" ' + dec + ' value="' + E((A.visitFee && A.visitFee()) || A.LS.get('ow_visit') || (A.cfg && A.cfg.defaults.visit) || '0') + '"><p class="mute sm">With an invoice, the owner and the county get nothing until it is paid and 3 business days have passed. With 0, both get the report right away.</p>' +
-      '<div class="row" style="margin-top:10px"><button class="b" type="submit">Save report</button><button class="b alt" type="button" id="clearDraft">Clear form</button></div><div class="msg" id="im" role="status"></div>', true, 'c8');
+      '<label for="i_amt">Invoice amount ($). Use 0 to waive it</label><input id="i_amt" ' + dec + ' value="' + E((A.visitFee && A.visitFee()) || A.LS.get('ow_visit') || (A.cfg && A.cfg.defaults.visit) || '0') + '"><p class="mute sm">Saving does not send anything. The report waits for your OK on the customer\'s page. When you approve it, the invoice goes out (or, at $0, the owner and county get the report right away).</p>' +
+      '<div class="row" style="margin-top:10px"><button class="b" type="submit">Save for review</button><button class="b alt" type="button" id="clearDraft">Clear form</button></div><div class="msg" id="im" role="status"></div>', true, 'c8');
     return h + layout(drip) + '</form>';
   }
   // Drip systems: flushing flow and pressure at each zone's inlet and outlet, every visit. Design gpm comes from System setup.
@@ -346,18 +346,16 @@
     });
     f.addEventListener('submit', function (e) {
       e.preventDefault(); var m = $('im'); m.className = 'msg'; m.textContent = 'Saving...';
-      var d = collect(), amt = val('i_amt');
+      var d = collect(), amt = val('i_amt'); d.fee = amt;
       if (!val('i_date')) { m.className = 'msg err'; m.textContent = 'Please choose the date of inspection.'; return; }
       OW.api('/admin/api/inspection', { customer_id: D.customer.id, visit_date: val('i_date'), data: d, system: system() }).then(function (j) {
         if (!j.ok) { m.className = 'msg err'; m.textContent = j.error; return; }
         var up = photos.reduce(function (p, b) { return p.then(function (ok) { return ok && OW.api('/admin/api/reports/' + j.id + '/photo', b, { raw: true, type: 'image/jpeg' }).then(function (r) { return r.ok; }); }); }, Promise.resolve(true));
         return up.then(function (ok) {
           if (!ok) { m.className = 'msg err'; m.textContent = 'The report was saved, but a photo did not upload. It stays held. Delete it and try again.'; A.refresh(); return; }
-          return OW.api('/admin/api/report-finish', { id: j.id, amount: amt }).then(function (r) {
-            if (!r.ok) { m.className = 'msg err'; m.textContent = r.error; A.refresh(); return; }
-            clearTimeout(timer); A.LS.set('ow_visit', amt); try { localStorage.removeItem(draftKey); } catch (x) {}
-            OW.toast(r.released ? 'Saved and released to the owner and county.' : (r.emailed ? 'Saved. Invoice emailed; the report is held until paid.' : 'Saved, but the invoice email did not send.')); A.refresh();
-          });
+          // nothing is sent yet: the report waits for your OK. The draft stays on this device until you approve, in case it needs redoing.
+          clearTimeout(timer); A.LS.set('ow_visit', amt);
+          OW.toast('Saved for review. Nothing was sent. Press Review and send on the report when it is ready.'); A.refresh();
         });
       });
     });

@@ -25,7 +25,8 @@
   function loadInvoices() {
     return OW.api('/admin/api/invoices').then(function (j) {
       if (!j.ok) return; var rows = j.invoices;
-      $('alerts').innerHTML = (S.cfg && !S.cfg.stripe ? '<div class="alert"><span><b>Online payment is not set up yet.</b><br><span class="mute">Invoices are created and emailed, but the Pay button will not work until the Stripe keys are added. See the README.</span></span></div>' : '') +
+      var rv = j.review || [];
+      $('alerts').innerHTML = (rv.length ? '<div class="alert"><span><b>' + rv.length + (rv.length === 1 ? ' report' : ' reports') + ' waiting for your OK</b><br><span class="mute">' + rv.map(function (r) { return E(r.customer_name) + ', inspection ' + E(OW.date(r.visit_date)) + '. Must reach the owner and county by ' + E(OW.date(OWI.addDays(r.visit_date, 30))); }).join('.<br>') + '.</span></span><span class="row">' + rv.map(function (r, i) { return '<button class="b" data-rvc="' + E(r.customer_id) + '">' + (rv.length > 1 ? 'Open ' + E(r.customer_name.split(' ')[0]) : 'Open') + '</button>'; }).join('') + '</span></div>' : '') + (S.cfg && !S.cfg.stripe ? '<div class="alert"><span><b>Online payment is not set up yet.</b><br><span class="mute">Invoices are created and emailed, but the Pay button will not work until the Stripe keys are added. See the README.</span></span></div>' : '') +
         rows.filter(function (i) { return i.notice_state === 'drafted' || i.notice_state === 'final_drafted'; }).map(function (i) { return '<div class="alert bad"><span><b>' + (i.notice_state === 'drafted' ? 'A notice is ready for your OK.' : 'A final notice is ready for your OK.') + '</b><br><span class="mute">' + E(i.customer_name) + ', ' + E(OW.invFor(i)) + ', ' + OW.money(i.amount_cents) + ' unpaid ' + i.age + ' days.</span></span><button class="b" data-rv="' + i.id + '" data-kind="' + (i.notice_state === 'drafted' ? 'notice' : 'final') + '">Review and send</button></div>'; }).join('');
       $('it').innerHTML = rows.map(function (i) {
         var st = stateText(i), b = '';
@@ -163,7 +164,7 @@
         return '<li><span><b>' + E(x.text && /^MAINTENANCE AND/.test(x.text.title) ? 'Maintenance and Inspection Agreement' : 'Inspection and Maintenance Agreement') + '</b><small>Sent ' + E(OW.date(x.created_at)) + (x.owner.signed_at ? ' &middot; customer signed ' + E(OW.date(x.owner.signed_at)) : '') + (x.contractor.signed_at ? ' &middot; you signed ' + E(OW.date(x.contractor.signed_at)) : '') + '</small>' + (x.signed ? (x.signed.sends.length ? '<small class="good">Signed copy sent ' + E(OW.date(x.signed.sends[0].sent_at)) + ' to ' + E(x.signed.sends[0].recipients.map(function (q) { return q.label; }).join(', ')) + '</small>' : (x.signed.paid ? '' : '<small>Send signed copy: available once the origination fee is paid.</small>')) : '') + '</span><span class="row">' + OW.pill(x.status) + btns + '</span></li>';
       }).join('') || '<li class="mute">None yet.</li>') + '</ul>' +
       '<h3 style="margin:16px 0 4px">Reports</h3><ul class="list">' + (d.reports.map(function (r) {
-        return '<li><span><b>' + (r.kind === 'inspection' ? 'Inspection report, ' : 'Visit report, ') + E(OW.date(r.visit_date)) + '</b><small>' + (r.kind === 'upload' ? 'Uploaded PDF' : r.kind === 'inspection' ? E(r.insp ? r.insp.data.status : 'Inspection') + (r.insp && r.insp.calc.pump_now ? ' &middot; time to pump' : '') : 'Entered in form') + (r.notes ? ' &middot; ' + E(r.notes.slice(0, 60)) : '') + (r.state === 'held' ? '' : r.county_sent_at ? ' &middot; county copy sent' : ' &middot; county copy not sent') + '</small></span><span class="row">' + (r.state === 'held' ? '<span class="pill warn">Held until paid</span>' : (r.county_sent_at ? '' : '<button class="b alt" data-county-send="' + r.id + '">Send county copy</button>')) + '' + (r.kind === 'inspection' && r.insp ? '<button class="b alt" data-rep="view" data-id="' + r.id + '">View</button><button class="b alt" data-rep="pdf" data-id="' + r.id + '">Homeowner PDF</button><button class="b alt" data-rep="cpdf" data-id="' + r.id + '">County PDF</button>' : '<button class="b alt" data-rep="pdf" data-id="' + r.id + '">PDF</button>') + '<button class="b alt" data-rep="mail" data-id="' + r.id + '">Email customer</button><button class="b danger" data-rep="del" data-id="' + r.id + '">Delete</button></span></li>';
+        return '<li><span><b>' + (r.kind === 'inspection' ? 'Inspection report, ' : 'Visit report, ') + E(OW.date(r.visit_date)) + '</b><small>' + (r.kind === 'upload' ? 'Uploaded PDF' : r.kind === 'inspection' ? E(r.insp ? r.insp.data.status : 'Inspection') + (r.insp && r.insp.calc.pump_now ? ' &middot; time to pump' : '') : 'Entered in form') + (r.notes ? ' &middot; ' + E(r.notes.slice(0, 60)) : '') + (r.state === 'review' ? ' &middot; not sent to anyone yet' : r.state === 'held' ? '' : r.county_sent_at ? ' &middot; county copy sent' : ' &middot; county copy not sent') + '</small></span><span class="row">' + (r.state === 'review' ? '<span class="pill warn">Waiting for your OK</span><button class="b" data-rep="approve" data-id="' + r.id + '">Review and send</button>' : r.state === 'held' ? '<span class="pill warn">Held until paid</span>' : (r.county_sent_at ? '' : '<button class="b alt" data-county-send="' + r.id + '">Send county copy</button>')) + '' + (r.kind === 'inspection' && r.insp ? '<button class="b alt" data-rep="view" data-id="' + r.id + '">View</button><button class="b alt" data-rep="pdf" data-id="' + r.id + '">Homeowner PDF</button><button class="b alt" data-rep="cpdf" data-id="' + r.id + '">County PDF</button>' : '<button class="b alt" data-rep="pdf" data-id="' + r.id + '">PDF</button>') + '<button class="b alt" data-rep="mail" data-id="' + r.id + '">Email customer</button><button class="b danger" data-rep="del" data-id="' + r.id + '">Delete</button></span></li>';
       }).join('') || '<li class="mute">None yet.</li>') + '</ul>' + (OWA.casesList ? OWA.casesList(d) : '') + (OWA.estList ? OWA.estList(d) : '') + '</section>' +
       '<section class="card" id="panel"><h2>Next step</h2><p class="mute">Choose Send contract or New inspection.</p></section></div>' +
       '<div id="caseView"></div><div id="estView"></div>' +
@@ -304,13 +305,35 @@
       }).catch(function () { $('ssGo').disabled = false; m.className = 'msg err'; m.textContent = 'The PDF could not be made. Try again.'; });
     };
   }
+  // a saved report waits here for your OK: look at both copies, set the invoice, then send
+  function approvePanel(rep) {
+    var insp = rep.kind === 'inspection' && rep.insp, fee = (insp && insp.data.fee != null ? insp.data.fee : LS.get('ow_fee_' + rep.id)) || contractVisitFee(S.d) || LS.get('ow_visit') || (S.cfg && S.cfg.defaults.visit) || '250';
+    $('panel').innerHTML = '<h2>Approve this report</h2><p class="mute" style="margin:0">' + (insp ? 'Inspection' : 'Visit report') + ' on ' + E(OW.date(rep.visit_date)) + ' for ' + E(S.d.customer.name) + '. Look over ' + (insp ? 'both copies' : 'the report') + ' first. Nothing has been sent yet.</p>' +
+      '<div class="row" style="margin:8px 0">' + (insp ? '<button class="b alt" type="button" id="apH">Homeowner copy</button><button class="b alt" type="button" id="apC">County copy</button>' : '<button class="b alt" type="button" data-rep="pdf" data-id="' + rep.id + '">Open the PDF</button>') + '</div><div id="apV"></div>' +
+      '<label for="ap_amt">Invoice amount ($). Use 0 to waive it</label><input id="ap_amt" inputmode="decimal" value="' + E(fee) + '"><p class="mute" style="margin:4px 0 0;font-size:14px">With an invoice, the owner and county get nothing until it is paid and 3 business days have passed. With 0, both get the report right away.</p>' +
+      '<div class="row" style="margin-top:10px"><button class="b" type="button" id="apGo">Approve and send</button><button class="b alt" type="button" id="apX">Not yet</button></div><div class="msg" id="apM" role="status"></div><p class="mute" style="font-size:14px">Found a mistake? Delete the report and save the inspection again. The form you filled in stays on the device you used until you approve.</p>';
+    $('panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var show = function (which) { var op = insp.data.operator || S.cfg.operator; $('apV').innerHTML = '<style>' + OWI.CSS + '</style>' + (which === 'county' ? OWI.countyHtml(rep, { name: S.d.customer.name, phone: S.d.customer.phone, address: S.d.customer.address, county: S.d.customer.county, permit: S.d.customer.permit, sys_type: S.d.customer.sys_type }, op) : OWI.homeHtml(rep, S.d.customer, op, function (n) { return '/admin/api/reports/' + rep.id + '/photo/' + n; })); };
+    if (insp) { $('apH').onclick = function () { show('home'); }; $('apC').onclick = function () { show('county'); }; }
+    $('apX').onclick = function () { $('panel').innerHTML = '<h2>Next step</h2><p class="mute">The report is still waiting for your OK.</p>'; };
+    $('apGo').onclick = function () {
+      var m = $('apM'), amt = $('ap_amt').value; m.className = 'msg'; m.textContent = 'Sending...'; $('apGo').disabled = true;
+      OW.api('/admin/api/report-finish', { id: rep.id, amount: amt }).then(function (f) {
+        $('apGo').disabled = false;
+        if (!f.ok) { m.className = 'msg err'; m.textContent = f.error; return; }
+        LS.set('ow_visit', amt); LS.set('ow_fee_' + rep.id, '');
+        if (insp) try { localStorage.removeItem('ow_insp_' + S.d.customer.id); } catch (x) {}
+        OW.toast(f.released ? 'Approved. Sent to the owner and county.' : (f.emailed ? 'Approved. Invoice emailed; the report goes out when it is paid.' : 'Approved, but the invoice email did not send.')); refresh();
+      });
+    };
+  }
   function reportForm() {
     var today = new Date().toISOString().slice(0, 10);
     $('panel').innerHTML = '<h2>Upload a report PDF</h2><p class="mute" style="margin:0 0 4px">For an older report or one made in another tool. It is stored with the customer, not graphed. For a new visit, use New inspection.</p><form id="rf" novalidate><label for="r_date">Visit date</label><input id="r_date" type="date" value="' + today + '">' +
       '<label for="r_notes">Notes for the customer</label><textarea id="r_notes" maxlength="1000"></textarea>' +
       '<label for="r_pdf">PDF report</label><input id="r_pdf" type="file" accept="application/pdf">' +
-      '<label for="r_amt">Invoice amount ($). Use 0 to waive it</label><input id="r_amt" inputmode="decimal" value="' + E(contractVisitFee(S.d) || LS.get('ow_visit') || (S.cfg && S.cfg.defaults.visit) || '250') + '"><p class="mute" style="margin:4px 0 0;font-size:14px">' + (contractVisitFee(S.d) ? 'The per-inspection fee from the signed agreement. For an extra visit, enter your normal fee. ' : '') + 'With an invoice, the customer and the county get nothing until it is paid and 3 business days have passed. With 0, both get the report right away.</p>' +
-      '<div class="row" style="margin-top:10px"><button class="b" type="submit">Save report</button></div><div class="msg" id="rm" role="status"></div></form>';
+      '<label for="r_amt">Invoice amount ($). Use 0 to waive it</label><input id="r_amt" inputmode="decimal" value="' + E(contractVisitFee(S.d) || LS.get('ow_visit') || (S.cfg && S.cfg.defaults.visit) || '250') + '"><p class="mute" style="margin:4px 0 0;font-size:14px">' + (contractVisitFee(S.d) ? 'The per-inspection fee from the signed agreement. For an extra visit, enter your normal fee. ' : '') + 'Saving does not send anything. The report waits for your OK; approving it sends the invoice (or, at $0, the report).</p>' +
+      '<div class="row" style="margin-top:10px"><button class="b" type="submit">Save for review</button></div><div class="msg" id="rm" role="status"></div></form>';
     $('rf').addEventListener('submit', function (e) {
       e.preventDefault(); var m = $('rm'); m.className = 'msg'; m.textContent = 'Saving...';
       var file = $('r_pdf').files[0];
@@ -321,11 +344,9 @@
         var up = file ? file.arrayBuffer().then(function (b) { return OW.api('/admin/api/reports/' + j.id + '/pdf', b, { raw: true, type: 'application/pdf' }); }) : Promise.resolve({ ok: true });
         return up.then(function (u) {
           if (!u.ok) { m.className = 'msg err'; m.textContent = 'Report saved, but the PDF did not upload: ' + u.error + ' It stays held. Delete it and try again.'; refresh(); return; }
-          return OW.api('/admin/api/report-finish', { id: j.id, amount: $('r_amt').value }).then(function (f) {
-            if (!f.ok) { m.className = 'msg err'; m.textContent = f.error; refresh(); return; }
-            LS.set('ow_visit', $('r_amt').value);
-            OW.toast(f.released ? 'Saved and released to the customer and county.' : (f.emailed ? 'Saved. Invoice emailed; the report is held until paid.' : 'Saved, but the invoice email did not send.')); refresh();
-          });
+          // nothing is sent yet; the amount is remembered here for the approval screen
+          LS.set('ow_visit', $('r_amt').value); LS.set('ow_fee_' + j.id, $('r_amt').value);
+          OW.toast('Saved for review. Nothing was sent. Press Review and send on the report when it is ready.'); refresh();
         });
       });
     });
@@ -353,6 +374,7 @@
     }
     if (t.id === 'delNo') { $('delBox').innerHTML = ''; return; }
     if (t.id === 'delGo') { OW.api('/admin/api/customer-delete', { id: S.sel, confirm: $('delName').value }).then(function (j) { if (!j.ok) return fail(j); S.sel = null; S.d = null; $('detail').innerHTML = ''; loadList(); OW.toast('Test customer deleted.'); }); return; }
+    var rvc = t.closest('[data-rvc]'); if (rvc) return void select(rvc.getAttribute('data-rvc'));
     var rv = t.closest('[data-rv]'); if (rv) return void review(rv.getAttribute('data-rv'), rv.getAttribute('data-kind'));
     var pc = t.closest('.pickc'); if (pc) return void select(pc.getAttribute('data-cid'));
     var cd = t.closest('[data-cdel]'); if (cd) { if (confirm('Remove this county?')) OW.api('/admin/api/county', { name: cd.getAttribute('data-cdel'), remove: true }).then(loadCounties); return; }
@@ -378,6 +400,7 @@
     if (r) {
       var rid = r.getAttribute('data-id'), k = r.getAttribute('data-rep'), rep = S.d.reports.filter(function (z) { return z.id === rid; })[0];
       if (k === 'view') return void OWA.view(rep, 'home');
+      if (k === 'approve') return void approvePanel(rep);
       if (k === 'cpdf') return void OWA.pdf(rep, 'county');
       if (k === 'pdf' && rep.kind === 'inspection') return void OWA.pdf(rep, 'home');
       if (k === 'pdf') { if (rep.has_pdf) window.open('/admin/api/reports/' + rid + '/pdf', '_blank', 'noopener'); else OW.reportPdf(rep, S.d.customer).then(function (b) { OW.download(b, 'report-' + rep.visit_date + '.pdf'); }); }

@@ -164,6 +164,10 @@ export async function releaseInvoice(env, inv, who, now = new Date()) {
   } else if (inv.kind !== 'repair' && inv.kind !== 'bill') await releaseReport(env, inv.ref_id, c, nowIso);
   return true;
 }
+// reports saved but not approved yet: no invoice and not released
+export async function reviewReports(env) {
+  return (await env.DB.prepare("SELECT r.id, r.visit_date, r.customer_id, c.name AS customer_name FROM reports r JOIN report_state s ON s.report_id = r.id JOIN customers c ON c.id = r.customer_id WHERE s.released_at = '' AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.kind = 'visit' AND i.ref_id = r.id) ORDER BY r.visit_date").all()).results;
+}
 export async function releaseReport(env, reportId, customer, nowIso = new Date().toISOString()) {
   await env.DB.prepare("INSERT INTO report_state (report_id, released_at) VALUES (?, ?) ON CONFLICT(report_id) DO UPDATE SET released_at = excluded.released_at").bind(reportId, nowIso).run();
   // the owner may already have the report (sent by day 25 while payment was pending); the portal copy unlocks now either way
@@ -291,7 +295,12 @@ export async function runDaily(env, now = new Date()) {
   }
   // 3. the owner, county and manufacturer must have the report within 30 days of the inspection, paid or not (15A NCAC 18E .1304(c)).
   //    By day 25, any report still held for payment goes to the county, and to the owner marked "payment still due".
-  const held = (await env.DB.prepare("SELECT r.id, r.visit_date, r.customer_id, s.county_sent_at FROM reports r JOIN report_state s ON s.report_id = r.id LEFT JOIN report_owner_sent o ON o.report_id = r.id WHERE s.released_at = '' AND (s.county_sent_at = '' OR o.report_id IS NULL)").all()).results;
+  //    Only reports you approved (they have an invoice). One still waiting for your OK is never sent on its own: you get a daily reminder from day 20.
+  const held = (await env.DB.prepare("SELECT r.id, r.visit_date, r.customer_id, s.county_sent_at FROM reports r JOIN report_state s ON s.report_id = r.id LEFT JOIN report_owner_sent o ON o.report_id = r.id WHERE s.released_at = '' AND (s.county_sent_at = '' OR o.report_id IS NULL) AND EXISTS (SELECT 1 FROM invoices i WHERE i.kind = 'visit' AND i.ref_id = r.id)").all()).results;
+  for (const r of await reviewReports(env)) {
+    const age = daysBetween(r.visit_date, today); if (age < 20) continue;
+    acted++; await alertOwner(env, 'Report waiting for your OK', `${r.customer_name}'s report from ${r.visit_date} has not been approved, so the owner and the county do not have it yet. The rules require it within 30 days of the inspection, by ${addDays(r.visit_date, 30)}${age >= 30 ? ' (that date has passed)' : ''}. Open the customer in the admin portal and press "Review and send".`);
+  }
   for (const r of held) {
     if (daysBetween(r.visit_date, today) < 25) continue;
     const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(r.customer_id).first(); if (!c) continue;

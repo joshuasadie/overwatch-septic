@@ -1,7 +1,7 @@
 // Inspection reports: the full form, calculations, photos, the homeowner and county copies.
 import { DatabaseSync } from 'node:sqlite';
 import worker from './worker/index.js';
-import { etDate } from './worker/billing.js';
+import { etDate, runDaily } from './worker/billing.js';
 const sql = new DatabaseSync(':memory:');
 const mk = (q, args = []) => ({ bind: (...a) => mk(q, a), all: async () => ({ results: sql.prepare(q).all(...args) }), first: async () => sql.prepare(q).get(...args) ?? null, run: async () => { const r = sql.prepare(q).run(...args); return { meta: { changes: Number(r.changes) } }; } });
 const DB = { prepare: q => mk(q), batch: async st => { for (const s of st) await s.run(); return []; } };
@@ -64,7 +64,10 @@ ok(c2.gpd_gal === 25200 && c2.gpd_avg === 136 && c2.formulas.gpd === '20 hours x
 ok(c2.days === 185 && c2.et_day === 0.11 && c2.events_day === 1.3 && c2.events_design === 1.1, 'per-day meters use the days since the last visit; design events = 120 / 105');
 ok(rep1.insp.calc.et_day === undefined || rep1.insp.calc.et_day === null, 'first visit has no per-day meters');
 ok(rep2.kind === 'inspection' && rep2.readings.pdr_eff === 118 && rep2.readings.sludge_pct === 17.3 && rep2.readings.lat1_head === 3.1 && rep2.readings.events_design === 1.1, 'graphed numbers stored on the report');
-ok(rep2.state === 'held', 'report is held until you finish it (payment rules still apply)');
+ok(rep2.state === 'review', 'a saved report waits for your OK; nothing is sent');
+{ const iv = await J(await adm('/admin/api/invoices')); ok(iv.review.some(r => r.id === rep2.id && r.customer_name === 'Ann Home'), 'the admin lists reports waiting for your OK');
+  const before = sent.length; await runDaily(env, new Date('2026-11-16T16:00:00Z'));
+  ok(!sent.slice(before).some(m => m.to[0] === 'ann@home.com') && sent.slice(before).some(m => /Report waiting for your OK/.test(m.subject) && /Ann Home's report from 2026-10-26/.test(m.text || m.html || '')), 'an unapproved report is never sent on its own; you get a reminder from day 20'); }
 ok(JSON.stringify(rep2.insp.data.todo) === JSON.stringify({ jobs: ['Replace the control panel contactor'], ticks: [2], extra: '' }), 'unknown job and tick values are dropped');
 ok(rep2.insp.data.operator.cert === 'SS-1019571' && rep2.insp.data.comments.startsWith('PRIVATE'), 'operator certificate is recorded; private comments kept for you');
 ok(rep2.checks.length === 4 && rep2.checks.find(x => x.label === 'Control panel').status === 'repair' && rep2.checks.find(x => x.label === 'Drain field').status === 'pass', 'four roll-up checks for the older screens');
