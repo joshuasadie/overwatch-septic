@@ -5,7 +5,7 @@
   var dt = function (iso) { if (!iso) return ''; var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso); if (!m) return iso; return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m[2] - 1] + ' ' + (+m[3]) + ', ' + m[1]; };
   var v = function (x, u) { return x === null || x === undefined || x === '' ? '-' : x + (u ? ' ' + u : ''); };
   OWI.esc = esc; OWI.dt = dt;
-  OWI.CSS = '.rp{font:15px/1.5 Georgia,"Times New Roman",serif;color:#111;background:#fff;border:1px solid #ccc;border-radius:6px;padding:18px 20px;max-width:760px}.rp h2{font:700 22px Georgia,serif;margin:0 0 4px}.rp h3{font:700 16px Georgia,serif;margin:16px 0 4px}.rp p{margin:4px 0}.rp table{width:100%;border-collapse:collapse;font-size:14px;margin:4px 0}.rp th,.rp td{text-align:left;padding:4px 6px;border-bottom:1px solid #ccc;vertical-align:top}.rp th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#444}.rp .g{color:#1f6b3f}.rp .w{color:#a14a05}.rp .b{color:#a31f18}.rp .c{color:#444}.rp .ov{border:2px solid;border-radius:6px;padding:10px 12px;margin:10px 0}.rp .ov.g{border-color:#1f6b3f}.rp .ov.w{border-color:#a14a05}.rp .ov.b{border-color:#a31f18}.rp .ov.todo{border-color:#a14a05}.rp .ov.todo u{text-decoration-thickness:1.5px;text-underline-offset:3px}.rp .grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px}.rp .sm{font-size:12px;color:#444}.rp .tw{overflow-x:auto}.rp ol{margin:4px 0;padding-left:22px}.rp .ph{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.rp .ph img{width:150px;height:110px;object-fit:cover;border-radius:4px;border:1px solid #ccc}@media(max-width:560px){.rp .grid{grid-template-columns:1fr}}';
+  OWI.CSS = '.rp{font:15px/1.5 Georgia,"Times New Roman",serif;color:#111;background:#fff;border:1px solid #ccc;border-radius:6px;padding:18px 20px;max-width:760px}.rp h2{font:700 22px Georgia,serif;margin:0 0 4px}.rp h3{font:700 16px Georgia,serif;margin:16px 0 4px}.rp p{margin:4px 0}.rp table{width:100%;border-collapse:collapse;font-size:14px;margin:4px 0}.rp th,.rp td{text-align:left;padding:4px 6px;border-bottom:1px solid #ccc;vertical-align:top}.rp th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#444}.rp .g{color:#1f6b3f}.rp .w{color:#a14a05}.rp .b{color:#a31f18}.rp .c{color:#444}.rp .ov{border:2px solid;border-radius:6px;padding:10px 12px;margin:10px 0}.rp .ov.g{border-color:#1f6b3f}.rp .ov.w{border-color:#a14a05}.rp .ov.b{border-color:#a31f18}.rp .ov.todo{border-color:#a14a05}.rp .ov.todo u{text-decoration-thickness:1.5px;text-underline-offset:3px}.rp .grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px}.rp .sm{font-size:12px;color:#444}.rp .tw{overflow-x:auto}.rp ol{margin:4px 0;padding-left:22px}.rp .ph{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.rp .ph img{width:150px;height:110px;object-fit:cover;border-radius:4px;border:1px solid #ccc}@media(max-width:560px){.rp .grid{grid-template-columns:1fr}}.rp .dv{border-bottom:1px solid #444;padding:0 4px;font-weight:600}.rp .dl{margin:3px 0}';
   var yn = function (a) { return a === 'yes' ? 'Yes' : a === 'no' ? 'No' : a === 'na' ? 'N/A' : '-'; };
   var info = function (d) { return d.sysinfo || {}; };
   var nm = function (d, k, dflt) { var n = info(d).names; return (n && n[k]) || dflt; };
@@ -114,6 +114,19 @@
     h += '<p><b>Status of system:</b> ' + esc(d.status) + '. <b>Next inspection due:</b> ' + esc(dt(d.next_due) || '-') + '.</p>';
     if (d.recs) h += '<p><b>Recommendations for owner:</b> ' + esc(d.recs) + '</p>';
     h += '<p class="sm"><i>Certified operator: ' + esc(op.name) + ', ' + esc(op.cert) + ', ' + esc(dt(rep.visit_date)) + '. Repairs and pumping are performed by licensed contractors.' + (rep.sent_owner ? ' Copy sent to owner ' + esc(dt(rep.sent_owner.slice(0, 10))) + '.' : '') + '</i></p></div>';
+    if (d.drip) h += '<div class="rp drip" style="margin-top:14px;page-break-before:always">' + OWI.dripHtml(rep, cust, op) + '<p style="margin-top:14px">Certified Operator: ' + esc(op.name) + (op.cert ? ', ' + esc(op.cert) : '') + '. Overwatch Septic, LLC</p></div>';
+    return h;
+  };
+  // the drip supplemental form, laid out like the paper form
+  OWI.dripHtml = function (rep, cust, op) {
+    var h = '<h2 style="text-align:center;margin-bottom:0">Supplemental Report Form</h2><p style="text-align:center;margin-top:2px">For Wastewater Drip System</p>';
+    var fv = function (x) { return '<span class="dv">' + (x === '' || x == null ? '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' : esc(x)) + '</span>'; };
+    OWI.dripBlocks(rep, cust, op).forEach(function (b) {
+      var top = b.gap ? ' style="margin-top:10px"' : '';
+      if (b.p) h += '<p class="dl"' + top + '>' + b.p.map(function (q) { return esc(q[0]) + ': ' + fv(q[1]); }).join(' &nbsp; ') + '</p>';
+      else if (b.t) h += '<p style="margin:12px 0 2px"><b>' + esc(b.h) + '</b></p><div class="tw"><table><thead><tr>' + b.t[0].map(function (x) { return '<th>' + esc(x) + '</th>'; }).join('') + '</tr></thead><tbody>' + (b.t[1].length ? b.t[1].map(function (r) { return '<tr>' + r.map(function (x, i) { return i ? '<td>' + (/\(low\)/.test(x) ? '<b>' + esc(x) + '</b>' : esc(x || '-')) + '</td>' : '<th>' + esc(x) + '</th>'; }).join('') + '</tr>'; }).join('') : '<tr><td colspan="6">Not measured</td></tr>') + '</tbody></table></div>';
+      else if (b.h) h += '<p style="margin:12px 0 2px"><b>' + esc(b.h) + '</b></p><p>' + (b.note ? esc(b.note) : '-') + '</p>';
+    });
     return h;
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

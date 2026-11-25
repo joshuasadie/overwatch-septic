@@ -329,6 +329,18 @@
       L.gap(5); L.text('Status of system: ' + d.status + '.  Next inspection due: ' + (d.next_due ? OW.date(d.next_due) : '-'), { bold: true });
       if (d.recs) L.text('Recommendations for owner: ' + d.recs);
       L.gap(4); L.text('Certified operator: ' + op.name + ', ' + op.cert + ', ' + OW.date(rep.visit_date) + '. Repairs and pumping are performed by licensed contractors.' + (rep.sent_owner ? ' Copy sent to owner ' + OW.date(rep.sent_owner.slice(0, 10)) + '.' : ''), { size: 9, italic: true });
+      if (d.drip) {
+        // the drip supplemental form on its own page, in the paper form's order and wording
+        L.add(); L.text('Supplemental Report Form', { bold: true, size: 13, center: true, after: 1 }); L.text('For Wastewater Drip System', { size: 11, center: true, after: 8 });
+        var dc = Object.assign({}, cust, { design_flow: cust.design_flow != null ? cust.design_flow : sys && sys.design_flow });
+        OWI.dripBlocks(rep, dc, op).forEach(function (b) {
+          if (b.gap) L.gap(4);
+          if (b.p) L.text(b.p.map(function (q) { return q[0] + ': ' + (q[1] === '' || q[1] == null ? '____' : q[1]); }).join('  |  '), { size: 10, after: 2 });
+          else if (b.t) { L.gap(4); L.text(b.h, { bold: true, size: 10, after: 2 }); var rt = [190, 280, 370, 430, 490]; L.row(['Zone'].concat(b.t[0].slice(1)), { bold: true, size: 9, w0: 110, right: rt }); (b.t[1].length ? b.t[1] : [['Not measured', '', '', '', '', '']]).forEach(function (r) { L.row(r.map(function (x, i) { return i && !x ? '-' : x; }), { size: 9, w0: 110, right: rt }); }); }
+          else if (b.h) { L.gap(4); L.text(b.h, { bold: true, size: 10, after: 2 }); L.text(b.note || '-', { size: 10 }); }
+        });
+        L.gap(6); L.text('Certified Operator: ' + op.name + (op.cert ? ', ' + op.cert : '') + '. Overwatch Septic, LLC', { size: 10 });
+      }
       return L.save();
     });
   };

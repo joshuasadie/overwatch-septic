@@ -10,7 +10,10 @@
   var auto = function (id, label) { return '<div><label for="' + id + '">' + label + '</label><input id="' + id + '" readonly tabindex="-1" class="auto">' + fm(id) + '</div>'; };
   var val = function (id) { var e = $(id); return e ? e.value.trim() : ''; };
   var num = function (id) { return OWI.n(val(id)); };
-  var det = function (title, body, open, id) { return '<details class="fcard"' + (open ? ' open' : '') + '><summary><h3>' + (++secN) + '. ' + title + '</h3><span class="pill mute" id="' + id + '"></span></summary><div class="fbody">' + body + '</div></details>'; };
+  // sections are collected first, then laid out: drip systems use the order of the drip supplemental form
+  var SEC = [];
+  var det = function (title, body, open, id) { SEC.push({ t: title, b: body, o: open, id: id || '' }); return ''; };
+  var secHtml = function (x) { return '<details class="fcard"' + (x.o ? ' open' : '') + '><summary><h3>' + (++secN) + '. ' + x.t + '</h3><span class="pill mute" id="' + x.id + '"></span></summary><div class="fbody">' + x.b + '</div></details>'; };
   var today = function () { return new Date().toISOString().slice(0, 10); };
   var addDays = function (iso, n) { var d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
@@ -40,7 +43,7 @@
     return '<div data-card="' + E(cd.id) + '" class="kcard">' + (cd.items || []).map(function (l, i) { return cardRow(l, i); }).join('') + '</div><div class="row" style="margin-top:8px"><input id="kn_' + E(cd.id) + '" maxlength="120" placeholder="Add a check for this system" aria-label="New check for ' + E(cd.title) + '" style="flex:1 1 220px"><button type="button" class="b alt" data-addrow="' + E(cd.id) + '">Add check</button></div><p class="mute sm">A check you add is kept for this system\'s future visits. Remove it in System setup.</p>';
   }
   function build(sys, prev) {
-    sys = sys || {}; secN = 0; var h = '<h2>New inspection</h2><p class="mute" style="margin:0 0 6px">Blue boxes fill in by themselves. Your answers are saved on this device as you go.</p><div class="row" style="justify-content:space-between"><span class="pill good" id="saved">Not saved yet</span><span class="pill warn" id="needs">0 items need attention</span></div>' + permitBanner(sys) + '<form id="inf" novalidate>';
+    sys = sys || {}; secN = 0; SEC = []; var drip = sys.zone_word === 'Zone'; var h = '<h2>New inspection</h2><p class="mute" style="margin:0 0 6px">' + (drip ? 'Drip system: this form follows the Supplemental Report Form for Wastewater Drip Systems. ' : '') + 'Blue boxes fill in by themselves. Your answers are saved on this device as you go.</p><div class="row" style="justify-content:space-between"><span class="pill good" id="saved">Not saved yet</span><span class="pill warn" id="needs">0 items need attention</span></div>' + permitBanner(sys) + '<form id="inf" novalidate>';
     h += det('System and visit', '<div class="two">' + fld('i_date', 'Date of inspection', 'type="date" value="' + today() + '"') + '<div><label for="i_type">Type of inspection</label><select id="i_type">' + OWI.TYPES.map(function (t) { return '<option>' + t + '</option>'; }).join('') + '</select></div>' +
       fld('s_desc', 'Type of system', 'value="' + E(sys.sys_desc || (D.customer.sys_type ? 'Type ' + D.customer.sys_type : '')) + '"') + fld('s_flow', 'Design flow (gpd)', dec + ' value="' + E(sys.design_flow == null ? '' : sys.design_flow) + '"') +
       fld('s_sgal', 'Septic tank (gal)', dec + ' value="' + E(sys.septic_gal == null ? '' : sys.septic_gal) + '"') + fld('s_ld', 'Liquid depth (in)', dec + ' value="' + E(sys.liquid_depth == null ? '' : sys.liquid_depth) + '"') +
@@ -50,13 +53,13 @@
       '<p class="mute sm">Owner, permit and system details come from the customer. Tank sizes, design numbers and laterals are saved here after your first report, so you type them once.</p>' +
       '<div class="two">' + auto('a_days', 'Days since last inspection') + auto('a_last', 'Last inspection') + '</div>' +
       '<h4>Malfunction</h4><label class="ck"><input type="checkbox" id="mf_on"> Malfunction found at this visit</label><div id="mf_box" hidden>' + fld('mf_note', 'County notified (date and how)', 'maxlength="200" placeholder="e.g. called the health department on the visit day"') + '<p class="mute sm" id="mf_due"></p></div>', true, 'c1');
-    h += det('Facility', checklist(OWI.SECTIONS[4]));
+    h += det('Facility', checklist(OWI.SECTIONS[4]), false, 'cfac');
     h += det(E(sys.septic_name || 'Septic tank'), checklist(OWI.SECTIONS[0]) + '<div class="three">' + fld('i_sc', 'Scum (in)', dec) + fld('i_sl', 'Sludge (in)', dec) + auto('i_slp', 'Sludge, % of liquid depth') + '</div><p id="slw" class="mute sm"></p><div class="two">' + fld('i_spd', 'Date of last pumpout', 'type="date"') + '<div><label for="i_spn">Pumping needed?</label><select id="i_spn"><option>No</option><option>Yes</option></select></div></div>', false, 'c2');
     h += det(E(sys.pump_name || 'Pump tank'), checklist(OWI.SECTIONS[1]) + '<div class="two">' + fld('i_psc', 'Scum (in)', dec) + fld('i_psl', 'Sludge (in)', dec) + fld('i_ppd', 'Date of last pumpout', 'type="date"') + '<div><label for="i_ppn">Pumping needed?</label><select id="i_ppn"><option>No</option><option>Yes</option></select></div></div>', false, 'c3');
     h += det('Pump, piping and controls', checklist(OWI.SECTIONS[2]) + '<h4>Float settings (inches above tank bottom, lowest to highest)</h4><div class="two">' + fld('i_foff', 'Pump off', dec + ' value="' + E((sys.floats || {}).off == null ? '' : sys.floats.off) + '"') + fld('i_ft', 'Timed float (if there is one)', dec + ' value="' + E((sys.floats || {}).timed == null ? '' : sys.floats.timed) + '"') + fld('i_fon', 'Pump on', dec + ' value="' + E((sys.floats || {}).on == null ? '' : sys.floats.on) + '"') + fld('i_fa', 'Alarm', dec + ' value="' + E((sys.floats || {}).alarm == null ? '' : sys.floats.alarm) + '"') + '</div>', false, 'c4');
     var lats = (sys.laterals && sys.laterals.length ? sys.laterals : [{}, {}, {}, {}]).map(function (l, i) { var t = prev && prev.turnups && prev.turnups[i]; return latRow(i, { length: l.length, design: l.design, last: t == null ? '' : t }); }).join('');
     h += det('Lateral field', checklist(OWI.SECTIONS[3]) + '<h4>Lateral head readings</h4><div class="tw"><table class="lat"><thead><tr><th>Lateral</th><th>Length</th><th>Design head</th><th>Turnup height</th><th>Head last time</th><th>Baseline head</th><th>Valves left at</th><th>Adjusted to</th><th>Off design</th></tr></thead><tbody id="latb">' + lats + '</tbody></table></div><button type="button" class="b alt" id="addLat" style="margin-top:6px">Add lateral</button>', false, 'c5');
-    if (sys.zone_word === 'Zone') h += det('Zone flush test', zoneFlushBody(sys, prev), false, 'czf');
+    if (drip) h += det('Zone dosing and flushing', dripZoneBody(sys, prev), true, 'czf'); else if (sys.zone_word === 'Zone') h += det('Zone flush test', zoneFlushBody(sys, prev), false, 'czf');
     (sys.tanks || []).forEach(function (t) { h += det(E(t.name || (t.kind === 'pump' ? 'Pump tank' : 'Septic tank')), tankBody(t), false, 'cx_' + t.id); });
     (sys.cards || []).forEach(function (cd) { h += det(E(cd.title), cardBody(cd), false, 'ck_' + cd.id); });
     h += det('Flow test and meters', '<div class="two">' + fld('f_amps', 'Pump running amps (A)' + (sys.pump_unit ? ', ' + E(sys.pump_unit) : ''), dec) + '</div><div class="two">' + auto('f_draw', 'Drawdown (in)') + auto('f_dose', 'Dose volume (gal)') + '</div><h4>Pump rate test</h4><div class="calc">' +
@@ -77,7 +80,7 @@
       '<label for="i_sign">Certified operator signature</label><input id="i_sign" class="auto" readonly tabindex="-1" value="' + E(A.cfg.operator.name + ', ' + A.cfg.operator.cert) + '">' +
       '<label for="i_amt">Invoice amount ($). Use 0 to waive it</label><input id="i_amt" ' + dec + ' value="' + E((A.visitFee && A.visitFee()) || A.LS.get('ow_visit') || (A.cfg && A.cfg.defaults.visit) || '0') + '"><p class="mute sm">With an invoice, the owner and the county get nothing until it is paid and 3 business days have passed. With 0, both get the report right away.</p>' +
       '<div class="row" style="margin-top:10px"><button class="b" type="submit">Save report</button><button class="b alt" type="button" id="clearDraft">Clear form</button></div><div class="msg" id="im" role="status"></div>', true, 'c8');
-    return h + '</form>';
+    return h + layout(drip) + '</form>';
   }
   // Drip systems: flushing flow and pressure at each zone's inlet and outlet, every visit. Design gpm comes from System setup.
   function zoneFlushBody(sys, prev) {
@@ -95,8 +98,77 @@
   }
   function zoneFlushData() {
     if (!$('zfb')) return null; var zs = (ctx.sys.laterals || []), pz = (ctx.prev && ctx.prev.zflush) || [];
-    return { filters: $('zf_filt').checked, valves: $('zf_valv').checked, notes: $('zf_note').value, zones: [].slice.call(document.querySelectorAll('#zfb tr')).map(function (tr) { var i = Number(tr.getAttribute('data-zf')), L = zs[i] || {}, p = pz.filter(function (x) { return x.n === i + 1; })[0] || {};
-      return { n: i + 1, dose: num('zf_dose_' + i), flush: num('zf_fl_' + i), in_psi: num('zf_in_' + i), out_psi: num('zf_out_' + i), design_dose: L.dose_gpm, design_flush: L.flush_gpm, base_in: L.base_in, last_in: p.in_psi, last_out: p.out_psi, last_flush: p.flush }; }) };
+    // on the drip form, "filters cleaned" and "valves close" come from its own questions
+    return { filters: $('zf_filt') ? $('zf_filt').checked : triVal('drip', 'manual') === 'yes', valves: $('zf_valv') ? $('zf_valv').checked : triVal('drip', 'nv_flow') === 'no', notes: $('zf_note') ? $('zf_note').value : '', zones: [].slice.call(document.querySelectorAll('#zfb tr')).map(function (tr) { var i = Number(tr.getAttribute('data-zf')), L = zs[i] || {}, p = pz.filter(function (x) { return x.n === i + 1; })[0] || {};
+      return { n: i + 1, dose: num('zf_dose_' + i), flush: num('zf_fl_' + i), in_psi: num('zf_in_' + i), out_psi: num('zf_out_' + i), etm: num('zf_etm_' + i), cycles: num('zf_cyc_' + i), design_dose: L.dose_gpm, design_flush: L.flush_gpm, base_in: L.base_in, last_in: p.in_psi, last_out: p.out_psi, last_flush: p.flush }; }) };
+  }
+  // ---- drip systems: the Supplemental Report Form for Wastewater Drip Systems
+  var dtri = function (k) { var it = OWI.DRIP_YN.filter(function (x) { return x[0] === k; })[0]; return '<div class="item"><span>' + E(it[1]) + '</span>' + tri('drip', k) + '</div>'; };
+  var nowHM = function () { var d = new Date(); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); };
+  function layout(drip) {
+    var by = {}; SEC.forEach(function (x) { by[x.id] = x; });
+    if (!drip) return SEC.map(secHtml).join('');
+    var sys = ctx.sys || {}, c = D.customer, pm = sys.permit || {};
+    // 1. visit: what the form header asks for, filled in from the customer and System setup
+    by.c1.t = 'Visit'; by.c1.b = '<div class="two">' + fld('d_arr', 'Arrival time', 'type="time" value="' + nowHM() + '"') + auto('d_by', 'Performed by') + auto('d_loc', 'Facility location') + auto('d_cty', 'County') + auto('d_gpd', 'Permitted gallons per day') + '</div>' + by.c1.b;
+    // the pump rate test moves to the standard checks; the meters lead the drip form
+    var f = by.c6.b, k = f.indexOf('<h4>Meter readings</h4>');
+    var meters = { t: 'Flow meter', b: '<p class="mute sm" style="margin-top:0">Type today\'s flow meter reading in the table. The rest fills in.</p><div class="two">' + auto('d_last', 'Last visit reading') + auto('d_used', 'Pumped since last visit (gal)') + auto('d_avg', 'Average gallons per day') + '</div><p class="sm" id="d_pct"></p>' + f.slice(k), o: true, id: 'c6' };
+    by.c4.b += '<h4>Pump rate test</h4>' + f.slice(0, k).replace('<h4>Pump rate test</h4>', '');
+    var pre = { t: 'Pretreatment (if present)', id: 'cdpre', b: fld('d_ptt', 'Pretreatment type (leave blank if none)', 'maxlength="80"') + '<div id="d_ptb" hidden>' + dtri('pt_dose') + dtri('pt_alarm') + '</div>' };
+    by.c2.b += '<h4>Effluent filter (drip form)</h4>' + dtri('sf_checked') + dtri('sf_cleaned');
+    by.c3.b += '<div class="two">' + fld('d_pdep', 'Total depth (in)', dec) + '</div>';
+    var disp = { t: 'Drip dispersal', id: 'cddisp', o: true, b: '<div class="two">' + auto('d_zn', 'Number of field zones') + auto('d_telq', 'Telemetry required?') + '</div>' + dtri('hw_alarm') + dtri('telem') + dtri('nv_flow') + dtri('sol') +
+      '<div class="two">' + fld('d_nr', 'Solenoid valves not responding', 'maxlength="60" placeholder="Zone numbers"') + fld('d_coil', 'Malfunctioning coils replaced', 'maxlength="60" placeholder="Zone numbers"') + '</div>' + dtri('autoclean') +
+      '<div class="three">' + fld('d_pre', 'Pre-filter psi', dec) + fld('d_post', 'Post-filter psi', dec) + auto('d_drop', 'Pressure drop') + '</div>' + dtri('manual') };
+    var dis = { t: 'Disinfection (if present)', id: 'cddis', b: '<label for="d_dis">Disinfection system</label><select id="d_dis"><option value="none">None</option><option value="uv">U.V.</option><option value="chlorine">Chlorine</option></select><div id="d_uv" hidden>' + dtri('uv_ok') + fld('d_rep', 'Any items replaced?', 'maxlength="120"') + '</div><div id="d_cl" hidden>' + dtri('tabs') + '</div>' };
+    var area = { t: 'Effluent application area', id: 'cdarea', b: dtri('veg') + dtri('wet') };
+    var notes = { t: 'Notes and PLC data', id: 'cdnote', b: '<label for="d_notes">Notes, observations, or comments upon the system (data from the PLC if available)</label><textarea id="d_notes" maxlength="1500"></textarea>' };
+    var std = function (x, t) { if (!x) return null; x.t = 'Standard report: ' + (t || x.t); return x; };
+    var fld5 = by.c5, lk = fld5.b.indexOf('<h4>Lateral head readings</h4>'); if (lk > 0) fld5.b = fld5.b.slice(0, lk) + '<div hidden>' + fld5.b.slice(lk) + '</div>';
+    var order = [by.c1, meters, pre, by.c2, by.c3, disp, dis, by.czf, area, notes, std(by.cfac), std(by.c4), std(fld5, 'Field checks')]
+      .concat(SEC.filter(function (x) { return /^c[xk]_/.test(x.id); }).map(function (x) { return std(x); })).concat([by.c7, by.c8]);
+    return order.filter(Boolean).map(secHtml).join('');
+  }
+  function dripZoneBody(sys, prev) {
+    var zs = (sys.laterals && sys.laterals.length ? sys.laterals : [{}, {}, {}]), pz = (prev && prev.zflush) || [];
+    var cell = function (id, lbl, ph) { return '<td><input id="' + id + '" ' + dec + ' aria-label="' + lbl + '"' + (ph != null ? ' placeholder="' + E(ph) + '"' : '') + ' style="min-width:54px"></td>'; };
+    var row = function (key, label, L) { return '<tr data-zf="' + key + '"><td><b>' + label + '</b></td>' + cell('zf_dose_' + key, label + ' dose gpm', L.dose_gpm) + cell('zf_fl_' + key, label + ' flush gpm', L.flush_gpm) + cell('zf_in_' + key, label + ' headworks psi') + cell('zf_etm_' + key, label + ' ETM') + cell('zf_cyc_' + key, label + ' cycles') + '</tr>'; };
+    var last = pz.length ? 'Last visit: ' + pz.map(function (p) { return 'zone ' + p.n + ' ' + (p.flush == null ? '-' : p.flush) + ' gpm flush, ' + (p.in_psi == null ? '-' : p.in_psi) + ' psi'; }).join('; ') + '.' : '';
+    return '<p class="mute sm" style="margin-top:0">Measured dose (irrigation) and flush rates for each zone. The grey numbers are the design rates from System setup. Use the meter timer below, or type the gpm.' + (last ? ' ' + E(last) : '') + '</p>' +
+      '<div class="tw"><table class="lat"><thead><tr><th>Zone</th><th>Dose gpm</th><th>Flush gpm</th><th>Headworks psi</th><th>ETM</th><th>Cycles</th></tr></thead><tbody id="zfb">' +
+      zs.map(function (L, i) { return row(i, String(i + 1), L); }).join('') + '</tbody><tbody id="sandb" hidden>' + row('s', 'Sand filter', {}).replace('data-zf="s"', 'data-sand="1"') + '</tbody></table></div>' +
+      '<label class="ck"><input type="checkbox" id="d_sand"> Sand filter zone present</label>' +
+      '<div class="item" style="display:block;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:8px"><b>Meter timer</b>' +
+      '<div class="two"><div><label for="mh_z">Zone</label><select id="mh_z">' + zs.map(function (L, i) { return '<option value="' + i + '">Zone ' + (i + 1) + '</option>'; }).join('') + '</select></div><div><label for="mh_k">Run</label><select id="mh_k"><option value="dose">Dose</option><option value="fl">Flush</option></select></div></div>' +
+      '<div class="three">' + fld('mh_a', 'Meter at start', dec) + fld('mh_b', 'Meter at end', dec) + fld('mh_t', 'Run time (m:ss)', 'inputmode="numeric" autocomplete="off" placeholder="1:05"') + '</div>' +
+      '<div class="row" style="margin-top:6px;align-items:center"><button type="button" class="b alt" id="mh_go">Start</button><button type="button" class="b alt" id="mh_st">Stop</button><button type="button" class="b" id="mh_use" disabled>Use this rate</button></div><p class="sm" id="mh_o"></p></div>' +
+      '<p class="sm" id="zf_sum"></p><p class="mute sm">A zone shows as low when its dose or flush rate is more than ' + OWI.ZF_FLUSH_PCT + '% under design.</p>';
+  }
+  // minutes from "1:05", "65s" style typing: m:ss, or a plain number of minutes
+  function runMin(t) { t = String(t || '').trim(); var m = /^(\d+):(\d{1,2})$/.exec(t); if (m) return Number(m[1]) + Number(m[2]) / 60; var x = OWI.n(t); return x !== null && x > 0 ? x : null; }
+  function meterRate() { var a = num('mh_a'), b = num('mh_b'), mi = runMin(val('mh_t')); if (a === null || b === null || !mi || b < a) return null; return { gal: Math.round((b - a) * 10) / 10, min: mi, gpm: Math.round((b - a) / mi * 10) / 10 }; }
+  var mhStart = null;
+  function triVal(sct, k) { var b = document.querySelector('.tri[data-s="' + sct + '"][data-i="' + k + '"] button[aria-pressed="true"]'); return b ? b.getAttribute('data-v') : ''; }
+  function dripData() {
+    if (!$('d_arr')) return null; var yn = {}; OWI.DRIP_YN.forEach(function (it) { var a = triVal('drip', it[0]); if (a) yn[it[0]] = a; });
+    var sand = $('d_sand').checked ? { dose: num('zf_dose_s'), flush: num('zf_fl_s'), psi: num('zf_in_s'), etm: num('zf_etm_s'), cycles: num('zf_cyc_s') } : null;
+    return { yn: yn, arrival: val('d_arr'), pt_type: val('d_ptt'), pump_depth: num('d_pdep'), not_resp: val('d_nr'), coils: val('d_coil'), pre_psi: num('d_pre'), post_psi: num('d_post'), disinf: val('d_dis'), replaced: val('d_rep'), notes: $('d_notes').value, sand: sand, zones: document.querySelectorAll('#zfb tr').length };
+  }
+  function dripCalc(d, c, sys) {
+    if (!$('d_arr')) return; var cu = D.customer, pm = sys.permit || {};
+    setv('d_by', A.cfg.operator.name + ', ' + A.cfg.operator.cert); setv('d_loc', (sys.addresses && sys.addresses[0]) || cu.address || ''); setv('d_cty', cu.county || pm.county || ''); setv('d_gpd', sys.design_flow == null ? 'Not set in System setup' : sys.design_flow);
+    setv('d_zn', document.querySelectorAll('#zfb tr').length); setv('d_telq', sys.design_flow == null ? 'Set design flow in System setup' : sys.design_flow > OWI.TELEMETRY_GPD ? 'Yes, over ' + OWI.TELEMETRY_GPD + ' gpd' : 'No, ' + OWI.TELEMETRY_GPD + ' gpd or less');
+    var pr = num('d_pre'), po = num('d_post'); setv('d_drop', pr !== null && po !== null ? Math.round((pr - po) * 10) / 10 + ' psi' : '');
+    $('d_pct').textContent = c.flow_pct != null ? c.flow_day + ' gpd is ' + c.flow_pct + '% of the ' + sys.design_flow + ' gpd permit.' : 'Average gallons per day shows here once there is a meter reading from an earlier visit.';
+    var pv = ctx.prev || {}; setv('d_last', pv.flow == null ? 'No earlier reading' : Number(pv.flow).toLocaleString('en-US')); setv('d_used', c.flow_used == null ? '' : c.flow_used.toLocaleString('en-US')); setv('d_avg', c.flow_day == null ? '' : c.flow_day.toLocaleString('en-US'));
+    $('d_ptb').hidden = !val('d_ptt'); $('d_uv').hidden = val('d_dis') !== 'uv'; $('d_cl').hidden = val('d_dis') !== 'chlorine'; $('sandb').hidden = !$('d_sand').checked;
+    var r = meterRate(), o = $('mh_o'), zi = Number(val('mh_z')), L = (ctx.sys.laterals || [])[zi] || {}, de = val('mh_k') === 'dose' ? L.dose_gpm : L.flush_gpm;
+    $('mh_use').disabled = !r; o.style.color = ''; o.style.fontWeight = '';
+    if (r) { var pc = de ? Math.round(r.gpm / de * 100) : null; o.textContent = r.gal + ' gal in ' + Math.floor(r.min) + ':' + ('0' + Math.round((r.min % 1) * 60)).slice(-2) + ' = ' + r.gpm + ' gpm' + (pc !== null ? ', ' + pc + '% of the ' + de + ' gpm design.' : '.'); if (pc !== null && pc < 100 - OWI.ZF_FLUSH_PCT) { o.style.color = 'var(--bad)'; o.style.fontWeight = '600'; } }
+    else o.textContent = mhStart ? 'Timing... tap Stop when the run ends.' : '';
+    var dc = ['hw_alarm', 'telem', 'nv_flow', 'sol', 'autoclean'].filter(function (k) { var it = OWI.DRIP_YN.filter(function (x) { return x[0] === k; })[0]; return d.drip.yn[k] === it[2]; }).length + (val('d_nr') ? 1 : 0); $('cddisp').textContent = dc ? dc + ' need attention' : '';
+    var ar = ['veg', 'wet'].filter(function (k) { return d.drip.yn[k]; }).length; $('cdarea').textContent = ar + ' of 2 answered';
   }
   function calcRow(id, label, unit, isAuto) { return '<div class="cl"><label for="' + id + '">' + label + '</label><input id="' + id + '" ' + (isAuto ? 'class="auto" readonly tabindex="-1"' : dec) + '><span class="u">' + unit + '</span></div>' + (isAuto ? fm(id) : ''); }
 
@@ -116,7 +188,7 @@
     d.tanks = {}; (ctx.sys.tanks || []).forEach(function (t) { d.tanks[t.id] = tankData(t); });
     d.cards = {}; (ctx.sys.cards || []).forEach(function (cd) { d.cards[cd.id] = { title: cd.title, rows: cardRows(cd.id) }; });
     d.malfunction = { found: $('mf_on').checked, notified: val('mf_note') };
-    d.zflush = zoneFlushData();
+    d.zflush = zoneFlushData(); d.drip = dripData();
     return d;
   }
   function tankData(t) {
@@ -172,7 +244,13 @@
     (ctx.sys.tanks || []).forEach(function (t) { if (extraCalc(t)) xbad = true; });
     (ctx.sys.cards || []).forEach(function (cd) { var rows = cardRows(cd.id), a = rows.filter(function (r) { return r.a; }).length; $('ck_' + cd.id).textContent = a + ' of ' + rows.length + ' answered'; });
     var mf = $('mf_on').checked; $('mf_box').hidden = !mf; $('mf_due').textContent = mf ? 'Notify the county within 48 hours of the visit, by ' + OW.date(addDays(date, 2)) + '.' : '';
-    if ($('zfb')) { var zd = d.zflush, done = 0; zd.zones.forEach(function (z, i) { var r = OWI.zoneResult(z), cel = $('zf_r_' + i); if (r) done++; cel.textContent = r ? r.text : ''; cel.style.color = r ? (r.bad ? 'var(--bad)' : 'var(--good)') : ''; cel.style.fontWeight = r ? '600' : ''; }); $('czf').textContent = done ? done + ' of ' + zd.zones.length + ' zones tested' : 'Every visit'; }
+    if ($('zfb')) { var zd = d.zflush, done = 0, low = [];
+      zd.zones.forEach(function (z, i) { var r = OWI.zoneResult(z), cel = $('zf_r_' + i); if (r) done++; if (r && r.bad) low.push('Zone ' + z.n + ': ' + r.text.replace(/^Check: /, ''));
+        if (cel) { cel.textContent = r ? r.text : ''; cel.style.color = r ? (r.bad ? 'var(--bad)' : 'var(--good)') : ''; cel.style.fontWeight = r ? '600' : ''; }
+        else ['dose', 'fl'].forEach(function (k) { var e = $('zf_' + k + '_' + i); e.style.color = r && r.bad && new RegExp(k === 'dose' ? 'dose' : 'flush').test(r.text) ? 'var(--bad)' : ''; }); });
+      if ($('zf_sum')) { $('zf_sum').textContent = low.length ? low.join('. ') + '.' : ''; $('zf_sum').style.color = low.length ? 'var(--bad)' : ''; }
+      $('czf').textContent = low.length ? low.length + ' low' : done ? done + ' of ' + zd.zones.length + ' zones tested' : 'Every visit'; }
+    dripCalc(d, c, sys);
     var bad = OWI.problems(d).length; $('needs').textContent = bad + (bad === 1 ? ' item needs' : ' items need') + ' attention'; $('needs').className = 'pill ' + (bad ? 'bad' : 'warn');
     var counts = {}; OWI.SECTIONS.forEach(function (sec, i) { counts[sec.k] = [Object.keys(d.checks[sec.k]).length, sec.items.length]; });
     ['septic:c2', 'pump:c3', 'controls:c4', 'field:c5'].forEach(function (z) { var a = z.split(':'); $(a[1]).textContent = counts[a[0]][0] + ' of ' + counts[a[0]][1] + ' answered'; });
@@ -255,6 +333,9 @@
     f.addEventListener('click', function (e) {
       var b = e.target.closest('.tri button'); if (b) { var t = b.parentNode, v = b.getAttribute('data-v'); pressTri(t, b.getAttribute('aria-pressed') === 'true' ? '' : v); recalc(); save(); return; }
       var ar = e.target.closest('[data-addrow]'); if (ar) { var cid = ar.getAttribute('data-addrow'), inp = $('kn_' + cid); if (addCardRow(cid, inp.value)) { inp.value = ''; recalc(); save(); } return; }
+      if (e.target.id === 'mh_go') { mhStart = Date.now(); e.target.textContent = 'Running'; recalc(); return; }
+      if (e.target.id === 'mh_st' && mhStart) { var sec = Math.round((Date.now() - mhStart) / 1000); mhStart = null; $('mh_go').textContent = 'Start'; $('mh_t').value = Math.floor(sec / 60) + ':' + ('0' + sec % 60).slice(-2); recalc(); save(); return; }
+      if (e.target.id === 'mh_use') { var mr = meterRate(); if (mr) { var tgt = $('zf_' + val('mh_k') + '_' + val('mh_z')); if (tgt) { tgt.value = mr.gpm; $('mh_a').value = val('mh_b'); $('mh_b').value = ''; $('mh_t').value = ''; recalc(); save(); OW.toast('Zone ' + (Number(val('mh_z')) + 1) + ' ' + (val('mh_k') === 'dose' ? 'dose' : 'flush') + ' rate set to ' + mr.gpm + ' gpm.'); } } return; }
       if (e.target.id === 'addLat') { addLat(); save(); } if (e.target.id === 'addJob') { addJob(); save(); }
       var px = e.target.closest('[data-px]'); if (px) { photos.splice(Number(px.getAttribute('data-px')), 1); thumbs(); }
       if (e.target.id === 'clearDraft' && confirm('Clear everything you entered on this form?')) { try { localStorage.removeItem(draftKey); } catch (x) {} A.inspect(); }
