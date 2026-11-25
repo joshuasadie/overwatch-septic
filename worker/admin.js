@@ -1,6 +1,6 @@
 // Admin API (Cloudflare Access protected): customers, contracts, reports.
 import { schemaProblems, reply, clean, id, EMAIL, siteOrigin, sendMail, readJson, originOk, verifyAccess, ensureSchema } from './lib.js';
-import { createInvoice, markPaid, releaseInvoice, releaseReport, sendCountyReport, sendNotice, noticeDrafts, toCents, etDate, daysBetween } from './billing.js';
+import { createInvoice, markPaid, releaseInvoice, releaseReport, sendCountyReport, sendNotice, noticeDrafts, toCents, etDate, daysBetween, reviewReports } from './billing.js';
 import { operatorOf, systemInfo, createInspection, saveSystem, attachInspections, uploadPhoto, servePhoto, deleteInspectionFiles } from './inspection.js';
 import { createContract, previewContract, resendContract, voidContract, countersign, publicView, signedSendInfo, sendSigned } from './contracts.js';
 import { listViewers, saveViewer, deleteViewer, viewerLog } from './viewers.js';
@@ -108,7 +108,9 @@ export async function adminApi(request, env, path) {
     const contracts = (await env.DB.prepare('SELECT * FROM contracts WHERE customer_id = ? ORDER BY created_at DESC').bind(c.id).all()).results.map(x => ({ ...publicView(x, c), terms: JSON.parse(x.terms) }));
     const reports = (await env.DB.prepare('SELECT id, visit_date, kind, readings, checks, notes, pdf_key, created_at FROM reports WHERE customer_id = ? ORDER BY visit_date DESC').bind(c.id).all()).results.map(r => ({ ...r, readings: JSON.parse(r.readings), checks: JSON.parse(r.checks), has_pdf: !!r.pdf_key, pdf_key: undefined }));
     const states = new Map((await env.DB.prepare('SELECT report_id, released_at, county_sent_at, county_to FROM report_state WHERE report_id IN (SELECT id FROM reports WHERE customer_id = ?)').bind(c.id).all()).results.map(x => [x.report_id, x]));
-    for (const r of reports) { const st = states.get(r.id); r.state = st ? (st.released_at ? 'released' : 'held') : 'released'; r.county_sent_at = st ? st.county_sent_at : ''; r.sent_owner = st && st.released_at ? st.released_at : ''; r.county_to = st ? st.county_to : ''; }
+    const billed = new Set((await env.DB.prepare("SELECT ref_id FROM invoices WHERE kind = 'visit' AND customer_id = ?").bind(c.id).all()).results.map(x => x.ref_id));
+    // held: invoiced and waiting on payment. review: saved, waiting for your OK (nothing sent yet)
+    for (const r of reports) { const st = states.get(r.id); r.state = st ? (st.released_at ? 'released' : billed.has(r.id) ? 'held' : 'review') : 'released'; r.county_sent_at = st ? st.county_sent_at : ''; r.sent_owner = st && st.released_at ? st.released_at : ''; r.county_to = st ? st.county_to : ''; }
     await attachInspections(env, reports, false);
     let installer = null;
     { const sr = await env.DB.prepare('SELECT data FROM systems WHERE customer_id = ?').bind(c.id).first(); let si = null; try { si = sr && JSON.parse(sr.data).installer; } catch { si = null; }
@@ -264,7 +266,7 @@ export async function adminApi(request, env, path) {
   m = /^\/admin\/api\/estimate(|-send|-void|-invoice)$/.exec(path);
   if (m && method === 'POST') { const j = await readJson(request, 65536); if (j.res) return j.res; return out(await ({ '': saveEstimate, '-send': sendEstimate, '-void': voidEstimate, '-invoice': invoiceEstimate })[m[1]](env, email, j.body)); }
   if (path === '/admin/api/case-item' && method === 'POST') { const j = await readJson(request, 16384); if (j.res) return j.res; return out(await saveItem(env, email, j.body)); }
-  if (path === '/admin/api/invoices' && method === 'GET') return reply({ ok: true, invoices: await invoiceRows(env, "i.status = 'open' OR i.released_at = '' OR i.notice_state != 'none'", []) });
+  if (path === '/admin/api/invoices' && method === 'GET') return reply({ ok: true, invoices: await invoiceRows(env, "i.status = 'open' OR i.released_at = '' OR i.notice_state != 'none'", []), review: await reviewReports(env) });
   m = /^\/admin\/api\/invoice-(waive|paid|pause|release|notice|final)$/.exec(path);
   if (m && method === 'POST') {
     const j = await readJson(request); if (j.res) return j.res;

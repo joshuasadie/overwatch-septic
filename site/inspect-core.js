@@ -339,6 +339,7 @@
     OWI.WORDS.forEach(function (w) { var x = s.words && s.words[w.k]; var i = x && Number.isInteger(x.i) && x.i >= 0 && x.i < w.o.length ? x.i : w.d; d.words[w.k] = { i: i, t: S(x && x.t, 600) }; });
     var t = s.todo || {}; d.todo = { jobs: (Array.isArray(t.jobs) ? t.jobs : []).slice(0, 6).filter(function (j) { return OWI.JOBS.indexOf(j) >= 0; }), ticks: (Array.isArray(t.ticks) ? t.ticks : []).filter(function (i) { return Number.isInteger(i) && i >= 0 && i < OWI.TICKS.length; }), extra: S(t.extra, 400) };
     d.recs = S(s.recs, 1500); d.comments = S(s.comments, 1500);
+    d.fee = N(s.fee); // the invoice amount you typed; used when you approve the report
     d.status = OWI.STATUS.indexOf(s.status) >= 0 ? s.status : 'Incomplete inspection';
     d.next_due = /^\d{4}-\d{2}-\d{2}$/.test(s.next_due || '') ? s.next_due : '';
     // extra tanks and check cards come from the saved system, so only known ids are kept
