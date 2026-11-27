@@ -2,8 +2,9 @@
 // Pages, scripts and the data you last loaded are kept on the phone. With signal, the network always wins,
 // so you never see stale data while connected; with none, the last copy is used.
 // Saving does not go through here: that is the outbox (outbox.js), which keeps your entries until the server has them.
-var CACHE = 'ow-admin-v1';
-var SHELL = ['/admin/', '/admin/admin.js', '/admin/outbox.js', '/admin/inspection.js', '/admin/cases.js', '/admin/estimates.js', '/admin/viewers.js', '/admin/bills.js', '/admin/tank-list.json',
+importScripts('/admin/outbox-core.js');
+var CACHE = 'ow-admin-v2';
+var SHELL = ['/admin/', '/admin/admin.js', '/admin/outbox.js', '/admin/outbox-core.js', '/admin/inspection.js', '/admin/cases.js', '/admin/estimates.js', '/admin/viewers.js', '/admin/bills.js', '/admin/tank-list.json',
   '/ow.js', '/ow.css', '/inspect-core.js', '/inspect-view.js', '/vendor/pdf-lib.min.js', '/favicon.svg', '/logo-pdf.png', '/icons/app-192.png'];
 var WAIT = 6000; // on a weak signal, give up on the network after this and use the copy on the phone
 
@@ -52,4 +53,11 @@ self.addEventListener('fetch', function (e) {
       return Response.error();
     });
   }));
+});
+
+// background sending (Android Chrome): the phone wakes this when signal returns, even with the app closed.
+// If something is still waiting because there is no signal or the server did not answer, ask to be woken again.
+self.addEventListener('sync', function (e) {
+  if (e.tag !== 'ow-outbox') return;
+  e.waitUntil(self.OWQC.run().then(function (o) { if (o && o.left && o.stop !== 'signin') throw new Error('still waiting'); }));
 });
