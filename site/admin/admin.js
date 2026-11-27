@@ -9,9 +9,16 @@
     return OW.api('/admin/api/customers').then(function (j) {
       if (j.status === 401) { $('ct').innerHTML = '<tr><td colspan="4" class="bad">You are not signed in. Reload this page and sign in through Cloudflare Access.</td></tr>'; return; }
       if (!j.ok) { $('ct').innerHTML = '<tr><td colspan="4" class="bad">' + E(j.error) + '</td></tr>'; return; }
-      S.list = j.customers;
+      S.list = j.customers; warm(j.customers);
       $('ct').innerHTML = j.customers.map(function (c) { return '<tr class="pick' + (c.id === S.sel ? ' sel' : '') + '" data-id="' + c.id + '" tabindex="0"><td><b>' + E(c.name) + '</b>' + (c.test ? ' <span class="pill mute">Test</span>' : '') + '<br><span class="mute">' + E(c.address) + '</span></td><td>' + (c.sys_type ? 'Type ' + E(c.sys_type) : '') + '</td><td>' + OW.pill(c.contract) + '</td><td>' + E(OW.date(c.last_report) || 'None yet') + '</td></tr>'; }).join('') || '<tr><td colspan="4" class="mute">No customers yet. Add the first one.</td></tr>';
     });
+  }
+  // with signal, quietly load every customer once so their pages and inspection forms open later with none
+  var warmed = false;
+  function warm(list) {
+    if (warmed || !navigator.onLine || !('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return; warmed = true;
+    var t = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+    list.slice(0, 200).reduce(function (p, c) { return p.then(function () { return fetch('/admin/api/customer/' + c.id, { credentials: 'same-origin' }).then(function () { return fetch('/admin/api/system?customer_id=' + c.id + '&date=' + t, { credentials: 'same-origin' }); }).catch(function () {}); }); }, new Promise(function (ok) { setTimeout(ok, 4000); }));
   }
   function stateText(i) {
     if (i.status === 'waived') return ['Waived', 'good'];
