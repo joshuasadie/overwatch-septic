@@ -62,6 +62,10 @@ export async function systemInfo(env, cid, date) {
 export async function createInspection(env, who, c, b) {
   const date = String(b.visit_date || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'Please choose the visit date.' };
+  // sent again from the phone's outbox (the answer was lost on the way back): hand back the report already made
+  const cid = /^[a-z0-9-]{8,64}$/.test(String(b.client_id || '')) ? String(b.client_id) : '';
+  const done = async () => cid ? await env.DB.prepare('SELECT report_id FROM client_saves WHERE client_id = ?').bind(cid).first() : null;
+  let had = await done(); if (had) return { ok: true, id: had.report_id, again: true };
   const stored = await env.DB.prepare('SELECT data FROM systems WHERE customer_id = ?').bind(c.id).first(), b0 = b.system || {};
   if (stored) b0.laterals = keepZoneData(b0.laterals, (jparse(stored.data, {}).laterals));
   const sys = cleanSystem(b0), d = OWI.sanitize(b.data, sys), op = operatorOf(env);
@@ -90,13 +94,16 @@ export async function createInspection(env, who, c, b) {
   if (d.zflush) for (const z of d.zflush.zones) { const L = sys.laterals[z.n - 1]; if (L && L.base_in == null && z.in_psi != null) { L.base_in = z.in_psi; L.base_out = z.out_psi; L.base_flush = z.flush; } }
   d.operator = op; sys.tank_shape = d.tank_shape; sys.tank_a = d.tank_a; sys.tank_b = d.tank_b;
   const rid = id(), now = new Date().toISOString();
-  await env.DB.batch([
+  const tx = [
     env.DB.prepare('INSERT INTO reports (id, customer_id, visit_date, kind, readings, checks, notes, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(rid, c.id, date, 'inspection', JSON.stringify(OWI.readings(d, calc)), JSON.stringify(OWI.rollup(d, calc)), d.recs.slice(0, 2000), now, who),
     env.DB.prepare('INSERT INTO inspections (report_id, data, calc, photos) VALUES (?, ?, ?, 0)').bind(rid, JSON.stringify(d), JSON.stringify(calc)),
     env.DB.prepare('INSERT INTO systems (customer_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(customer_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at').bind(c.id, JSON.stringify(sys), now),
     env.DB.prepare('INSERT INTO audit (at, who, action, target, detail) VALUES (?, ?, ?, ?, ?)').bind(now, who, 'inspection-added', rid, c.name),
     env.DB.prepare("INSERT INTO report_state (report_id, released_at) VALUES (?, '')").bind(rid)
-  ]);
+  ];
+  if (cid) tx.unshift(env.DB.prepare('INSERT INTO client_saves (client_id, report_id, created_at) VALUES (?, ?, ?)').bind(cid, rid, now));
+  try { await env.DB.batch(tx); }
+  catch (e) { had = await done(); if (had) return { ok: true, id: had.report_id, again: true }; throw e; }
   return { ok: true, id: rid };
 }
 
@@ -119,6 +126,10 @@ export async function uploadPhoto(env, request, rid) {
   if (!env.FILES) return { error: 'File storage is not connected.', status: 503 };
   const i = await env.DB.prepare("SELECT photos FROM inspections WHERE report_id = ?").bind(rid).first();
   if (!i) return { error: 'Not found.', status: 404 };
+  // ?n= says which photo this is: one already stored (a resend from the outbox) is not stored twice
+  const want = Number(new URL(request.url).searchParams.get('n') || 0);
+  if (want && want <= i.photos) return { ok: true, n: want, again: true };
+  if (want && want !== i.photos + 1) return { error: 'An earlier photo is missing. Send the photos in order.', status: 409 };
   if (i.photos >= PHOTO_CAP) return { error: 'A report can have up to ' + PHOTO_CAP + ' photos.' };
   const buf = await request.arrayBuffer();
   if (buf.byteLength < 200 || buf.byteLength > PHOTO_MAX) return { error: 'Each photo must be under 2.5 MB.', status: 413 };

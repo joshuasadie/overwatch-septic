@@ -89,6 +89,8 @@ export const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS invoices (id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, kind TEXT NOT NULL, ref_id TEXT NOT NULL, amount_cents INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL, created_date TEXT NOT NULL, paid_at TEXT NOT NULL DEFAULT '', release_date TEXT NOT NULL DEFAULT '', released_at TEXT NOT NULL DEFAULT '', stripe_session TEXT NOT NULL DEFAULT '', stripe_pi TEXT NOT NULL DEFAULT '', flag TEXT NOT NULL DEFAULT '', paused INTEGER NOT NULL DEFAULT 0, reminders INTEGER NOT NULL DEFAULT 0, last_reminder_date TEXT NOT NULL DEFAULT '', d15_sent INTEGER NOT NULL DEFAULT 0, notice_state TEXT NOT NULL DEFAULT 'none', notice_sent_at TEXT NOT NULL DEFAULT '', term_date TEXT NOT NULL DEFAULT '', tracking TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '')",
   'CREATE INDEX IF NOT EXISTS invoices_customer ON invoices (customer_id)',
   'CREATE INDEX IF NOT EXISTS invoices_ref ON invoices (ref_id)',
+  // a save sent from the phone's outbox carries its own id, so sending it twice makes one report
+  "CREATE TABLE IF NOT EXISTS client_saves (client_id TEXT PRIMARY KEY, report_id TEXT NOT NULL, created_at TEXT NOT NULL)",
   "CREATE TABLE IF NOT EXISTS report_state (report_id TEXT PRIMARY KEY, released_at TEXT NOT NULL DEFAULT '', county_sent_at TEXT NOT NULL DEFAULT '', county_to TEXT NOT NULL DEFAULT '', token_hash TEXT NOT NULL DEFAULT '', token_exp TEXT NOT NULL DEFAULT '')",
   'CREATE INDEX IF NOT EXISTS report_state_token ON report_state (token_hash)',
   // cases (see cases.js)

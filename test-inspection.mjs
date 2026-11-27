@@ -253,4 +253,15 @@ ok(/Supplemental Report Form/.test(dc) && /For Wastewater Drip System/.test(dc) 
 ok(/Last Visit Flow Meter Reading: <span class="dv">347,500/.test(dc) && /Calculated Avg. GPD: <span class="dv">850/.test(dc) && /Is Automatic Filter Cleaning Satisfactory: <span class="dv">No/.test(dc) && /Light Burning O.K.: <span class="dv">Yes/.test(dc) && /Infiltration Signs: <span class="dv">No/.test(dc), 'meter and yes/no lines on the drip form');
 ok(/<th>Field Zone 2<\/th><td><b>4\.6 \(low\)<\/b><\/td>/.test(dc) && /1,402/.test(dc) && /Discs cleaned/.test(dc) && /CERTIFIED OPERATOR MAINTENANCE\/MONITORING REPORT/.test(dc), 'zone table flags low rates; the standard report is still there');
 ok(!/Supplemental Report Form/.test(OWI0.countyHtml({ visit_date: '2027-01-10', insp: j.reports.find(x => x.visit_date === '2027-05-01').insp }, { name: 'S', address: 'x' }, zd.operator)), 'a report without the drip form does not get the drip page');
+{ const cid2 = cid;
+// the phone's outbox may send a save twice (the answer was lost): one report, and a photo stored once
+{ const body = { client_id: 'abc123def456abc123def456', customer_id: cid2, visit_date: '2025-01-15', data: form(), system: {} };
+  const s1 = await J(await adm('/admin/api/inspection', body)), s2 = await J(await adm('/admin/api/inspection', body));
+  const n = (await DB.prepare("SELECT COUNT(*) AS n FROM reports WHERE customer_id = ? AND visit_date = '2025-01-15'").bind(cid2).first()).n;
+  ok(s1.ok && s2.ok && s2.id === s1.id && s2.again && n === 1, 'a save sent twice from the outbox makes one report');
+  const p1 = await J(await raw('/admin/api/reports/' + s1.id + '/photo?n=1', jpg, 'image/jpeg')), p1b = await J(await raw('/admin/api/reports/' + s1.id + '/photo?n=1', jpg, 'image/jpeg'));
+  const p3 = await raw('/admin/api/reports/' + s1.id + '/photo?n=3', jpg, 'image/jpeg');
+  const ph = (await DB.prepare('SELECT photos FROM inspections WHERE report_id = ?').bind(s1.id).first()).photos;
+  ok(p1.ok && p1b.ok && p1b.again && ph === 1 && p3.status === 409, 'a photo sent twice is stored once; one out of order is refused');
+  await adm('/admin/api/report-delete', { id: s1.id }); }}
 console.log(fail ? fail + ' FAILED' : 'ALL PASSED'); process.exit(fail ? 1 : 0);

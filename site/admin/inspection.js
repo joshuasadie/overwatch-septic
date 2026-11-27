@@ -348,15 +348,15 @@
       e.preventDefault(); var m = $('im'); m.className = 'msg'; m.textContent = 'Saving...';
       var d = collect(), amt = val('i_amt'); d.fee = amt;
       if (!val('i_date')) { m.className = 'msg err'; m.textContent = 'Please choose the date of inspection.'; return; }
-      OW.api('/admin/api/inspection', { customer_id: D.customer.id, visit_date: val('i_date'), data: d, system: system() }).then(function (j) {
-        if (!j.ok) { m.className = 'msg err'; m.textContent = j.error; return; }
-        var up = photos.reduce(function (p, b) { return p.then(function (ok) { return ok && OW.api('/admin/api/reports/' + j.id + '/photo', b, { raw: true, type: 'image/jpeg' }).then(function (r) { return r.ok; }); }); }, Promise.resolve(true));
-        return up.then(function (ok) {
-          if (!ok) { m.className = 'msg err'; m.textContent = 'The report was saved, but a photo did not upload. It stays held. Delete it and try again.'; A.refresh(); return; }
-          // nothing is sent yet: the report waits for your OK. The draft stays on this device until you approve, in case it needs redoing.
-          clearTimeout(timer); A.LS.set('ow_visit', amt);
-          OW.toast('Saved for review. Nothing was sent. Press Review and send on the report when it is ready.'); A.refresh();
-        });
+      // written to this phone first (the outbox), then sent. With no signal it waits there and sends later.
+      var btn = f.querySelector('button[type=submit]'); btn.disabled = true; clearTimeout(timer); save();
+      OWQ.add('inspection', { customer_id: D.customer.id, visit_date: val('i_date'), data: d, system: system(), photos: photos.slice() }, 'Inspection, ' + D.customer.name + ', ' + OW.date(val('i_date'))).then(function (o) {
+        btn.disabled = false; A.LS.set('ow_visit', amt);
+        if (o.result === 'sent') { m.textContent = ''; OW.toast('Saved for review. Nothing was sent. Press Review and send on the report when it is ready.'); A.refresh(); return; }
+        if (o.result === 'error') { m.className = 'msg err'; m.textContent = o.item.error + ' Fix it here and save again.'; return OWQ.discard(o.item.id); }
+        if (o.result === 'nostore') { m.className = 'msg err'; m.textContent = 'This phone would not store the report (private browsing or storage turned off), and it could not be sent. Your form is still here.'; return; }
+        m.className = 'msg'; m.textContent = 'Saved on this phone. ' + (OWQ.WHY[o.result] || 'It will send when it can.') + ' Tap the status at the top to see it.';
+        OW.toast('Saved on this phone. It sends by itself when it can.');
       });
     });
   }
